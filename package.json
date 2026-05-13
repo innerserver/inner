@@ -8,6 +8,10 @@
     "node": ">=18"
   },
   "scripts": {
-    "start": "node server.js"
+    "start": "node -r ./database/bootstrap.js server.js",
+    "start:local": "node server.js"
+  },
+  "dependencies": {
+    "mongodb": "^6.17.0"
   }
 }

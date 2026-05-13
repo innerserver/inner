@@ -1,0 +1,9 @@
+data/
+.persistence-test-data/
+.codex/
+bin/
+obj/
+dist/
+server.log
+server.err
+*.tmp

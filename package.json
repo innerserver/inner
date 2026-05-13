@@ -1,0 +1,13 @@
+{
+  "name": "inner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "No-dependency private workspace app with messages, DMs, rooms, uploads, screen sharing, admin controls, backups, and VPN profile settings.",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}

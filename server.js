@@ -295,7 +295,7 @@ async function initPersistence() {
     const mongodb = require("mongodb");
     const client = new mongodb.MongoClient(MONGODB_URI, {
       serverSelectionTimeoutMS: Math.max(3000, Number(process.env.INNER_MONGODB_TIMEOUT_MS || 10000)),
-    });
+
     await client.connect();
     const db = client.db(MONGODB_DB);
     const jsonCollection = db.collection(MONGODB_JSON_COLLECTION);
@@ -359,7 +359,7 @@ async function ensureStorage() {
     metricsEnabled: true,
     updatedAt: new Date().toISOString(),
     updatedBy: "system",
-  });
+
   await ensureJson(FILES.voiceRooms, [
     {
       id: "lobby",
@@ -377,7 +377,7 @@ async function ensureStorage() {
     mutedWords: [],
     updatedAt: new Date().toISOString(),
     updatedBy: "system",
-  });
+
   await ensureJson(FILES.announcements, []);
   await ensureJson(FILES.settings, {
     serverEnabled: true,
@@ -389,7 +389,7 @@ async function ensureStorage() {
     shutdownAt: "",
     shutdownBy: "",
     updatedAt: new Date().toISOString(),
-  });
+
   await ensureJson(FILES.vpn, {
     enabled: false,
     username: "",
@@ -397,7 +397,6 @@ async function ensureStorage() {
     location: "United States",
     updatedAt: new Date().toISOString(),
     updatedBy: "system",
-  });
 
   await ensureUsers();
   await ensureRooms();
@@ -471,7 +470,7 @@ async function ensureUsers() {
         locked,
         createdAt: now,
         createdBy: "system",
-      });
+
       changed = true;
       return;
     }
@@ -501,7 +500,7 @@ async function ensureUsers() {
       allowPersistentLogin: false,
       locked: true,
       createdAt: now,
-    });
+
     changed = true;
   } else {
     const admin = users[adminIndex];
@@ -529,7 +528,7 @@ async function ensureUsers() {
       locked: false,
       createdAt: now,
       createdBy: "system",
-    });
+
     changed = true;
   } else if (admin2Index !== -1) {
     const admin2 = users[admin2Index];
@@ -572,7 +571,7 @@ async function ensureRooms() {
       name: "Main",
       createdAt: new Date().toISOString(),
       createdBy: "system",
-    });
+
     changed = true;
   }
 
@@ -605,7 +604,7 @@ async function ensureProfiles() {
       profiles[user.username] = sanitizeProfile({
         ...defaultProfile(user.username),
         ...profiles[user.username],
-      });
+
       changed = true;
     }
   }
@@ -666,7 +665,7 @@ async function ensureSettings() {
       ...next,
       updatedAt: new Date().toISOString(),
       updatedBy: settings.updatedBy || "system",
-    });
+
   }
 }
 
@@ -756,7 +755,6 @@ async function routeApi(req, res, requestUrl) {
       createdAt: Date.now(),
       persistent,
       expiresAt: Date.now() + (persistent ? SESSION_PERSISTENT_MS : SESSION_IDLE_MS),
-    });
 
     const currentLoginIp = getClientIp(req);
     const currentLoginDevice = deviceSignature(req);
@@ -822,7 +820,7 @@ async function routeApi(req, res, requestUrl) {
         cloudinaryConfigured: cloudinaryConfigured(),
         error: persistence.error,
       },
-    });
+
   }
 
   if (req.method === "POST" && pathname === "/api/account-requests") {
@@ -863,7 +861,7 @@ async function routeApi(req, res, requestUrl) {
       sourceDevice: deviceSignature(req),
       approximateLocation: approximateLocationFromIp(getClientIp(req)),
       createdAt: new Date().toISOString(),
-    });
+
     requests.unshift(request);
     await writeJson(FILES.accountRequests, requests.slice(0, 500));
     await addSystemLog("account.requested", username, { displayName: request.displayName, location: request.location }, req);
@@ -922,7 +920,7 @@ async function routeApi(req, res, requestUrl) {
       ...defaultProfile(username),
       displayName: body.displayName || username,
       updatedAt: now,
-    });
+
     await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles)]);
     await addSystemLog("account.signup.created", username, { sourceIp: account.sourceIp, contact }, req);
     await notifyAdminEmails("Inner open signup", [
@@ -1059,7 +1057,7 @@ async function routeApi(req, res, requestUrl) {
       automod,
       announcements: safeAnnouncements(announcements, user, rooms),
       presence: presenceList(profiles, user),
-    });
+
   }
 
   if (req.method === "POST" && pathname === "/api/messages") {
@@ -1148,14 +1146,14 @@ async function routeApi(req, res, requestUrl) {
       size,
       url: "",
       persistence: "cloudinary-direct",
-    });
+
     const fields = signedCloudinaryParams(storedName, draft);
     return json(res, 200, {
       uploadUrl: `https://api.cloudinary.com/v1_1/${encodeURIComponent(CLOUDINARY_CLOUD_NAME)}/auto/upload`,
       fields,
       draft: safeDirectUploadDraft(draft),
       maxBytes: scaledUploadBytes,
-    });
+
   }
 
   if (req.method === "POST" && pathname === "/api/uploads/direct-cloudinary/complete") {
@@ -1287,7 +1285,7 @@ async function routeApi(req, res, requestUrl) {
       invisible: Boolean(body.invisible),
       theme: body.theme,
       updatedAt: new Date().toISOString(),
-    });
+
     profiles[user.username] = next;
     await writeJson(FILES.profiles, profiles);
     broadcast({ type: "profiles:update", profiles: safeProfiles(profiles, await readJson(FILES.users, []), user) });
@@ -1340,7 +1338,7 @@ async function routeApi(req, res, requestUrl) {
         id: crypto.randomUUID(),
         users: [request.from, request.to],
         createdAt: new Date().toISOString(),
-      });
+
     }
     await writeJson(FILES.friends, friends);
     broadcastFriendUpdate(friends, request.from, request.to);
@@ -1600,7 +1598,7 @@ async function routeApi(req, res, requestUrl) {
       apiKey,
       updatedAt: new Date().toISOString(),
       updatedBy: user.username,
-    });
+
     return json(res, 200, { aiConfigured: true });
   }
 
@@ -1659,7 +1657,7 @@ async function routeApi(req, res, requestUrl) {
       moderators: body.moderators,
       updatedAt: new Date().toISOString(),
       updatedBy: user.username,
-    });
+
     await writeJson(FILES.rooms, rooms);
     broadcast({ type: "rooms:update", rooms: safeRooms(rooms) });
     return json(res, 200, { rooms: safeRooms(rooms), room: safeRoom(rooms[index]) });
@@ -1776,7 +1774,7 @@ async function routeApi(req, res, requestUrl) {
       participants: uniqueParticipants,
       createdAt: new Date().toISOString(),
       createdBy: user.username,
-    });
+
     groups.unshift(group);
     await writeJson(FILES.dmGroups, groups.slice(0, 300));
     await addSystemLog("dm.group.created", user.username, { groupId: group.id, name: group.name, participants: group.participants }, req);
@@ -1991,7 +1989,7 @@ async function routeApi(req, res, requestUrl) {
       adminNote: body.adminNote,
       updatedAt: new Date().toISOString(),
       updatedBy: user.username,
-    });
+
     await writeJson(FILES.accountRequests, requests);
     await addSystemLog("account.request.updated", user.username, { requestUsername: requests[index].username, status }, req);
     broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
@@ -2036,7 +2034,7 @@ async function routeApi(req, res, requestUrl) {
       ...defaultProfile(request.username),
       displayName: request.displayName || request.username,
       updatedAt: now,
-    });
+
     requests[index] = sanitizeAccountRequest({
       ...request,
       status: "approved",
@@ -2044,7 +2042,7 @@ async function routeApi(req, res, requestUrl) {
       approvedBy: user.username,
       updatedAt: now,
       updatedBy: user.username,
-    });
+
     await Promise.all([
       writeJson(FILES.users, users),
       writeJson(FILES.profiles, profiles),
@@ -2089,7 +2087,7 @@ async function routeApi(req, res, requestUrl) {
       allowPersistentLogin: Boolean(body.allowPersistentLogin),
       bannedUntil: "",
       banReason: "",
-    });
+
     await writeJson(FILES.users, users);
     const profiles = await readJson(FILES.profiles, {});
     profiles[username] = defaultProfile(username);
@@ -2509,7 +2507,7 @@ async function routeApi(req, res, requestUrl) {
         error: emailFailureMessage(result, status),
         email: status,
         result,
-      });
+
     }
     return json(res, 200, { ok: true, email: emailProviderStatus(result.recipients || []), result });
   }
@@ -2533,7 +2531,7 @@ async function saveUpload(req, res, user) {
   if (!isAllowedUploadExtension(extension)) {
     return json(res, 400, {
       error: "Unsupported or unsafe file type. Executable files are blocked, but normal media, documents, archives, and project files are allowed.",
-    });
+
   }
 
   const scaledUploadBytes = Math.round(MAX_UPLOAD_BYTES * serviceScaleMultiplier(settings, "uploads"));
@@ -2562,7 +2560,7 @@ async function saveUpload(req, res, user) {
       size: contentLength || 0,
       url: "",
       persistence: "cloudinary",
-    });
+
     try {
       const cloudUpload = await uploadRequestToCloudinary(req, storedName, fileRecord, extension, providedType, scaledUploadBytes);
       const cloudFile = cloudUpload.data;
@@ -2613,7 +2611,7 @@ async function saveUpload(req, res, user) {
         out.destroy(new Error(`File is larger than ${formatServerBytes(scaledUploadBytes)}`));
         req.destroy();
       }
-    });
+
     req.on("error", reject);
     out.on("error", reject);
     out.on("finish", resolve);
@@ -2621,7 +2619,6 @@ async function saveUpload(req, res, user) {
   }).catch(async (error) => {
     await fsp.rm(target, { force: true }).catch(() => {});
     throw error;
-  });
 
   const validationError = await validateUploadBytes(target, extension, providedType);
   if (validationError) {
@@ -2642,7 +2639,6 @@ async function saveUpload(req, res, user) {
     size: written,
     url: `/uploads/${encodeURIComponent(storedName)}`,
     persistence: inlineEnabled ? "disk+inline" : "disk",
-  });
 
   if (cloudinaryConfigured() && UPLOAD_PROVIDER !== "mongodb") {
     try {
@@ -2738,10 +2734,10 @@ function readRequestBuffer(req, maxBytes) {
         return;
       }
       chunks.push(Buffer.from(chunk));
-    });
+
     req.on("end", () => resolve(Buffer.concat(chunks, total)));
     req.on("error", reject);
-  });
+
 }
 
 async function uploadLocalFileToCloud(storedName, filePath, record) {
@@ -2751,12 +2747,12 @@ async function uploadLocalFileToCloud(storedName, filePath, record) {
     const upload = persistence.uploadBucket.openUploadStream(storedName, {
       contentType: record.mimeType || "application/octet-stream",
       metadata: uploadMetadata(record),
-    });
+
     source.on("error", reject);
     upload.on("error", reject);
     upload.on("finish", resolve);
     source.pipe(upload);
-  });
+
 }
 
 async function uploadBufferToCloud(storedName, buffer, record) {
@@ -2765,11 +2761,11 @@ async function uploadBufferToCloud(storedName, buffer, record) {
     const upload = persistence.uploadBucket.openUploadStream(storedName, {
       contentType: record.mimeType || "application/octet-stream",
       metadata: uploadMetadata(record),
-    });
+
     upload.on("error", reject);
     upload.on("finish", resolve);
     upload.end(buffer);
-  });
+
 }
 
 async function uploadLocalFileToCloudinary(storedName, filePath, record) {
@@ -2799,7 +2795,7 @@ async function uploadBufferToCloudinary(storedName, buffer, record) {
   const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(CLOUDINARY_CLOUD_NAME)}/auto/upload`, {
     method: "POST",
     body: form,
-  });
+
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error && data.error.message ? data.error.message : `Cloudinary upload failed (${response.status})`);
   return data;
@@ -2851,7 +2847,7 @@ function uploadRequestToCloudinary(req, storedName, record, extension, mimeType,
             return;
           }
           resolve({ data, bytes: total });
-        });
+
       }
     );
 
@@ -2860,7 +2856,6 @@ function uploadRequestToCloudinary(req, storedName, record, extension, mimeType,
         settled = true;
         reject(error);
       }
-    });
 
     for (const [key, value] of Object.entries(params)) {
       cloudReq.write(`--${boundary}\r\n`);
@@ -2902,7 +2897,6 @@ function uploadRequestToCloudinary(req, storedName, record, extension, mimeType,
         req.pause();
         cloudReq.once("drain", () => req.resume());
       }
-    });
 
     req.on("end", () => {
       if (settled) return;
@@ -2914,9 +2908,9 @@ function uploadRequestToCloudinary(req, storedName, record, extension, mimeType,
         return;
       }
       cloudReq.end(`\r\n--${boundary}--\r\n`);
-    });
+
     req.on("error", (error) => finishReject(error, cloudReq));
-  });
+
 }
 
 async function deleteCloudinaryUpload(record) {
@@ -3086,7 +3080,7 @@ async function handleUpgrade(req, socket) {
     user: safeUser(user),
     peers: peerList(id),
     presence: presenceList(await readJson(FILES.profiles, {}), user),
-  });
+
   broadcast({ type: "peer:joined", peer: peerSummary(client) }, id);
 
   socket.on("data", (chunk) => handleWsData(client, chunk));
@@ -3156,7 +3150,7 @@ function handleWsData(client, chunk) {
     try {
       Promise.resolve(handleWsMessage(client, JSON.parse(data.toString("utf8")))).catch((error) => {
         sendWs(client, { type: "error", error: error.message || "Live update failed" });
-      });
+
     } catch (error) {
       sendWs(client, { type: "error", error: "Bad websocket message" });
     }
@@ -3179,7 +3173,7 @@ async function handleWsMessage(client, message) {
         invisible: client.invisible,
         customStatus: message.customStatus !== undefined ? message.customStatus : profiles[client.username].customStatus,
         updatedAt: new Date().toISOString(),
-      });
+
       await writeJson(FILES.profiles, profiles);
     }
     return broadcast({ type: "presence:update", presence: presenceList(profiles, client) });
@@ -3226,7 +3220,7 @@ async function handleWsMessage(client, message) {
       fromUser: client.username,
       roomId: roomInfo.roomId,
       signal: message.signal,
-    });
+
   }
 
   if (message.type === "screen:request" || message.type === "location:request") {
@@ -3237,7 +3231,7 @@ async function handleWsMessage(client, message) {
       type: message.type,
       from: client.id,
       fromUser: client.username,
-    });
+
   }
 
   if (message.type === "location:share") {
@@ -3248,7 +3242,7 @@ async function handleWsMessage(client, message) {
       from: client.id,
       fromUser: client.username,
       location: sanitizeLocation(message.location),
-    });
+
   }
 
   if (message.type === "voice:join") {
@@ -3313,7 +3307,7 @@ async function handleWsMessage(client, message) {
       roomId: roomInfo.roomId,
       videoEnabled: Boolean(client.videoEnabled),
       signal: message.signal,
-    });
+
   }
 
   if (message.type === "call:invite") {
@@ -3393,7 +3387,7 @@ async function markDeletedDefault(username, updatedBy) {
     deletedDefaultAdmins,
     updatedAt: new Date().toISOString(),
     updatedBy,
-  });
+
 }
 
 async function unmarkDeletedDefault(username, updatedBy) {
@@ -3406,7 +3400,7 @@ async function unmarkDeletedDefault(username, updatedBy) {
     deletedDefaultAdmins,
     updatedAt: new Date().toISOString(),
     updatedBy,
-  });
+
 }
 
 function peerList(exceptId) {
@@ -3482,7 +3476,7 @@ function broadcastAnnouncements(announcements, rooms) {
     sendWs(client, {
       type: "announcements:update",
       announcements: safeAnnouncements(announcements, client, rooms),
-    });
+
   }
 }
 
@@ -3594,7 +3588,7 @@ function kickNonShutdownUsers() {
       sendWs(client, {
         type: "server:shutdown",
         error: "Server shutdown is on. Admin, HMD, and dev accounts can stay connected.",
-      });
+
       closeWs(client);
       clientsKicked += 1;
     }
@@ -3667,7 +3661,7 @@ function redirectToHttps(req, res) {
   res.writeHead(308, {
     Location: location,
     "Cache-Control": "no-store",
-  });
+
   res.end();
 }
 
@@ -3755,7 +3749,7 @@ function safeProfiles(profiles, users, viewer) {
     const profile = sanitizeProfile({
       ...defaultProfile(user.username),
       ...(profiles[user.username] || {}),
-    });
+
     result[user.username] = {
       ...profile,
       status: profile.invisible && (!viewer || viewer.username !== user.username) ? "offline" : profile.status,
@@ -3776,7 +3770,7 @@ function presenceList(profiles, viewer) {
       customStatus: profiles[client.username] ? profiles[client.username].customStatus || "" : "",
       clientId: client.id,
       voiceRoomId: client.voiceRoomId || "",
-    });
+
   }
   return Array.from(online.values()).sort((a, b) => a.username.localeCompare(b.username));
 }
@@ -4498,7 +4492,7 @@ async function addModerationLog(actor, action, target, note) {
     target,
     note: String(note || "").slice(0, 500),
     createdAt: new Date().toISOString(),
-  });
+
   await writeJson(FILES.moderationLogs, logs.slice(0, 2000));
   broadcastManagers({ type: "moderation:update", moderationLogs: logs.slice(0, 250) });
 }
@@ -4726,7 +4720,6 @@ async function sendSmtpEmail(payload) {
       user: SMTP_USER,
       pass: SMTP_PASS,
     },
-  });
 
   await transporter.sendMail({
     from: EMAIL_FROM,
@@ -4734,7 +4727,6 @@ async function sendSmtpEmail(payload) {
     replyTo: EMAIL_REPLY_TO || undefined,
     subject: payload.subject,
     text: payload.body,
-  });
 
   return { ok: true, provider: "smtp", status: 200 };
 }
@@ -4789,7 +4781,7 @@ async function notifyAdminEmails(subject, body, options = {}) {
         provider: result.provider,
         status: result.status,
         reason: result.error || "",
-      });
+
       if (result.ok) return options.detailed ? { ...result, recipients } : true;
       lastError = result.error || `status ${result.status}`;
     } catch (error) {
@@ -4817,7 +4809,7 @@ async function sendResendEmail(payload) {
       text: payload.body,
       reply_to: EMAIL_REPLY_TO || undefined,
     }),
-  });
+
   const data = await response.json().catch(() => ({}));
   return {
     provider: "resend",
@@ -4851,7 +4843,7 @@ async function sendBrevoEmail(payload) {
       textContent: payload.body,
       replyTo: EMAIL_REPLY_TO ? { email: EMAIL_REPLY_TO } : undefined,
     }),
-  });
+
   const data = await response.json().catch(() => ({}));
   return {
     provider: "brevo",
@@ -4876,7 +4868,7 @@ async function sendSendGridEmail(payload) {
       subject: payload.subject,
       content: [{ type: "text/plain", value: payload.body }],
     }),
-  });
+
   const text = await response.text().catch(() => "");
   return {
     provider: "sendgrid",
@@ -4892,7 +4884,7 @@ async function sendWebhookEmail(payload) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    });
+
     const text = await response.text().catch(() => "");
     return {
       provider: "webhook",
@@ -4985,7 +4977,7 @@ async function serveAdminBrowserFrame(req, res, requestUrl) {
         "User-Agent": "Mozilla/5.0 Inner Admin Browser",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
-    });
+
     const contentType = response.headers.get("content-type") || "text/html; charset=utf-8";
     const body = await response.text();
     res.statusCode = response.ok ? 200 : response.status;
@@ -5062,10 +5054,10 @@ function readBody(req, maxBytes) {
         return;
       }
       chunks.push(chunk);
-    });
+
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
-  });
+
 }
 
 async function readJson(file, fallback) {
@@ -5196,7 +5188,7 @@ async function listBackups() {
       size: stat.size,
       createdAt: stat.birthtime.toISOString(),
       updatedAt: stat.mtime.toISOString(),
-    });
+
   }
   return backups.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 }
@@ -5282,7 +5274,7 @@ async function serveBackup(res, fileName) {
       "Content-Length": stat.size,
       "Content-Disposition": `attachment; filename="${fileName}"`,
       "Cache-Control": "no-store",
-    });
+
     fs.createReadStream(target).pipe(res);
   } catch (error) {
     json(res, 404, { error: "Backup not found" });
@@ -5363,7 +5355,7 @@ async function generateAiSuggestion(prompt) {
         max_output_tokens: 700,
         store: false,
       }),
-    });
+
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       return {
@@ -5409,7 +5401,7 @@ function json(res, status, payload) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
-  });
+
   res.end(JSON.stringify(payload));
 }
 
@@ -5428,7 +5420,7 @@ async function serveStatic(res, filePath) {
     res.writeHead(200, {
       "Content-Type": mimeTypes[extension] || "application/octet-stream",
       "Cache-Control": "no-cache",
-    });
+
     fs.createReadStream(safePath).pipe(res);
   } catch (error) {
     text(res, 404, "Not found");
@@ -5473,7 +5465,7 @@ async function serveFileRecord(req, res, record, targetPath = "") {
             "Content-Disposition": disposition,
             "Accept-Ranges": "bytes",
             "Content-Range": `bytes ${start}-${end}/${stat.size}`,
-          });
+
           fs.createReadStream(target, { start, end }).pipe(res);
           return;
         }
@@ -5485,7 +5477,7 @@ async function serveFileRecord(req, res, record, targetPath = "") {
       "Content-Length": stat.size,
       "Content-Disposition": disposition,
       "Accept-Ranges": "bytes",
-    });
+
     fs.createReadStream(target).pipe(res);
   } catch (error) {
     if (await serveCloudUpload(req, res, record)) {
@@ -5505,7 +5497,7 @@ async function serveCloudUpload(req, res, record) {
     res.writeHead(302, {
       Location: record.cloudinarySecureUrl,
       "Cache-Control": record.private ? "no-store" : "private, max-age=60",
-    });
+
     res.end();
     return true;
   }
@@ -5549,7 +5541,7 @@ async function serveCloudUpload(req, res, record) {
   stream.on("error", () => {
     if (!res.headersSent) text(res, 404, "Not found");
     else res.destroy();
-  });
+
   res.writeHead(status, headers);
   stream.pipe(res);
   return true;
@@ -5641,7 +5633,7 @@ function serveUploadBuffer(req, res, record, buffer) {
           "Content-Disposition": disposition,
           "Accept-Ranges": "bytes",
           "Content-Range": `bytes ${start}-${end}/${buffer.length}`,
-        });
+
         res.end(buffer.subarray(start, end + 1));
         return;
       }
@@ -5653,7 +5645,7 @@ function serveUploadBuffer(req, res, record, buffer) {
     "Content-Length": buffer.length,
     "Content-Disposition": disposition,
     "Accept-Ranges": "bytes",
-  });
+
   res.end(buffer);
 }
 
@@ -5755,18 +5747,3 @@ function classifyFile(extension, mimeType) {
 main().catch((error) => {
   console.error(error);
   process.exit(1);
-});
-
-
-document.addEventListener("DOMContentLoaded",()=>{
- const u=localStorage.getItem("username")||"guest";
- const r=localStorage.getItem("role")||"user";
- const admin=(u==="devshah"||r==="admin");
-
- document.querySelectorAll("[data-feature='admin'],#adminBtn,.admin-btn,.admin-nav,.admin-panel").forEach(el=>{
-   if(!admin){
-      el.remove();
-   }
- });
-
-});

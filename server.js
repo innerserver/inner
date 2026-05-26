@@ -1,6 +1,8 @@
 // Local desktop mode stores data beside the app. Cloud deploys can still require Mongo/GridFS.
 const http = require("http");
 const https = require("https");
+const net = require("net");
+const tls = require("tls");
 const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
@@ -8,7 +10,6 @@ const crypto = require("crypto");
 const os = require("os");
 const { Readable } = require("stream");
 const { URL } = require("url");
-const nodemailer = require("nodemailer");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 3000);
@@ -34,19 +35,16 @@ const CLOUDINARY_FOLDER = firstEnvValue("CLOUDINARY_FOLDER", "INNER_CLOUDINARY_F
 const UPLOAD_PROVIDER = String(firstEnvValue("INNER_UPLOAD_PROVIDER", "UPLOAD_PROVIDER") || "").toLowerCase();
 const REPORT_EMAILS = splitEnvList(firstEnvValue("INNER_REPORT_EMAILS", "REPORT_EMAILS", "INNER_ADMIN_EMAILS", "ADMIN_EMAILS")).slice(0, 4);
 const EMAIL_WEBHOOK_URL = firstEnvValue("INNER_EMAIL_WEBHOOK_URL", "REPORT_EMAIL_WEBHOOK_URL", "EMAIL_WEBHOOK_URL");
-const EMAIL_FROM = firstEnvValue("INNER_EMAIL_FROM", "EMAIL_FROM", "RESEND_FROM", "SENDGRID_FROM", "BREVO_FROM") || "Inner <innerservers@gmail.com>";
+const EMAIL_FROM = firstEnvValue("INNER_EMAIL_FROM", "EMAIL_FROM", "RESEND_FROM") || "Inner <onboarding@resend.dev>";
 const EMAIL_REPLY_TO = firstEnvValue("INNER_EMAIL_REPLY_TO", "EMAIL_REPLY_TO");
 const RESEND_API_KEY = firstEnvValue("INNER_RESEND_API_KEY", "RESEND_API_KEY", "RESEND_KEY");
-const BREVO_API_KEY = firstEnvValue("INNER_BREVO_API_KEY", "BREVO_API_KEY", "SENDINBLUE_API_KEY", "BREVO_KEY", "SIB_API_KEY");
-const SENDGRID_API_KEY = firstEnvValue("INNER_SENDGRID_API_KEY", "SENDGRID_API_KEY", "SENDGRID_KEY");
-const SMTP_HOST = firstEnvValue("SMTP_HOST", "INNER_SMTP_HOST");
-const SMTP_PORT = Number(firstEnvValue("SMTP_PORT", "INNER_SMTP_PORT") || 587);
-const SMTP_USER = firstEnvValue("SMTP_USER", "INNER_SMTP_USER");
-const SMTP_PASS = firstEnvValue("SMTP_PASS", "INNER_SMTP_PASS", "SMTP_PASSWORD");
-const SMTP_SECURE = isTruthy(firstEnvValue("SMTP_SECURE", "INNER_SMTP_SECURE"));
-
-const DEFAULT_SIGNUP_MODE = String(firstEnvValue("INNER_SIGNUP_MODE", "SIGNUP_MODE") || "request").toLowerCase() === "open" ? "open" : "request";
-const DEFAULT_REQUIRE_CONTACT = firstEnvValue("INNER_REQUIRE_CONTACT", "REQUIRE_CONTACT") === "" ? true : !isFalsy(firstEnvValue("INNER_REQUIRE_CONTACT", "REQUIRE_CONTACT"));
+const SMTP_HOST = firstEnvValue("INNER_SMTP_HOST", "SMTP_HOST");
+const SMTP_PORT = Number(firstEnvValue("INNER_SMTP_PORT", "SMTP_PORT") || 0);
+const SMTP_USER = firstEnvValue("INNER_SMTP_USER", "SMTP_USER");
+const SMTP_PASS = firstEnvValue("INNER_SMTP_PASS", "SMTP_PASS", "SMTP_PASSWORD");
+const SMTP_SECURE = firstEnvValue("INNER_SMTP_SECURE", "SMTP_SECURE");
+const DEFAULT_SIGNUP_MODE = String(firstEnvValue("INNER_SIGNUP_MODE", "SIGNUP_MODE") || "open").toLowerCase() === "request" ? "request" : "open";
+const DEFAULT_REQUIRE_CONTACT = firstEnvValue("INNER_REQUIRE_CONTACT", "REQUIRE_CONTACT") === "" ? false : !isFalsy(firstEnvValue("INNER_REQUIRE_CONTACT", "REQUIRE_CONTACT"));
 
 const FILES = {
   users: path.join(DATA_DIR, "users.json"),
@@ -97,13 +95,18 @@ const persistence = {
   ObjectId: null,
 };
 const allowedFeatureLocks = new Set([
+  "dashboard",
   "messages",
   "files",
+  "store",
+  "chess",
+  "games",
   "screen",
   "dms",
   "rooms",
   "vpn",
   "friends",
+  "profile",
   "profiles",
   "voice",
   "invites",
@@ -295,7 +298,7 @@ async function initPersistence() {
     const mongodb = require("mongodb");
     const client = new mongodb.MongoClient(MONGODB_URI, {
       serverSelectionTimeoutMS: Math.max(3000, Number(process.env.INNER_MONGODB_TIMEOUT_MS || 10000)),
-
+    });
     await client.connect();
     const db = client.db(MONGODB_DB);
     const jsonCollection = db.collection(MONGODB_JSON_COLLECTION);
@@ -359,7 +362,7 @@ async function ensureStorage() {
     metricsEnabled: true,
     updatedAt: new Date().toISOString(),
     updatedBy: "system",
-
+  });
   await ensureJson(FILES.voiceRooms, [
     {
       id: "lobby",
@@ -377,7 +380,7 @@ async function ensureStorage() {
     mutedWords: [],
     updatedAt: new Date().toISOString(),
     updatedBy: "system",
-
+  });
   await ensureJson(FILES.announcements, []);
   await ensureJson(FILES.settings, {
     serverEnabled: true,
@@ -389,7 +392,7 @@ async function ensureStorage() {
     shutdownAt: "",
     shutdownBy: "",
     updatedAt: new Date().toISOString(),
-
+  });
   await ensureJson(FILES.vpn, {
     enabled: false,
     username: "",
@@ -397,6 +400,7 @@ async function ensureStorage() {
     location: "United States",
     updatedAt: new Date().toISOString(),
     updatedBy: "system",
+  });
 
   await ensureUsers();
   await ensureRooms();
@@ -470,7 +474,7 @@ async function ensureUsers() {
         locked,
         createdAt: now,
         createdBy: "system",
-
+      });
       changed = true;
       return;
     }
@@ -500,7 +504,7 @@ async function ensureUsers() {
       allowPersistentLogin: false,
       locked: true,
       createdAt: now,
-
+    });
     changed = true;
   } else {
     const admin = users[adminIndex];
@@ -528,7 +532,7 @@ async function ensureUsers() {
       locked: false,
       createdAt: now,
       createdBy: "system",
-
+    });
     changed = true;
   } else if (admin2Index !== -1) {
     const admin2 = users[admin2Index];
@@ -571,7 +575,7 @@ async function ensureRooms() {
       name: "Main",
       createdAt: new Date().toISOString(),
       createdBy: "system",
-
+    });
     changed = true;
   }
 
@@ -604,7 +608,7 @@ async function ensureProfiles() {
       profiles[user.username] = sanitizeProfile({
         ...defaultProfile(user.username),
         ...profiles[user.username],
-
+      });
       changed = true;
     }
   }
@@ -660,12 +664,22 @@ async function ensureSettings() {
     next.chessUrl = "https://chessverse.co.in/";
     changed = true;
   }
+  const sanitizedVisibility = sanitizeFeatureVisibility(next.featureVisibility || {});
+  if (JSON.stringify(next.featureVisibility || {}) !== JSON.stringify(sanitizedVisibility)) {
+    next.featureVisibility = sanitizedVisibility;
+    changed = true;
+  }
+  const sanitizedAppLinks = sanitizeAppLinks(next.appLinks || []);
+  if (JSON.stringify(next.appLinks || []) !== JSON.stringify(sanitizedAppLinks)) {
+    next.appLinks = sanitizedAppLinks;
+    changed = true;
+  }
   if (changed) {
     await writeJson(FILES.settings, {
       ...next,
       updatedAt: new Date().toISOString(),
       updatedBy: settings.updatedBy || "system",
-
+    });
   }
 }
 
@@ -755,6 +769,7 @@ async function routeApi(req, res, requestUrl) {
       createdAt: Date.now(),
       persistent,
       expiresAt: Date.now() + (persistent ? SESSION_PERSISTENT_MS : SESSION_IDLE_MS),
+    });
 
     const currentLoginIp = getClientIp(req);
     const currentLoginDevice = deviceSignature(req);
@@ -820,7 +835,16 @@ async function routeApi(req, res, requestUrl) {
         cloudinaryConfigured: cloudinaryConfigured(),
         error: persistence.error,
       },
+    });
+  }
 
+  if (req.method === "GET" && pathname === "/api/signup-status") {
+    const settings = await readJson(FILES.settings, {});
+    return json(res, 200, {
+      signupMode: String(settings.signupMode || DEFAULT_SIGNUP_MODE) === "open" ? "open" : "request",
+      requireContact: settings.requireContact !== false,
+      serverEnabled: settings.serverEnabled !== false,
+    });
   }
 
   if (req.method === "POST" && pathname === "/api/account-requests") {
@@ -828,7 +852,9 @@ async function routeApi(req, res, requestUrl) {
     const settings = await readJson(FILES.settings, {});
     const username = normalizeUsername(body.username);
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
-    const contact = String(body.contact || "").trim().slice(0, 160);
+    const email = String(body.email || "").trim().slice(0, 120);
+    const phone = String(body.phone || "").trim().slice(0, 80);
+    const contact = String(body.contact || [email, phone].filter(Boolean).join(" / ")).trim().slice(0, 160);
     if (settings.requireContact !== false && !contact) {
       return json(res, 400, { error: "Add an email or phone number so admins can contact you after review." });
     }
@@ -852,6 +878,8 @@ async function routeApi(req, res, requestUrl) {
       username,
       displayName: body.displayName,
       contact,
+      email,
+      phone,
       note: body.note,
       location,
       status: "pending",
@@ -861,7 +889,7 @@ async function routeApi(req, res, requestUrl) {
       sourceDevice: deviceSignature(req),
       approximateLocation: approximateLocationFromIp(getClientIp(req)),
       createdAt: new Date().toISOString(),
-
+    });
     requests.unshift(request);
     await writeJson(FILES.accountRequests, requests.slice(0, 500));
     await addSystemLog("account.requested", username, { displayName: request.displayName, location: request.location }, req);
@@ -886,7 +914,9 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     const username = normalizeUsername(body.username);
     const password = String(body.password || "");
-    const contact = String(body.contact || "").trim().slice(0, 160);
+    const email = String(body.email || "").trim().slice(0, 120);
+    const phone = String(body.phone || "").trim().slice(0, 80);
+    const contact = String(body.contact || [email, phone].filter(Boolean).join(" / ")).trim().slice(0, 160);
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
     if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
     if (settings.requireContact !== false && !contact) {
@@ -906,6 +936,8 @@ async function routeApi(req, res, requestUrl) {
       passwordHash: hashPassword(password),
       passwordPreset: "",
       contact,
+      email,
+      phone,
       sourceIp: getClientIp(req),
       sourceHost: req.headers.host || "",
       sourceAgent: String(req.headers["user-agent"] || "").slice(0, 240),
@@ -920,7 +952,7 @@ async function routeApi(req, res, requestUrl) {
       ...defaultProfile(username),
       displayName: body.displayName || username,
       updatedAt: now,
-
+    });
     await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles)]);
     await addSystemLog("account.signup.created", username, { sourceIp: account.sourceIp, contact }, req);
     await notifyAdminEmails("Inner open signup", [
@@ -1057,7 +1089,7 @@ async function routeApi(req, res, requestUrl) {
       automod,
       announcements: safeAnnouncements(announcements, user, rooms),
       presence: presenceList(profiles, user),
-
+    });
   }
 
   if (req.method === "POST" && pathname === "/api/messages") {
@@ -1146,14 +1178,14 @@ async function routeApi(req, res, requestUrl) {
       size,
       url: "",
       persistence: "cloudinary-direct",
-
+    });
     const fields = signedCloudinaryParams(storedName, draft);
     return json(res, 200, {
       uploadUrl: `https://api.cloudinary.com/v1_1/${encodeURIComponent(CLOUDINARY_CLOUD_NAME)}/auto/upload`,
       fields,
       draft: safeDirectUploadDraft(draft),
       maxBytes: scaledUploadBytes,
-
+    });
   }
 
   if (req.method === "POST" && pathname === "/api/uploads/direct-cloudinary/complete") {
@@ -1285,7 +1317,7 @@ async function routeApi(req, res, requestUrl) {
       invisible: Boolean(body.invisible),
       theme: body.theme,
       updatedAt: new Date().toISOString(),
-
+    });
     profiles[user.username] = next;
     await writeJson(FILES.profiles, profiles);
     broadcast({ type: "profiles:update", profiles: safeProfiles(profiles, await readJson(FILES.users, []), user) });
@@ -1338,7 +1370,7 @@ async function routeApi(req, res, requestUrl) {
         id: crypto.randomUUID(),
         users: [request.from, request.to],
         createdAt: new Date().toISOString(),
-
+      });
     }
     await writeJson(FILES.friends, friends);
     broadcastFriendUpdate(friends, request.from, request.to);
@@ -1358,12 +1390,23 @@ async function routeApi(req, res, requestUrl) {
 
   if (req.method === "POST" && pathname === "/api/reports") {
     const body = await readJsonBody(req);
-    const reports = await readJson(FILES.reports, []);
+    const [reports, messages, dms] = await Promise.all([
+      readJson(FILES.reports, []),
+      readJson(FILES.messages, []),
+      readJson(FILES.dms, []),
+    ]);
+    const targetType = String(body.targetType || "message").slice(0, 40);
+    const targetId = String(body.targetId || "").slice(0, 120);
+    const target = targetType === "dm"
+      ? dms.find((entry) => entry.id === targetId)
+      : messages.find((entry) => entry.id === targetId);
     const report = {
       id: crypto.randomUUID(),
       reporter: user.username,
-      targetType: String(body.targetType || "message").slice(0, 40),
-      targetId: String(body.targetId || "").slice(0, 120),
+      targetType,
+      targetId,
+      targetSender: target ? String(target.user || target.from || "").slice(0, 80) : "",
+      targetText: target ? String(target.text || "").slice(0, 1000) : "",
       reason: String(body.reason || "").trim().slice(0, 500),
       status: "open",
       createdAt: new Date().toISOString(),
@@ -1372,8 +1415,13 @@ async function routeApi(req, res, requestUrl) {
     reports.unshift(report);
     await writeJson(FILES.reports, reports);
     await addModerationLog(user.username, "report:create", `${report.targetType}:${report.targetId}`, report.reason);
-    await notifyAdminEmails("Inner report", `${user.username} reported ${report.targetType}:${report.targetId}\nReason: ${report.reason}`);
-    broadcastManagers({ type: "reports:update", reports: reports.slice(-250) });
+    await notifyAdminEmails("Inner report", [
+      `${user.username} reported ${report.targetType}:${report.targetId}`,
+      `Sender: ${report.targetSender || "unknown"}`,
+      `Message: ${report.targetText || "(not found)"}`,
+      `Reason: ${report.reason}`,
+    ].join("\n"));
+    broadcastManagers({ type: "reports:update", reports: reports.slice(0, 250) });
     return json(res, 201, { report });
   }
 
@@ -1392,7 +1440,7 @@ async function routeApi(req, res, requestUrl) {
     };
     await writeJson(FILES.reports, reports);
     await addModerationLog(user.username, "report:update", reports[index].targetId, reports[index].status);
-    broadcastManagers({ type: "reports:update", reports: reports.slice(-250) });
+    broadcastManagers({ type: "reports:update", reports: reports.slice(0, 250) });
     return json(res, 200, { reports });
   }
 
@@ -1598,7 +1646,7 @@ async function routeApi(req, res, requestUrl) {
       apiKey,
       updatedAt: new Date().toISOString(),
       updatedBy: user.username,
-
+    });
     return json(res, 200, { aiConfigured: true });
   }
 
@@ -1657,7 +1705,7 @@ async function routeApi(req, res, requestUrl) {
       moderators: body.moderators,
       updatedAt: new Date().toISOString(),
       updatedBy: user.username,
-
+    });
     await writeJson(FILES.rooms, rooms);
     broadcast({ type: "rooms:update", rooms: safeRooms(rooms) });
     return json(res, 200, { rooms: safeRooms(rooms), room: safeRoom(rooms[index]) });
@@ -1774,7 +1822,7 @@ async function routeApi(req, res, requestUrl) {
       participants: uniqueParticipants,
       createdAt: new Date().toISOString(),
       createdBy: user.username,
-
+    });
     groups.unshift(group);
     await writeJson(FILES.dmGroups, groups.slice(0, 300));
     await addSystemLog("dm.group.created", user.username, { groupId: group.id, name: group.name, participants: group.participants }, req);
@@ -1989,7 +2037,7 @@ async function routeApi(req, res, requestUrl) {
       adminNote: body.adminNote,
       updatedAt: new Date().toISOString(),
       updatedBy: user.username,
-
+    });
     await writeJson(FILES.accountRequests, requests);
     await addSystemLog("account.request.updated", user.username, { requestUsername: requests[index].username, status }, req);
     broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
@@ -2034,7 +2082,7 @@ async function routeApi(req, res, requestUrl) {
       ...defaultProfile(request.username),
       displayName: request.displayName || request.username,
       updatedAt: now,
-
+    });
     requests[index] = sanitizeAccountRequest({
       ...request,
       status: "approved",
@@ -2042,7 +2090,7 @@ async function routeApi(req, res, requestUrl) {
       approvedBy: user.username,
       updatedAt: now,
       updatedBy: user.username,
-
+    });
     await Promise.all([
       writeJson(FILES.users, users),
       writeJson(FILES.profiles, profiles),
@@ -2087,7 +2135,7 @@ async function routeApi(req, res, requestUrl) {
       allowPersistentLogin: Boolean(body.allowPersistentLogin),
       bannedUntil: "",
       banReason: "",
-
+    });
     await writeJson(FILES.users, users);
     const profiles = await readJson(FILES.profiles, {});
     profiles[username] = defaultProfile(username);
@@ -2314,6 +2362,8 @@ async function routeApi(req, res, requestUrl) {
         updatedBy: user.username,
       }),
       serviceScale: sanitizeServiceScale(body.serviceScale && typeof body.serviceScale === "object" ? body.serviceScale : settings.serviceScale || {}),
+      featureVisibility: sanitizeFeatureVisibility(body.featureVisibility && typeof body.featureVisibility === "object" ? body.featureVisibility : settings.featureVisibility || {}),
+      appLinks: sanitizeAppLinks(Array.isArray(body.appLinks) ? body.appLinks : settings.appLinks || []),
       shutdownAt: nextServerEnabled ? "" : settings.shutdownAt || new Date().toISOString(),
       shutdownBy: nextServerEnabled ? "" : settings.shutdownBy || user.username,
       shutdownReason: nextServerEnabled ? "" : String(body.shutdownReason || settings.shutdownReason || "Admin shutdown").slice(0, 160),
@@ -2507,7 +2557,7 @@ async function routeApi(req, res, requestUrl) {
         error: emailFailureMessage(result, status),
         email: status,
         result,
-
+      });
     }
     return json(res, 200, { ok: true, email: emailProviderStatus(result.recipients || []), result });
   }
@@ -2531,7 +2581,7 @@ async function saveUpload(req, res, user) {
   if (!isAllowedUploadExtension(extension)) {
     return json(res, 400, {
       error: "Unsupported or unsafe file type. Executable files are blocked, but normal media, documents, archives, and project files are allowed.",
-
+    });
   }
 
   const scaledUploadBytes = Math.round(MAX_UPLOAD_BYTES * serviceScaleMultiplier(settings, "uploads"));
@@ -2560,7 +2610,7 @@ async function saveUpload(req, res, user) {
       size: contentLength || 0,
       url: "",
       persistence: "cloudinary",
-
+    });
     try {
       const cloudUpload = await uploadRequestToCloudinary(req, storedName, fileRecord, extension, providedType, scaledUploadBytes);
       const cloudFile = cloudUpload.data;
@@ -2611,7 +2661,7 @@ async function saveUpload(req, res, user) {
         out.destroy(new Error(`File is larger than ${formatServerBytes(scaledUploadBytes)}`));
         req.destroy();
       }
-
+    });
     req.on("error", reject);
     out.on("error", reject);
     out.on("finish", resolve);
@@ -2619,6 +2669,7 @@ async function saveUpload(req, res, user) {
   }).catch(async (error) => {
     await fsp.rm(target, { force: true }).catch(() => {});
     throw error;
+  });
 
   const validationError = await validateUploadBytes(target, extension, providedType);
   if (validationError) {
@@ -2639,6 +2690,7 @@ async function saveUpload(req, res, user) {
     size: written,
     url: `/uploads/${encodeURIComponent(storedName)}`,
     persistence: inlineEnabled ? "disk+inline" : "disk",
+  });
 
   if (cloudinaryConfigured() && UPLOAD_PROVIDER !== "mongodb") {
     try {
@@ -2734,10 +2786,10 @@ function readRequestBuffer(req, maxBytes) {
         return;
       }
       chunks.push(Buffer.from(chunk));
-
+    });
     req.on("end", () => resolve(Buffer.concat(chunks, total)));
     req.on("error", reject);
-
+  });
 }
 
 async function uploadLocalFileToCloud(storedName, filePath, record) {
@@ -2747,12 +2799,12 @@ async function uploadLocalFileToCloud(storedName, filePath, record) {
     const upload = persistence.uploadBucket.openUploadStream(storedName, {
       contentType: record.mimeType || "application/octet-stream",
       metadata: uploadMetadata(record),
-
+    });
     source.on("error", reject);
     upload.on("error", reject);
     upload.on("finish", resolve);
     source.pipe(upload);
-
+  });
 }
 
 async function uploadBufferToCloud(storedName, buffer, record) {
@@ -2761,11 +2813,11 @@ async function uploadBufferToCloud(storedName, buffer, record) {
     const upload = persistence.uploadBucket.openUploadStream(storedName, {
       contentType: record.mimeType || "application/octet-stream",
       metadata: uploadMetadata(record),
-
+    });
     upload.on("error", reject);
     upload.on("finish", resolve);
     upload.end(buffer);
-
+  });
 }
 
 async function uploadLocalFileToCloudinary(storedName, filePath, record) {
@@ -2795,7 +2847,7 @@ async function uploadBufferToCloudinary(storedName, buffer, record) {
   const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(CLOUDINARY_CLOUD_NAME)}/auto/upload`, {
     method: "POST",
     body: form,
-
+  });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error && data.error.message ? data.error.message : `Cloudinary upload failed (${response.status})`);
   return data;
@@ -2847,7 +2899,7 @@ function uploadRequestToCloudinary(req, storedName, record, extension, mimeType,
             return;
           }
           resolve({ data, bytes: total });
-
+        });
       }
     );
 
@@ -2856,6 +2908,7 @@ function uploadRequestToCloudinary(req, storedName, record, extension, mimeType,
         settled = true;
         reject(error);
       }
+    });
 
     for (const [key, value] of Object.entries(params)) {
       cloudReq.write(`--${boundary}\r\n`);
@@ -2897,6 +2950,7 @@ function uploadRequestToCloudinary(req, storedName, record, extension, mimeType,
         req.pause();
         cloudReq.once("drain", () => req.resume());
       }
+    });
 
     req.on("end", () => {
       if (settled) return;
@@ -2908,9 +2962,9 @@ function uploadRequestToCloudinary(req, storedName, record, extension, mimeType,
         return;
       }
       cloudReq.end(`\r\n--${boundary}--\r\n`);
-
+    });
     req.on("error", (error) => finishReject(error, cloudReq));
-
+  });
 }
 
 async function deleteCloudinaryUpload(record) {
@@ -3080,7 +3134,7 @@ async function handleUpgrade(req, socket) {
     user: safeUser(user),
     peers: peerList(id),
     presence: presenceList(await readJson(FILES.profiles, {}), user),
-
+  });
   broadcast({ type: "peer:joined", peer: peerSummary(client) }, id);
 
   socket.on("data", (chunk) => handleWsData(client, chunk));
@@ -3150,7 +3204,7 @@ function handleWsData(client, chunk) {
     try {
       Promise.resolve(handleWsMessage(client, JSON.parse(data.toString("utf8")))).catch((error) => {
         sendWs(client, { type: "error", error: error.message || "Live update failed" });
-
+      });
     } catch (error) {
       sendWs(client, { type: "error", error: "Bad websocket message" });
     }
@@ -3173,7 +3227,7 @@ async function handleWsMessage(client, message) {
         invisible: client.invisible,
         customStatus: message.customStatus !== undefined ? message.customStatus : profiles[client.username].customStatus,
         updatedAt: new Date().toISOString(),
-
+      });
       await writeJson(FILES.profiles, profiles);
     }
     return broadcast({ type: "presence:update", presence: presenceList(profiles, client) });
@@ -3220,7 +3274,7 @@ async function handleWsMessage(client, message) {
       fromUser: client.username,
       roomId: roomInfo.roomId,
       signal: message.signal,
-
+    });
   }
 
   if (message.type === "screen:request" || message.type === "location:request") {
@@ -3231,7 +3285,7 @@ async function handleWsMessage(client, message) {
       type: message.type,
       from: client.id,
       fromUser: client.username,
-
+    });
   }
 
   if (message.type === "location:share") {
@@ -3242,7 +3296,7 @@ async function handleWsMessage(client, message) {
       from: client.id,
       fromUser: client.username,
       location: sanitizeLocation(message.location),
-
+    });
   }
 
   if (message.type === "voice:join") {
@@ -3307,7 +3361,7 @@ async function handleWsMessage(client, message) {
       roomId: roomInfo.roomId,
       videoEnabled: Boolean(client.videoEnabled),
       signal: message.signal,
-
+    });
   }
 
   if (message.type === "call:invite") {
@@ -3387,7 +3441,7 @@ async function markDeletedDefault(username, updatedBy) {
     deletedDefaultAdmins,
     updatedAt: new Date().toISOString(),
     updatedBy,
-
+  });
 }
 
 async function unmarkDeletedDefault(username, updatedBy) {
@@ -3400,7 +3454,7 @@ async function unmarkDeletedDefault(username, updatedBy) {
     deletedDefaultAdmins,
     updatedAt: new Date().toISOString(),
     updatedBy,
-
+  });
 }
 
 function peerList(exceptId) {
@@ -3476,7 +3530,7 @@ function broadcastAnnouncements(announcements, rooms) {
     sendWs(client, {
       type: "announcements:update",
       announcements: safeAnnouncements(announcements, client, rooms),
-
+    });
   }
 }
 
@@ -3588,7 +3642,7 @@ function kickNonShutdownUsers() {
       sendWs(client, {
         type: "server:shutdown",
         error: "Server shutdown is on. Admin, HMD, and dev accounts can stay connected.",
-
+      });
       closeWs(client);
       clientsKicked += 1;
     }
@@ -3661,7 +3715,7 @@ function redirectToHttps(req, res) {
   res.writeHead(308, {
     Location: location,
     "Cache-Control": "no-store",
-
+  });
   res.end();
 }
 
@@ -3691,6 +3745,8 @@ function safeUser(user) {
     sourceIp: user.sourceIp || "",
     sourceDevice: user.sourceDevice || "",
     contact: user.contact || "",
+    email: user.email || "",
+    phone: user.phone || "",
     mutedUntil: user.mutedUntil || "",
     muted: isUserMuted(user),
     shadowMuted: Boolean(user.shadowMuted),
@@ -3749,7 +3805,7 @@ function safeProfiles(profiles, users, viewer) {
     const profile = sanitizeProfile({
       ...defaultProfile(user.username),
       ...(profiles[user.username] || {}),
-
+    });
     result[user.username] = {
       ...profile,
       status: profile.invisible && (!viewer || viewer.username !== user.username) ? "offline" : profile.status,
@@ -3770,7 +3826,7 @@ function presenceList(profiles, viewer) {
       customStatus: profiles[client.username] ? profiles[client.username].customStatus || "" : "",
       clientId: client.id,
       voiceRoomId: client.voiceRoomId || "",
-
+    });
   }
   return Array.from(online.values()).sort((a, b) => a.username.localeCompare(b.username));
 }
@@ -3968,6 +4024,8 @@ function sanitizeAccountRequest(request) {
     username: normalizeUsername(request.username),
     displayName: String(request.displayName || request.username || "").trim().slice(0, 80),
     contact: String(request.contact || "").trim().slice(0, 160),
+    email: String(request.email || "").trim().slice(0, 120),
+    phone: String(request.phone || "").trim().slice(0, 80),
     note: String(request.note || "").trim().slice(0, 600),
     location: sanitizeLocation(request.location),
     status: normalizeAccountRequestStatus(request.status),
@@ -4067,6 +4125,8 @@ function safeSettings(settings) {
     customizations: sanitizeCustomizations(settings.customizations || {}),
     serviceScale: sanitizeServiceScale(settings.serviceScale || {}),
     featureLocks: activeFeatureLocks(settings.featureLocks || {}),
+    featureVisibility: sanitizeFeatureVisibility(settings.featureVisibility || {}),
+    appLinks: sanitizeAppLinks(settings.appLinks || []),
     shutdownMode: settings.serverEnabled === false,
     shutdownAt: settings.serverEnabled === false ? String(settings.shutdownAt || "") : "",
     shutdownBy: settings.serverEnabled === false ? String(settings.shutdownBy || "") : "",
@@ -4319,6 +4379,45 @@ function activeFeatureLocks(featureLocks) {
   return active;
 }
 
+function sanitizeFeatureVisibility(visibility) {
+  const next = {};
+  const source = visibility && typeof visibility === "object" && !Array.isArray(visibility) ? visibility : {};
+  for (const [feature, config] of Object.entries(source)) {
+    if (!allowedFeatureLocks.has(feature) || feature === "dashboard") continue;
+    const entry = config && typeof config === "object" ? config : {};
+    next[feature] = {
+      hidden: Boolean(entry.hidden),
+      allowedUsers: Array.isArray(entry.allowedUsers)
+        ? entry.allowedUsers.map(normalizeUsername).filter(Boolean).slice(0, 100)
+        : [],
+    };
+  }
+  return next;
+}
+
+function sanitizeAppLinks(links) {
+  return (Array.isArray(links) ? links : [])
+    .map((entry) => {
+      const url = sanitizeExternalUrl(entry && entry.url);
+      const name = String(entry && entry.name || "").trim().slice(0, 80);
+      if (!url || !name) return null;
+      return {
+        id: String(entry.id || crypto.randomUUID()).slice(0, 80),
+        name,
+        url,
+        description: String(entry.description || "").trim().slice(0, 240),
+        icon: String(entry.icon || "").trim().slice(0, 16),
+        visibleTo: Array.isArray(entry.visibleTo)
+          ? entry.visibleTo.map(normalizeUsername).filter(Boolean).slice(0, 100)
+          : [],
+        active: entry.active !== false,
+        createdAt: entry.createdAt || new Date().toISOString(),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 100);
+}
+
 function featureBlocked(settings, feature, user) {
   if (canManage(user)) return "";
   const lock = activeFeatureLocks(settings.featureLocks || {})[feature];
@@ -4430,7 +4529,7 @@ function normalizeBadgeList(value) {
 
 function normalizeReportStatus(status) {
   const value = String(status || "").trim().toLowerCase();
-  if (["open", "reviewing", "resolved", "dismissed"].includes(value)) return value;
+  if (["open", "reviewing", "seen", "closed", "resolved", "dismissed"].includes(value)) return value;
   return "open";
 }
 
@@ -4492,7 +4591,7 @@ async function addModerationLog(actor, action, target, note) {
     target,
     note: String(note || "").slice(0, 500),
     createdAt: new Date().toISOString(),
-
+  });
   await writeJson(FILES.moderationLogs, logs.slice(0, 2000));
   broadcastManagers({ type: "moderation:update", moderationLogs: logs.slice(0, 250) });
 }
@@ -4710,27 +4809,6 @@ function approximateLocationFromIp(ip) {
   };
 }
 
-
-async function sendSmtpEmail(payload) {
-  const transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_SECURE,
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS,
-    },
-
-  await transporter.sendMail({
-    from: EMAIL_FROM,
-    to: payload.recipients.join(","),
-    replyTo: EMAIL_REPLY_TO || undefined,
-    subject: payload.subject,
-    text: payload.body,
-
-  return { ok: true, provider: "smtp", status: 200 };
-}
-
 async function notifyAdminEmails(subject, body, options = {}) {
   const settings = await readJson(FILES.settings, {}).catch(() => ({}));
   const configured = Array.isArray(settings.reportEmails) ? settings.reportEmails.map((entry) => String(entry || "").trim()).filter(Boolean) : [];
@@ -4755,10 +4833,8 @@ async function notifyAdminEmails(subject, body, options = {}) {
   }
 
   const attempts = [
-    SMTP_HOST && SMTP_USER && SMTP_PASS ? () => sendSmtpEmail(payload) : null,
     RESEND_API_KEY ? () => sendResendEmail(payload) : null,
-    BREVO_API_KEY ? () => sendBrevoEmail(payload) : null,
-    SENDGRID_API_KEY ? () => sendSendGridEmail(payload) : null,
+    smtpConfigured() ? () => sendSmtpEmail(payload) : null,
     EMAIL_WEBHOOK_URL ? () => sendWebhookEmail(payload) : null,
   ].filter(Boolean);
   if (!attempts.length) {
@@ -4781,7 +4857,7 @@ async function notifyAdminEmails(subject, body, options = {}) {
         provider: result.provider,
         status: result.status,
         reason: result.error || "",
-
+      });
       if (result.ok) return options.detailed ? { ...result, recipients } : true;
       lastError = result.error || `status ${result.status}`;
     } catch (error) {
@@ -4809,7 +4885,7 @@ async function sendResendEmail(payload) {
       text: payload.body,
       reply_to: EMAIL_REPLY_TO || undefined,
     }),
-
+  });
   const data = await response.json().catch(() => ({}));
   return {
     provider: "resend",
@@ -4819,63 +4895,139 @@ async function sendResendEmail(payload) {
   };
 }
 
-async function sendBrevoEmail(payload) {
-  const { email, name } = parseEmailFrom(EMAIL_FROM);
-  if (!email || !email.includes("@")) {
-    return {
-      provider: "brevo",
-      ok: false,
-      status: 0,
-      error: "INNER_EMAIL_FROM must be a real sender, for example Inner <innerservers@gmail.com>",
-    };
-  }
-  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-    method: "POST",
-    headers: {
-      "api-key": BREVO_API_KEY,
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify({
-      sender: { email, name: name || "Inner" },
-      to: payload.recipients.map((address) => ({ email: address })),
-      subject: payload.subject,
-      textContent: payload.body,
-      replyTo: EMAIL_REPLY_TO ? { email: EMAIL_REPLY_TO } : undefined,
-    }),
+function smtpConfigured() {
+  return Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS);
+}
 
-  const data = await response.json().catch(() => ({}));
+async function sendSmtpEmail(payload) {
+  const { email, name } = parseEmailFrom(EMAIL_FROM || SMTP_USER);
+  if (!email || !email.includes("@")) {
+    return { provider: "smtp", ok: false, status: 0, error: "INNER_EMAIL_FROM must be a real email sender" };
+  }
+  const port = SMTP_PORT || (isTruthy(SMTP_SECURE) ? 465 : 587);
+  const secure = isTruthy(SMTP_SECURE) || port === 465;
+  const subject = sanitizeMailHeader(payload.subject);
+  const fromHeader = name ? `${sanitizeMailHeader(name)} <${email}>` : email;
+  const toHeader = payload.recipients.join(", ");
+  const message = [
+    `From: ${fromHeader}`,
+    `To: ${toHeader}`,
+    `Subject: ${subject}`,
+    `Date: ${new Date().toUTCString()}`,
+    "MIME-Version: 1.0",
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    payload.body,
+  ].join("\r\n").replace(/\r?\n\./g, "\r\n..");
+
+  let socket;
+  try {
+    socket = await openSmtpSocket(SMTP_HOST, port, secure);
+    const session = smtpSession(socket);
+    await session.expect(220);
+    await session.command(`EHLO ${smtpEhloName()}`, 250);
+    if (!secure && port !== 25) {
+      await session.command("STARTTLS", 220);
+      socket = tls.connect({ socket, servername: SMTP_HOST, rejectUnauthorized: false });
+      await new Promise((resolve, reject) => {
+        socket.once("secureConnect", resolve);
+        socket.once("error", reject);
+      });
+      session.replaceSocket(socket);
+      await session.command(`EHLO ${smtpEhloName()}`, 250);
+    }
+    await session.command("AUTH LOGIN", 334);
+    await session.command(Buffer.from(SMTP_USER).toString("base64"), 334);
+    await session.command(Buffer.from(SMTP_PASS).toString("base64"), 235);
+    await session.command(`MAIL FROM:<${email}>`, 250);
+    for (const recipient of payload.recipients) {
+      await session.command(`RCPT TO:<${recipient}>`, [250, 251]);
+    }
+    await session.command("DATA", 354);
+    await session.command(`${message}\r\n.`, 250);
+    await session.command("QUIT", 221).catch(() => {});
+    socket.end();
+    return { provider: "smtp", ok: true, status: 200, error: "" };
+  } catch (error) {
+    if (socket) socket.destroy();
+    return { provider: "smtp", ok: false, status: 0, error: error.message || "SMTP send failed" };
+  }
+}
+
+function openSmtpSocket(host, port, secure) {
+  return new Promise((resolve, reject) => {
+    const socket = secure
+      ? tls.connect({ host, port, servername: host, rejectUnauthorized: false })
+      : net.createConnection({ host, port });
+    socket.setTimeout(20000, () => socket.destroy(new Error("SMTP connection timed out")));
+    socket.once(secure ? "secureConnect" : "connect", () => resolve(socket));
+    socket.once("error", reject);
+  });
+}
+
+function smtpSession(initialSocket) {
+  let socket = initialSocket;
+  let buffer = "";
+  let waiters = [];
+  const onData = (chunk) => {
+    buffer += chunk.toString("utf8");
+    flush();
+  };
+  const onError = (error) => {
+    const next = waiters;
+    waiters = [];
+    next.forEach((entry) => entry.reject(error));
+  };
+  const attach = (nextSocket) => {
+    socket = nextSocket;
+    buffer = "";
+    socket.on("data", onData);
+    socket.on("error", onError);
+  };
+  const detach = () => {
+    socket.off("data", onData);
+    socket.off("error", onError);
+  };
+  const flush = () => {
+    const complete = buffer.match(/(?:^|\r?\n)(\d{3}) [^\r\n]*(?:\r?\n)?$/);
+    if (!complete || !waiters.length) return;
+    const response = buffer;
+    buffer = "";
+    waiters.shift().resolve(response);
+  };
+  const expect = async (codes) => {
+    const accepted = Array.isArray(codes) ? codes : [codes];
+    const response = await new Promise((resolve, reject) => {
+      waiters.push({ resolve, reject });
+      flush();
+    });
+    const code = Number(response.slice(0, 3));
+    if (!accepted.includes(code)) {
+      throw new Error(`SMTP ${code || "error"}: ${response.trim().slice(0, 220)}`);
+    }
+    return response;
+  };
+  attach(socket);
   return {
-    provider: "brevo",
-    ok: response.ok,
-    status: response.status,
-    error: data.message || "",
+    expect,
+    async command(command, codes) {
+      socket.write(`${command}\r\n`);
+      return expect(codes);
+    },
+    replaceSocket(nextSocket) {
+      detach();
+      attach(nextSocket);
+    },
   };
 }
 
-async function sendSendGridEmail(payload) {
-  const { email, name } = parseEmailFrom(EMAIL_FROM);
-  const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${SENDGRID_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      personalizations: [{ to: payload.recipients.map((address) => ({ email: address })) }],
-      from: { email, name: name || "Inner" },
-      reply_to: EMAIL_REPLY_TO ? { email: EMAIL_REPLY_TO } : undefined,
-      subject: payload.subject,
-      content: [{ type: "text/plain", value: payload.body }],
-    }),
+function smtpEhloName() {
+  return "inner.local";
+}
 
-  const text = await response.text().catch(() => "");
-  return {
-    provider: "sendgrid",
-    ok: response.ok,
-    status: response.status,
-    error: text.slice(0, 300),
-  };
+function sanitizeMailHeader(value) {
+  return String(value || "").replace(/[\r\n]+/g, " ").slice(0, 180);
 }
 
 async function sendWebhookEmail(payload) {
@@ -4884,7 +5036,7 @@ async function sendWebhookEmail(payload) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-
+    });
     const text = await response.text().catch(() => "");
     return {
       provider: "webhook",
@@ -4922,9 +5074,8 @@ function emailProviderStatus(recipients = []) {
     fromEmail: parsedFrom.email,
     replyTo: EMAIL_REPLY_TO || "",
     providers: {
-      brevo: Boolean(BREVO_API_KEY),
       resend: Boolean(RESEND_API_KEY),
-      sendgrid: Boolean(SENDGRID_API_KEY),
+      smtp: smtpConfigured(),
       webhook: Boolean(EMAIL_WEBHOOK_URL),
     },
   };
@@ -4932,16 +5083,16 @@ function emailProviderStatus(recipients = []) {
 
 function emailFailureMessage(result, status) {
   if (!status.recipients.length) return "Email was not sent because no report emails are configured.";
-  if (!status.providers.brevo && !status.providers.resend && !status.providers.sendgrid && !status.providers.webhook) {
-    return "Email provider is not visible to the server yet. Add BREVO_API_KEY in Render Environment, save changes, then redeploy/restart.";
+  if (!status.providers.resend && !status.providers.smtp && !status.providers.webhook) {
+    return "Email provider is not visible to the server yet. Add RESEND_API_KEY in Render Environment, save changes, then redeploy/restart.";
   }
   const provider = result.provider ? `${result.provider} ` : "";
   const detail = result.reason || result.error || "";
-  if (result.provider === "brevo" && result.status === 403 && /not yet activated|smtp account/i.test(detail)) {
-    return "Brevo is connected, but Brevo rejected the email because your Brevo SMTP/API account is not activated yet. Activate transactional SMTP/API in Brevo or contact contact@brevo.com, then click Send test email again.";
+  if (result.provider === "resend" && result.status === 401) {
+    return "Resend rejected the API key. Check RESEND_API_KEY in Render Environment, save, then redeploy/restart.";
   }
-  if (result.provider === "brevo" && result.status === 401) {
-    return "Brevo rejected the API key. Check BREVO_API_KEY in Render Environment, save, then redeploy/restart.";
+  if (result.provider === "resend" && result.status === 403) {
+    return "Resend rejected this sender/domain. Verify INNER_EMAIL_FROM in Resend or use onboarding@resend.dev for testing.";
   }
   return `Email was not sent. ${provider}${result.status ? `status ${result.status}. ` : ""}${detail}`.trim();
 }
@@ -4977,7 +5128,7 @@ async function serveAdminBrowserFrame(req, res, requestUrl) {
         "User-Agent": "Mozilla/5.0 Inner Admin Browser",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
-
+    });
     const contentType = response.headers.get("content-type") || "text/html; charset=utf-8";
     const body = await response.text();
     res.statusCode = response.ok ? 200 : response.status;
@@ -5054,10 +5205,10 @@ function readBody(req, maxBytes) {
         return;
       }
       chunks.push(chunk);
-
+    });
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
-
+  });
 }
 
 async function readJson(file, fallback) {
@@ -5188,7 +5339,7 @@ async function listBackups() {
       size: stat.size,
       createdAt: stat.birthtime.toISOString(),
       updatedAt: stat.mtime.toISOString(),
-
+    });
   }
   return backups.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 }
@@ -5274,7 +5425,7 @@ async function serveBackup(res, fileName) {
       "Content-Length": stat.size,
       "Content-Disposition": `attachment; filename="${fileName}"`,
       "Cache-Control": "no-store",
-
+    });
     fs.createReadStream(target).pipe(res);
   } catch (error) {
     json(res, 404, { error: "Backup not found" });
@@ -5355,7 +5506,7 @@ async function generateAiSuggestion(prompt) {
         max_output_tokens: 700,
         store: false,
       }),
-
+    });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       return {
@@ -5401,7 +5552,7 @@ function json(res, status, payload) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
-
+  });
   res.end(JSON.stringify(payload));
 }
 
@@ -5420,7 +5571,7 @@ async function serveStatic(res, filePath) {
     res.writeHead(200, {
       "Content-Type": mimeTypes[extension] || "application/octet-stream",
       "Cache-Control": "no-cache",
-
+    });
     fs.createReadStream(safePath).pipe(res);
   } catch (error) {
     text(res, 404, "Not found");
@@ -5465,7 +5616,7 @@ async function serveFileRecord(req, res, record, targetPath = "") {
             "Content-Disposition": disposition,
             "Accept-Ranges": "bytes",
             "Content-Range": `bytes ${start}-${end}/${stat.size}`,
-
+          });
           fs.createReadStream(target, { start, end }).pipe(res);
           return;
         }
@@ -5477,7 +5628,7 @@ async function serveFileRecord(req, res, record, targetPath = "") {
       "Content-Length": stat.size,
       "Content-Disposition": disposition,
       "Accept-Ranges": "bytes",
-
+    });
     fs.createReadStream(target).pipe(res);
   } catch (error) {
     if (await serveCloudUpload(req, res, record)) {
@@ -5497,7 +5648,7 @@ async function serveCloudUpload(req, res, record) {
     res.writeHead(302, {
       Location: record.cloudinarySecureUrl,
       "Cache-Control": record.private ? "no-store" : "private, max-age=60",
-
+    });
     res.end();
     return true;
   }
@@ -5541,7 +5692,7 @@ async function serveCloudUpload(req, res, record) {
   stream.on("error", () => {
     if (!res.headersSent) text(res, 404, "Not found");
     else res.destroy();
-
+  });
   res.writeHead(status, headers);
   stream.pipe(res);
   return true;
@@ -5633,7 +5784,7 @@ function serveUploadBuffer(req, res, record, buffer) {
           "Content-Disposition": disposition,
           "Accept-Ranges": "bytes",
           "Content-Range": `bytes ${start}-${end}/${buffer.length}`,
-
+        });
         res.end(buffer.subarray(start, end + 1));
         return;
       }
@@ -5645,7 +5796,7 @@ function serveUploadBuffer(req, res, record, buffer) {
     "Content-Length": buffer.length,
     "Content-Disposition": disposition,
     "Accept-Ranges": "bytes",
-
+  });
   res.end(buffer);
 }
 
@@ -5747,3 +5898,4 @@ function classifyFile(extension, mimeType) {
 main().catch((error) => {
   console.error(error);
   process.exit(1);
+});

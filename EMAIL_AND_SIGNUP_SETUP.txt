@@ -1,0 +1,47 @@
+RESEND EMAIL SETUP
+
+Use these exact example fills in Render > inner > Environment:
+
+RESEND_API_KEY=re_your_real_resend_key_here
+INNER_EMAIL_FROM=Inner <onboarding@resend.dev>
+INNER_EMAIL_REPLY_TO=innerservers@gmail.com
+INNER_REPORT_EMAILS=dev.s.shah2013@gmail.com
+
+For production, verify a domain in Resend and then switch the sender:
+
+INNER_EMAIL_FROM=Inner <noreply@your-verified-domain.com>
+
+Do not add Brevo keys. This build checks Resend first and the admin UI no longer needs Brevo.
+
+After adding env vars:
+1. Click Save changes in Render.
+2. Click Manual Deploy > Deploy latest commit.
+3. Open Inner as admin.
+4. Go to Admin > Server.
+5. Click Send test email.
+
+OPEN SIGNUP
+
+This build defaults open signup on:
+
+INNER_SIGNUP_MODE=open
+INNER_REQUIRE_CONTACT=false
+
+If a saved database setting overrides it:
+1. Log in as admin.
+2. Go to Admin > Server.
+3. Set Signup mode to Open signup.
+4. Set Require contact details however you want.
+5. Click Save server.
+
+PUSH COMMANDS
+
+Run these from the unzipped GitHub folder:
+
+git add .
+git commit -m "Fix admin visibility apps reports resend and signup"
+git push origin main
+
+If your branch is master:
+
+git push origin master

@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-16" />
+    <link rel="stylesheet" href="/styles.css?v=inner-18" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -42,7 +42,8 @@
           </div>
           <label>Username<input id="requestUsername" autocomplete="username" placeholder="your-name" required /></label>
           <label>Display name<input id="requestDisplayName" autocomplete="name" /></label>
-          <label>Contact<input id="requestContact" autocomplete="email" placeholder="email or phone" /></label>
+          <label>Email<input id="requestEmail" autocomplete="email" placeholder="you@example.com" /></label>
+          <label>Phone<input id="requestPhone" autocomplete="tel" placeholder="+1 555 123 4567" /></label>
           <label>Note<textarea id="requestNote" rows="3" maxlength="600" placeholder="why you need access"></textarea></label>
           <button id="submitAccountRequestButton" class="secondary-button" type="submit">Share location and request</button>
           <p id="accountRequestStatus" class="inline-status"></p>
@@ -55,7 +56,8 @@
           </div>
           <label>Username<input id="signupUsername" autocomplete="username" placeholder="your-name" /></label>
           <label>Display name<input id="signupDisplayName" autocomplete="name" /></label>
-          <label>Contact<input id="signupContact" autocomplete="email" placeholder="email or phone" /></label>
+          <label>Email<input id="signupEmail" autocomplete="email" placeholder="you@example.com" /></label>
+          <label>Phone<input id="signupPhone" autocomplete="tel" placeholder="+1 555 123 4567" /></label>
           <label>Password<input id="signupPassword" type="password" autocomplete="new-password" /></label>
           <button id="signupButton" class="secondary-button" type="submit">Create member account</button>
           <p id="signupStatus" class="inline-status"></p>
@@ -81,10 +83,11 @@
           <button class="nav-button" type="button" data-view="profile">Profile</button>
           <button class="nav-button" type="button" data-view="store">Store</button>
           <button class="nav-button" type="button" data-view="files">Files</button>
-          <button class="nav-button" type="button" data-view="chess">Chess</button><div class="chess-powered">Powered by ChessVerse</div><button class="nav-button" type="button" data-view="games">Games</button>
+          <button class="nav-button" type="button" data-view="chess">Chess</button>
+          <button class="nav-button" type="button" data-view="games">Games</button>
           <button class="nav-button" type="button" data-view="voice">Voice</button>
           <button class="nav-button" type="button" data-view="screen">Screen</button>
-          
+          <button id="adminNavButton" class="nav-button owner-only hidden" type="button" data-view="admin">Admin</button>
           <button id="hmdNavButton" class="nav-button dev-only hidden" type="button" data-view="hmd">HMD</button>
         </nav>
 
@@ -290,9 +293,8 @@
             </div>
           </div>
           <p class="panel-note">Use Open ChessVerse or Continue signup for accounts. Browser security can block third-party signup cookies inside embedded apps.</p>
+          <p class="panel-note">Powered by ChessVerse</p>
           <iframe
-            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"
-            loading="eager"
             id="chessFrame"
             class="embedded-app-frame"
             src="https://chessverse.co.in/"
@@ -300,6 +302,16 @@
             allow="fullscreen; clipboard-read; clipboard-write; autoplay; gamepad"
             referrerpolicy="strict-origin-when-cross-origin"
           ></iframe>
+        </section>
+
+        <section id="gamesView" class="view">
+          <div class="section-header">
+            <div>
+              <h2>Games</h2>
+              <p>Apps and links your account can open</p>
+            </div>
+          </div>
+          <div id="appLauncherList" class="file-grid"></div>
         </section>
 
         <section id="storeView" class="view">
@@ -389,7 +401,22 @@
             </div>
           </div>
 
-          
+          <div class="settings-grid admin-grid">
+            <form id="serverForm" class="panel-form">
+              <h3>Server</h3>
+              <label>Room name<input id="roomNameInput" maxlength="80" /></label>
+              <label>Signup mode<select id="signupMode"><option value="request">Request approval</option><option value="open">Open signup</option></select></label>
+              <label class="switch-row"><input id="requireContact" type="checkbox" /><span>Require contact details</span></label>
+              <label>Report emails<input id="reportEmails" maxlength="300" placeholder="admin@email.com, helper@email.com" /></label>
+              <label>Chess tab link<input id="chessUrlInput" maxlength="300" placeholder="https://chessverse.co.in/" /></label>
+              <button id="testEmailButton" class="secondary-button" type="button">Send test email</button>
+              <p id="emailStatusText" class="panel-note">Email status is checking.</p>
+              <label class="switch-row"><input id="serverEnabled" type="checkbox" /><span>Server enabled</span></label>
+              <button id="saveServerButton" class="primary-button" type="submit">Save server</button>
+              <div class="button-row">
+                <button id="shutdownServerButton" class="danger-button" type="button">Shutdown</button>
+                <button id="restartServerButton" class="secondary-button" type="button">Restart</button>
+              </div>
               <p class="panel-note">Shutdown mode kicks members out and blocks logins except admin, admin2, hmd, dev, and other admin/HMD/dev roles.</p>
             </form>
 
@@ -453,6 +480,23 @@
               <label class="switch-row"><input id="newRoomPrivate" type="checkbox" /><span>Private room</span></label>
               <label class="switch-row"><input id="newRoomInviteOnly" type="checkbox" /><span>Invite-only</span></label>
               <button id="createRoomButton" class="primary-button" type="submit">Create room</button>
+            </form>
+
+            <form id="featureVisibilityForm" class="panel-form owner-only hidden wide-panel">
+              <h3>Hidden features</h3>
+              <p class="panel-note">Hidden tabs disappear from members. Admin/HMD/dev accounts always override this. Put usernames in Allow users to let specific members see a hidden feature.</p>
+              <div id="featureVisibilityList" class="account-list"></div>
+              <button id="saveFeatureVisibilityButton" class="primary-button" type="submit">Save visibility</button>
+            </form>
+
+            <form id="appManagerForm" class="panel-form owner-only hidden wide-panel">
+              <h3>App launcher</h3>
+              <p class="panel-note">Custom app links show in the Games tab. Leave Visible users blank for everyone, or add usernames separated by commas.</p>
+              <label>Name<input id="appLinkName" maxlength="80" placeholder="ChessVerse" /></label>
+              <label>URL<input id="appLinkUrl" maxlength="300" placeholder="https://example.com" /></label>
+              <label>Visible users<input id="appLinkUsers" maxlength="500" placeholder="dev, yash, admin" /></label>
+              <button id="addAppLinkButton" class="primary-button" type="submit">Add app link</button>
+              <div id="appManagerList" class="account-list"></div>
             </form>
 
             <form id="quickEditForm" class="panel-form owner-only hidden wide-panel">
@@ -555,45 +599,50 @@
             </div>
           </div>
           <div id="hmdMetricGrid" class="file-grid"></div>
-          </div>
+          <div class="settings-grid admin-grid">
+            <form id="devConfigForm" class="panel-form">
+              <h3>Emergency controls</h3>
+              <label class="switch-row"><input id="devEmergencyMode" type="checkbox" /><span>Emergency mode</span></label>
+              <label class="switch-row"><input id="devMetricsEnabled" type="checkbox" /><span>Metrics enabled</span></label>
+              <label>Theme engine<select id="devTheme"><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option></select></label>
+              <button id="saveDevConfigButton" class="primary-button" type="submit">Save HMD</button>
+            </form>
+            <form id="botForm" class="panel-form">
+              <h3>Bots</h3>
+              <label>Name<input id="botName" maxlength="80" placeholder="Helper bot" /></label>
+              <label>Description<textarea id="botDescription" rows="3" maxlength="300"></textarea></label>
+              <label class="switch-row"><input id="botEnabled" type="checkbox" checked /><span>Enabled</span></label>
+              <button id="createBotButton" class="primary-button" type="submit">Create bot</button>
+            </form>
+            <form id="pluginForm" class="panel-form">
+              <h3>Plugins</h3>
+              <label>Name<input id="pluginName" maxlength="80" placeholder="Moderation hook" /></label>
+              <label>Hook<input id="pluginHook" maxlength="80" placeholder="message" /></label>
+              <label>Notes<textarea id="pluginNotes" rows="3" maxlength="500"></textarea></label>
+              <label class="switch-row"><input id="pluginEnabled" type="checkbox" checked /><span>Enabled</span></label>
+              <button id="createPluginButton" class="primary-button" type="submit">Create plugin</button>
+            </form>
+            <form id="automodForm" class="panel-form">
+              <h3>Auto moderation</h3>
+              <label class="switch-row"><input id="automodEnabled" type="checkbox" /><span>Enabled</span></label>
+              <label>Spam window seconds<input id="automodWindow" type="number" min="2" max="120" /></label>
+              <label>Max messages<input id="automodMax" type="number" min="2" max="50" /></label>
+              <label>Muted words<textarea id="automodWords" rows="3" placeholder="one per line"></textarea></label>
+              <button id="saveAutomodButton" class="primary-button" type="submit">Save automod</button>
+            </form>
+            <div class="status-panel wide-panel"><h3>Live database viewer</h3><div id="databaseList" class="account-list"></div></div>
             <div class="status-panel wide-panel"><h3>Storage manager</h3><div id="storageList" class="account-list"></div></div>
             <div class="status-panel wide-panel"><h3>Localhost tools</h3><div id="localhostToolList" class="account-list"></div></div>
             <div class="status-panel wide-panel"><h3>Bot accounts</h3><div id="botList" class="account-list"></div></div>
             <div class="status-panel wide-panel"><h3>Plugin hooks</h3><div id="pluginList" class="account-list"></div></div>
           </div>
         </section>
-      
-        <section id="gamesView" class="view">
-          <div class="section-header"><div><h2>Games</h2><p>Add your own game links here</p></div></div>
-          <div class="panel-card">
-            <input id="gameName" placeholder="Game name" />
-            <input id="gameUrl" placeholder="https://example.com" />
-            <button id="addGameButton" class="primary-button" type="button">Add Game</button>
-            <button id="toggleHiddenButton" class="secondary-button" type="button">Hide Current Tab</button>
-          </div>
-          <div id="gamesList" class="file-grid"></div>
-        </section>
-
-</main>
+      </main>
     </div>
 
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-16" defer></script>
-    <script src="/app.js?v=inner-16" defer></script>
-    <script src="/force-logout.js?v=inner-16" defer></script>
-  <script src="/performance-patch.js"></script></body>
+    <script src="/session-guard.js?v=inner-18" defer></script>
+    <script src="/app.js?v=inner-18" defer></script>
+    <script src="/force-logout.js?v=inner-18" defer></script>
+  </body>
 </html>
-
-
-document.addEventListener("DOMContentLoaded",()=>{
- const u=localStorage.getItem("username")||"guest";
- const r=localStorage.getItem("role")||"user";
- const admin=(u==="devshah"||r==="admin");
-
- document.querySelectorAll("[data-feature='admin'],#adminBtn,.admin-btn,.admin-nav,.admin-panel").forEach(el=>{
-   if(!admin){
-      el.remove();
-   }
- });
-
-});

@@ -116,21 +116,27 @@ Dashboard announcements:
 
 Account requests require browser location for server allocation and can require contact details. Admins can switch between request-only and open-signup mode in the Admin panel. Email alerts go to the report emails saved in Admin > Server first, then fall back to `INNER_REPORT_EMAILS`.
 
-Brevo email setup: create a Brevo account, add/verify a sender email, then add these in Render > Environment:
+Resend email setup: create a Resend account, create an API key, then add these in Render > Environment:
 
 ```text
 INNER_REPORT_EMAILS=admin1@example.com,admin2@example.com,admin3@example.com,admin4@example.com
-INNER_EMAIL_FROM=Inner <your-verified-brevo-sender@email.com>
-BREVO_API_KEY=xkeysib-...
-INNER_SIGNUP_MODE=request
-INNER_REQUIRE_CONTACT=true
+RESEND_API_KEY=re_your_real_resend_key_here
+INNER_EMAIL_FROM=Inner <onboarding@resend.dev>
+INNER_EMAIL_REPLY_TO=innerservers@gmail.com
+INNER_SIGNUP_MODE=open
+INNER_REQUIRE_CONTACT=false
 ```
 
-Other supported providers if you switch later:
+After you verify a domain in Resend, switch `INNER_EMAIL_FROM` to something like `Inner <noreply@yourdomain.com>`.
+
+Optional fallback providers:
 
 ```text
-RESEND_API_KEY=re_...
-SENDGRID_API_KEY=SG....
+INNER_SMTP_HOST=smtp.gmail.com
+INNER_SMTP_PORT=465
+INNER_SMTP_SECURE=true
+INNER_SMTP_USER=your-gmail@gmail.com
+INNER_SMTP_PASS=your-google-app-password
 INNER_EMAIL_WEBHOOK_URL=https://your-email-webhook.example.com/send
 ```
 
@@ -196,7 +202,7 @@ Admins can restore a saved backup from the Backups panel. Inner creates a safety
 
 Side rooms can also have an optional password. Members must unlock the room before reading or posting in it; admins can bypass room passwords.
 
-Report emails use the addresses saved in the Admin server panel first, then fall back to `INNER_REPORT_EMAILS`/`REPORT_EMAILS`. Real delivery works with `RESEND_API_KEY`, `BREVO_API_KEY`, `SENDGRID_API_KEY`, or `INNER_EMAIL_WEBHOOK_URL`; without one of those, Inner logs the email payload as queued.
+Report emails use the addresses saved in the Admin server panel first, then fall back to `INNER_REPORT_EMAILS`/`REPORT_EMAILS`. Real delivery works with `RESEND_API_KEY`, SMTP fallback settings, or `INNER_EMAIL_WEBHOOK_URL`; without one of those, Inner logs the email payload as queued.
 
 ## Notes
 

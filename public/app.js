@@ -1,65 +1,3 @@
-
-// UI enhancement + hidden tabs/games persistence
-const hiddenTabs = JSON.parse(localStorage.getItem("hiddenTabs") || "[]");
-const customGames = JSON.parse(localStorage.getItem("customGames") || "[]");
-
-window.hideTabForOthers = function(tabId){
-  if(!hiddenTabs.includes(tabId)){
-    hiddenTabs.push(tabId);
-    localStorage.setItem("hiddenTabs", JSON.stringify(hiddenTabs));
-  }
-};
-
-window.addCustomGame = function(name,url){
-  customGames.push({name,url});
-  localStorage.setItem("customGames", JSON.stringify(customGames));
-};
-
-document.addEventListener("DOMContentLoaded", ()=>{
-  document.body.classList.add("modern-ui");
-});
-
-
-function forceOpenExternalApp(url) {
-  try {
-    const newWindow = window.open(url, "_blank", "noopener,noreferrer");
-    if (!newWindow) {
-      window.location.href = url;
-    }
-  } catch (error) {
-    window.location.href = url;
-  }
-}
-
-window.addEventListener("securitypolicyviolation", (event) => {
-  if (event.blockedURI && event.blockedURI.startsWith("http")) {
-    forceOpenExternalApp(event.blockedURI);
-  }
-});
-
-
-function setupEmbeddedAppFallbacks() {
-  try {
-    if (els.chessFrame) {
-      els.chessFrame.addEventListener("error", () => {
-        forceOpenExternalApp(currentChessUrl());
-      });
-      setTimeout(() => {
-        try {
-          const currentSrc = els.chessFrame.src || "";
-          if (!currentSrc.includes("chess")) {
-            els.chessFrame.src = currentChessUrl();
-          }
-        } catch (error) {
-          forceOpenExternalApp(currentChessUrl());
-        }
-      }, 3000);
-    }
-  } catch (error) {
-    console.error("Embedded app fallback failed", error);
-  }
-}
-
 const state = {
   user: null,
   settings: { serverEnabled: true, roomName: "Inner" },
@@ -89,6 +27,7 @@ const state = {
   profiles: {},
   friends: { friends: [], incoming: [], outgoing: [] },
   invites: [],
+  appLinks: [],
   reports: [],
   readReceipts: {},
   moderationLogs: [],
@@ -159,6 +98,7 @@ const viewRoutes = {
   store: "/store",
   files: "/files",
   chess: "/chess",
+  games: "/games",
   voice: "/voice",
   screen: "/screen",
   admin: "/admin",
@@ -172,7 +112,7 @@ document.addEventListener("DOMContentLoaded", () => {
   restoreUiState();
   cacheElements();
   bindEvents();
-  setupEmbeddedAppFallbacks();
+  refreshSignupStatus().catch(() => {});
   loadState().catch((error) => showLogin(error.status === 401 ? "" : error.message));
 });
 
@@ -187,14 +127,16 @@ function cacheElements() {
     "accountRequestForm",
     "requestUsername",
     "requestDisplayName",
-    "requestContact",
+    "requestEmail",
+    "requestPhone",
     "requestNote",
     "submitAccountRequestButton",
     "accountRequestStatus",
     "signupForm",
     "signupUsername",
     "signupDisplayName",
-    "signupContact",
+    "signupEmail",
+    "signupPhone",
     "signupPassword",
     "signupButton",
     "signupStatus",
@@ -225,6 +167,8 @@ function cacheElements() {
     "chessFrame",
     "openChessButton",
     "continueChessButton",
+    "gamesView",
+    "appLauncherList",
     "voiceView",
     "screenView",
     "adminView",
@@ -363,6 +307,15 @@ function cacheElements() {
     "featureReason",
     "saveFeatureLockButton",
     "featureLockList",
+    "featureVisibilityForm",
+    "featureVisibilityList",
+    "saveFeatureVisibilityButton",
+    "appManagerForm",
+    "appLinkName",
+    "appLinkUrl",
+    "appLinkUsers",
+    "addAppLinkButton",
+    "appManagerList",
     "quickEditForm",
     "quickAppName",
     "quickNotice",
@@ -556,6 +509,8 @@ function bindEvents() {
     renderUsers();
   });
   els.featureLockForm.addEventListener("submit", saveFeatureLock);
+  els.featureVisibilityForm.addEventListener("submit", saveFeatureVisibility);
+  els.appManagerForm.addEventListener("submit", addAppLink);
   els.quickEditForm.addEventListener("submit", saveQuickEdit);
   els.announcementForm.addEventListener("submit", sendAnnouncement);
   els.announcementScope.addEventListener("change", renderAnnouncements);
@@ -660,7 +615,8 @@ async function submitAccountRequest(event) {
       json: {
         username: els.requestUsername.value.trim(),
         displayName: els.requestDisplayName.value.trim(),
-        contact: els.requestContact.value.trim(),
+        email: els.requestEmail.value.trim(),
+        phone: els.requestPhone.value.trim(),
         note: els.requestNote.value.trim(),
         location,
       },
@@ -687,7 +643,8 @@ async function handleSignup(event) {
       json: {
         username: els.signupUsername.value.trim(),
         displayName: els.signupDisplayName.value.trim(),
-        contact: els.signupContact.value.trim(),
+        email: els.signupEmail.value.trim(),
+        phone: els.signupPhone.value.trim(),
         password: els.signupPassword.value,
         location,
       },
@@ -702,6 +659,21 @@ async function handleSignup(event) {
     els.signupStatus.textContent = error.message || "Signup failed";
   } finally {
     els.signupButton.disabled = false;
+  }
+}
+
+async function refreshSignupStatus() {
+  const data = await api("/api/signup-status");
+  state.settings = {
+    ...state.settings,
+    signupMode: data.signupMode || state.settings.signupMode,
+    requireContact: typeof data.requireContact === "boolean" ? data.requireContact : state.settings.requireContact,
+    serverEnabled: typeof data.serverEnabled === "boolean" ? data.serverEnabled : state.settings.serverEnabled,
+  };
+  if (els.signupStatus && data.signupMode !== "open") {
+    els.signupStatus.textContent = "Open signup is currently off. Use Request account or ask an admin to set Admin > Server > Signup mode to Open signup.";
+  } else if (els.signupStatus) {
+    els.signupStatus.textContent = "Open signup is on.";
   }
 }
 
@@ -766,6 +738,7 @@ async function loadState() {
   state.profiles = data.profiles || {};
   state.friends = data.friends || { friends: [], incoming: [], outgoing: [] };
   state.invites = data.invites || [];
+  state.appLinks = Array.isArray(state.settings.appLinks) ? state.settings.appLinks : [];
   state.reports = data.reports || [];
   state.readReceipts = data.readReceipts || {};
   state.moderationLogs = data.moderationLogs || [];
@@ -814,6 +787,7 @@ function showView(viewName, options = {}) {
   if (!viewRoutes[viewName]) viewName = "dashboard";
   if (viewName === "admin" && !isOwner()) viewName = "dashboard";
   if (viewName === "hmd" && !isDev()) viewName = "dashboard";
+  if (!canSeeFeature(viewName)) viewName = "dashboard";
   state.activeView = viewName;
   saveUiState();
   if (options.updateHistory !== false) updateRoute(viewName);
@@ -1137,6 +1111,8 @@ function serverSettingsPayload(extra = {}) {
     requireContact: els.requireContact.checked,
     reportEmails: els.reportEmails.value.split(",").map((entry) => entry.trim()).filter(Boolean),
     chessUrl: normalizeExternalUrl(els.chessUrlInput ? els.chessUrlInput.value : ""),
+    featureVisibility: state.settings.featureVisibility || {},
+    appLinks: state.settings.appLinks || [],
     ...extra,
   };
 }
@@ -1153,7 +1129,7 @@ async function sendTestEmail() {
     const data = await api("/api/email/test", { method: "POST" });
     state.emailStatus = data.email || state.emailStatus;
     renderEmailStatus();
-    const provider = data.email && data.email.providers && data.email.providers.brevo ? "Brevo" : "email provider";
+    const provider = data.email && data.email.providers && data.email.providers.resend ? "Resend" : "email provider";
     notify(`Test email sent with ${provider}`);
   } catch (error) {
     refreshEmailStatus().catch(() => {});
@@ -1417,6 +1393,80 @@ async function createRoom(event) {
     renderMessages();
     renderRoomManager();
     notify("Room created");
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function saveFeatureVisibility(event) {
+  event.preventDefault();
+  if (!isOwner()) return notify("Admin access required");
+  const featureVisibility = {};
+  els.featureVisibilityList.querySelectorAll("[data-feature-row]").forEach((row) => {
+    const feature = row.dataset.featureRow;
+    featureVisibility[feature] = {
+      hidden: row.querySelector("[data-feature-hidden]").checked,
+      allowedUsers: row.querySelector("[data-feature-users]").value.split(",").map((entry) => entry.trim()).filter(Boolean),
+    };
+  });
+  try {
+    const data = await api("/api/settings", {
+      method: "POST",
+      json: serverSettingsPayload({ featureVisibility }),
+    });
+    state.settings = data.settings || state.settings;
+    renderAll();
+    notify("Feature visibility saved");
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function addAppLink(event) {
+  event.preventDefault();
+  if (!isOwner()) return notify("Admin access required");
+  const url = normalizeExternalUrl(els.appLinkUrl.value);
+  const name = els.appLinkName.value.trim();
+  if (!name || !url) return notify("Add an app name and valid URL");
+  const appLinks = [
+    ...(state.settings.appLinks || []),
+    {
+      id: cryptoId(),
+      name,
+      url,
+      visibleTo: els.appLinkUsers.value.split(",").map((entry) => entry.trim()).filter(Boolean),
+      active: true,
+    },
+  ];
+  try {
+    const data = await api("/api/settings", {
+      method: "POST",
+      json: serverSettingsPayload({ appLinks }),
+    });
+    state.settings = data.settings || state.settings;
+    state.appLinks = state.settings.appLinks || [];
+    els.appLinkName.value = "";
+    els.appLinkUrl.value = "";
+    els.appLinkUsers.value = "";
+    renderAll();
+    notify("App link added");
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function deleteAppLink(id) {
+  if (!isOwner()) return notify("Admin access required");
+  const appLinks = (state.settings.appLinks || []).filter((entry) => entry.id !== id);
+  try {
+    const data = await api("/api/settings", {
+      method: "POST",
+      json: serverSettingsPayload({ appLinks }),
+    });
+    state.settings = data.settings || state.settings;
+    state.appLinks = state.settings.appLinks || [];
+    renderAll();
+    notify("App link removed");
   } catch (error) {
     notify(error.message);
   }
@@ -2861,6 +2911,7 @@ function renderAll() {
   renderFriends();
   renderProfile();
   renderStore();
+  renderAppLauncher();
   renderFiles();
   renderVoice();
   renderScreen();
@@ -2870,6 +2921,8 @@ function renderAll() {
   renderQuickEdit();
   renderUsers();
   renderFeatureLocks();
+  renderFeatureVisibility();
+  renderAppManager();
   renderRoomManager();
   renderAnnouncements();
   renderServiceScale();
@@ -2902,9 +2955,27 @@ function renderShell() {
   document.querySelectorAll(".dev-only").forEach((element) => {
     element.classList.toggle("hidden", !isDev());
   });
+  applyFeatureVisibility();
   updateNotificationButton();
   if (!isOwner() && state.activeView === "admin") showView("dashboard");
   if (!isDev() && state.activeView === "hmd") showView("dashboard");
+  if (!canSeeFeature(state.activeView)) showView("dashboard");
+}
+
+function canSeeFeature(feature) {
+  if (!feature || isOwner()) return true;
+  const config = (state.settings.featureVisibility || {})[feature];
+  if (!config || !config.hidden) return true;
+  const username = state.user && state.user.username;
+  return Array.isArray(config.allowedUsers) && config.allowedUsers.includes(username);
+}
+
+function applyFeatureVisibility() {
+  document.querySelectorAll(".nav-button[data-view]").forEach((button) => {
+    const view = button.dataset.view;
+    const roleHidden = (view === "admin" && !isOwner()) || (view === "hmd" && !isDev());
+    button.classList.toggle("hidden-by-permission", roleHidden || !canSeeFeature(view));
+  });
 }
 
 function renderDashboard() {
@@ -3626,6 +3697,43 @@ function renderStore() {
   renderOrders(els.orderList, state.store.orders || [], false);
 }
 
+function renderAppLauncher() {
+  if (!els.appLauncherList) return;
+  els.appLauncherList.replaceChildren();
+  const links = visibleAppLinks();
+  if (!links.length) {
+    els.appLauncherList.append(emptyBlock("No apps available for this account"));
+    return;
+  }
+  links.forEach((app) => {
+    const card = document.createElement("article");
+    card.className = "file-card";
+    const header = document.createElement("header");
+    const title = document.createElement("h3");
+    title.textContent = app.name;
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.textContent = app.visibleTo && app.visibleTo.length ? "Limited" : "Everyone";
+    header.append(title, tag);
+    const meta = document.createElement("div");
+    meta.className = "file-meta";
+    meta.append(textNode(app.url));
+    if (app.description) meta.append(textNode(app.description));
+    const actions = document.createElement("div");
+    actions.className = "file-actions";
+    actions.append(accountButton("Open", () => window.open(app.url, "_blank", "noopener")));
+    card.append(header, meta, actions);
+    els.appLauncherList.append(card);
+  });
+}
+
+function visibleAppLinks() {
+  const username = state.user && state.user.username;
+  return (state.settings.appLinks || [])
+    .filter((app) => app && app.active !== false)
+    .filter((app) => isOwner() || !Array.isArray(app.visibleTo) || !app.visibleTo.length || app.visibleTo.includes(username));
+}
+
 function createFilePreview(file) {
   if (file.kind === "image") {
     const image = document.createElement("img");
@@ -3899,7 +4007,7 @@ function renderEmailStatus() {
     return;
   }
   if (!enabledProviders.length) {
-    els.emailStatusText.textContent = "Email alerts need BREVO_API_KEY, RESEND_API_KEY, SENDGRID_API_KEY, or INNER_EMAIL_WEBHOOK_URL in Render.";
+    els.emailStatusText.textContent = "Email alerts need RESEND_API_KEY in Render. SMTP or webhook can be used as fallback.";
     return;
   }
   els.emailStatusText.textContent = `Email alerts: ${enabledProviders.join(", ")} configured. Sending from ${from} to ${recipients.join(", ")}.`;
@@ -4084,6 +4192,66 @@ function renderRoomManager() {
 
     item.append(head, meta, actions);
     els.roomManagerList.append(item);
+  });
+}
+
+function renderFeatureVisibility() {
+  if (!els.featureVisibilityForm || !els.featureVisibilityList) return;
+  const admin = isOwner();
+  els.featureVisibilityForm.classList.toggle("hidden", !admin);
+  if (!admin) return;
+  const features = ["messages", "dms", "friends", "profile", "store", "files", "chess", "games", "voice", "screen"];
+  const labels = { dms: "DMs", profile: "Profile" };
+  els.featureVisibilityList.replaceChildren();
+  features.forEach((feature) => {
+    const config = (state.settings.featureVisibility || {})[feature] || {};
+    const card = document.createElement("article");
+    card.className = "account-card";
+    card.dataset.featureRow = feature;
+    const head = document.createElement("div");
+    head.className = "account-head";
+    const title = document.createElement("strong");
+    title.textContent = labels[feature] || featureLabel(feature);
+    const badge = document.createElement("span");
+    badge.className = "tag";
+    badge.textContent = config.hidden ? "Hidden" : "Visible";
+    head.append(title, badge);
+    const hiddenLabel = document.createElement("label");
+    hiddenLabel.className = "switch-row";
+    hiddenLabel.innerHTML = `<input data-feature-hidden type="checkbox" ${config.hidden ? "checked" : ""} /><span>Hide from members</span>`;
+    const usersLabel = document.createElement("label");
+    usersLabel.textContent = "Allow users";
+    const users = document.createElement("input");
+    users.dataset.featureUsers = "true";
+    users.placeholder = "user1, user2";
+    users.value = Array.isArray(config.allowedUsers) ? config.allowedUsers.join(", ") : "";
+    usersLabel.append(users);
+    card.append(head, hiddenLabel, usersLabel);
+    els.featureVisibilityList.append(card);
+  });
+}
+
+function renderAppManager() {
+  if (!els.appManagerForm || !els.appManagerList) return;
+  const admin = isOwner();
+  els.appManagerForm.classList.toggle("hidden", !admin);
+  if (!admin) return;
+  els.appManagerList.replaceChildren();
+  const links = state.settings.appLinks || [];
+  if (!links.length) {
+    els.appManagerList.append(emptyBlock("No custom app links"));
+    return;
+  }
+  links.forEach((app) => {
+    const card = adminCard(app.name, app.visibleTo && app.visibleTo.length ? `Only ${app.visibleTo.join(", ")}` : "Everyone", [
+      app.url,
+      app.active === false ? "Disabled" : "Active",
+    ]);
+    const actions = document.createElement("div");
+    actions.className = "account-actions";
+    actions.append(accountButton("Delete", () => deleteAppLink(app.id)));
+    card.append(actions);
+    els.appManagerList.append(card);
   });
 }
 
@@ -4278,6 +4446,8 @@ function renderAccountRequests() {
     const card = adminCard(request.username, status, [
       request.displayName ? `Name ${request.displayName}` : "",
       request.contact ? `Contact ${request.contact}` : "",
+      request.email ? `Email ${request.email}` : "",
+      request.phone ? `Phone ${request.phone}` : "",
       request.note,
       `Location ${location}`,
       request.sourceIp ? `From ${request.sourceIp}` : "",
@@ -4303,11 +4473,19 @@ function renderReports() {
       els.reportList.append(emptyBlock("No reports"));
     } else {
       state.reports.slice(0, 100).forEach((report) => {
-        els.reportList.append(adminCard(`${report.targetType} ${report.targetId}`, report.status, [
+        const card = adminCard(`${report.targetType} ${report.targetId}`, report.status, [
           `By ${report.reporter}`,
+          report.targetSender ? `Sender: ${report.targetSender}` : "Sender: unknown",
+          report.targetText ? `Reported message: ${report.targetText}` : "Reported message not found",
           report.reason,
           formatDate(report.createdAt),
-        ]));
+        ]);
+        const actions = document.createElement("div");
+        actions.className = "account-actions";
+        actions.append(accountButton("Mark seen", () => updateReport(report.id, "seen")));
+        actions.append(accountButton("Close", () => updateReport(report.id, "closed")));
+        card.append(actions);
+        els.reportList.append(card);
       });
     }
   }
@@ -4328,6 +4506,21 @@ function renderReports() {
         ].filter(Boolean)));
       });
     }
+  }
+}
+
+async function updateReport(id, status) {
+  if (!isOwner()) return notify("Admin access required");
+  try {
+    const data = await api("/api/reports/update", {
+      method: "POST",
+      json: { id, status },
+    });
+    state.reports = data.reports || state.reports;
+    renderReports();
+    notify(status === "seen" ? "Report marked seen" : "Report updated");
+  } catch (error) {
+    notify(error.message);
   }
 }
 
@@ -5285,7 +5478,7 @@ function featureLock(feature) {
 }
 
 function featureAvailable(feature) {
-  return isOwner() || !featureLock(feature);
+  return isOwner() || (canSeeFeature(feature) && !featureLock(feature));
 }
 
 function lockMessage(feature) {
@@ -5302,8 +5495,19 @@ function featureLabel(feature) {
     rooms: "Side rooms",
     screen: "Screen",
     vpn: "VPN",
+    store: "Store",
+    chess: "Chess",
+    games: "Games",
+    voice: "Voice",
+    friends: "Friends",
+    profile: "Profile",
   };
   return labels[feature] || feature;
+}
+
+function cryptoId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+  return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function renderMessageBubble({ mine, title, text, createdAt, sourceIp, attachment, onDelete }) {
@@ -5763,377 +5967,3 @@ function formatBytes(bytes) {
   if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
   return `${(size / 1024 / 1024 / 1024).toFixed(1)} GB`;
 }
-
-
-/* Hidden tabs + games tab patch */
-window.INNER_HIDDEN_TABS = JSON.parse(localStorage.getItem("inner_hidden_tabs") || "[]");
-window.INNER_GAMES = JSON.parse(localStorage.getItem("inner_games_links") || "[]");
-
-window.innerAddGameLink = function(name,url){
-  const games = window.INNER_GAMES || [];
-  games.push({name,url});
-  window.INNER_GAMES = games;
-  localStorage.setItem("inner_games_links", JSON.stringify(games));
-  alert("Game link added");
-};
-
-window.innerHideTabForOthers = function(tabId){
-  const hidden = new Set(window.INNER_HIDDEN_TABS || []);
-  hidden.add(tabId);
-  window.INNER_HIDDEN_TABS = [...hidden];
-  localStorage.setItem("inner_hidden_tabs", JSON.stringify(window.INNER_HIDDEN_TABS));
-  alert("Tab hidden for other users");
-};
-
-document.addEventListener("DOMContentLoaded", ()=>{
-  try{
-    if(!document.getElementById("games-tab-button")){
-      const btn=document.createElement("button");
-      btn.id="games-tab-button";
-      btn.innerText="Games";
-      btn.style.margin="8px";
-      btn.onclick=()=>{
-        const url=prompt("Enter game/app link");
-        if(!url) return;
-        const name=prompt("Game name") || "Game";
-        window.innerAddGameLink(name,url);
-        window.open(url,"_blank");
-      };
-      document.body.appendChild(btn);
-    }
-  }catch(e){console.error(e);}
-});
-
-
-document.addEventListener("DOMContentLoaded",()=>{
- const addBtn=document.getElementById("addGameButton");
- const gamesList=document.getElementById("gamesList");
- const hidden=JSON.parse(localStorage.getItem("privateTabs")||"[]");
- document.querySelectorAll(".nav-button").forEach(btn=>{
-   if(hidden.includes(btn.dataset.view)) btn.style.display='none';
-   btn.addEventListener('contextmenu',e=>{e.preventDefault(); hidden.push(btn.dataset.view); localStorage.setItem("privateTabs",JSON.stringify(hidden)); btn.style.display='none';});
- });
- function renderGames(){
-  gamesList.innerHTML='';
-  const games=JSON.parse(localStorage.getItem("games")||"[]");
-  games.forEach(g=>{const d=document.createElement('div');d.className='game-card';d.innerHTML=`<strong>${g.name}</strong><br><button onclick="window.open('${g.url}','_blank')" class="primary-button">Open</button>`;gamesList.appendChild(d);});
- }
- if(addBtn){addBtn.onclick=()=>{const n=document.getElementById('gameName').value; const u=document.getElementById('gameUrl').value; const games=JSON.parse(localStorage.getItem("games")||"[]"); games.push({name:n,url:u}); localStorage.setItem("games",JSON.stringify(games)); renderGames();};}
- const toggle=document.getElementById('toggleHiddenButton');
- if(toggle){toggle.onclick=()=>{alert('Right click any sidebar tab to hide it. Clear localStorage privateTabs to restore.');}}
- renderGames();
-});
-
-
-// ===== OWNER FEATURE SYSTEM =====
-const OWNER_ACCOUNT = "devshah";
-const currentUser = localStorage.getItem("username") || "guest";
-
-const featureLocks = JSON.parse(localStorage.getItem("featureLocks") || "{}");
-const hiddenFeatures = JSON.parse(localStorage.getItem("hiddenFeatures") || "{}");
-const allowedHiddenUsers = JSON.parse(localStorage.getItem("allowedHiddenUsers") || "{}");
-
-function saveFeatureState(){
-  localStorage.setItem("featureLocks", JSON.stringify(featureLocks));
-  localStorage.setItem("hiddenFeatures", JSON.stringify(hiddenFeatures));
-  localStorage.setItem("allowedHiddenUsers", JSON.stringify(allowedHiddenUsers));
-}
-
-window.toggleFeatureHidden = function(feature){
-  if(currentUser !== OWNER_ACCOUNT) return;
-  hiddenFeatures[feature] = !hiddenFeatures[feature];
-  saveFeatureState();
-  location.reload();
-}
-
-window.toggleFeatureLock = function(feature){
-  if(currentUser !== OWNER_ACCOUNT) return;
-  featureLocks[feature] = !featureLocks[feature];
-  saveFeatureState();
-  location.reload();
-}
-
-function canAccessFeature(feature){
-  if(currentUser === OWNER_ACCOUNT) return true;
-  if(hiddenFeatures[feature] && !(allowedHiddenUsers[feature] || []).includes(currentUser)) return false;
-  return true;
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-
-  // sidebar
-  const sidebar = document.querySelector(".sidebar") || document.body;
-
-  // games section
-  const gamesWrap = document.createElement("div");
-  gamesWrap.className = "games-launcher";
-  gamesWrap.innerHTML = `
-    <div class="games-header">
-      <h3>Games</h3>
-      <button id="addGameBtn">+</button>
-    </div>
-    <div id="gamesList"></div>
-  `;
-
-  sidebar.appendChild(gamesWrap);
-
-  const gamesList = document.getElementById("gamesList");
-
-  function renderGames(){
-    gamesList.innerHTML = "";
-    const games = JSON.parse(localStorage.getItem("customGames") || "[]");
-
-    games.forEach((game, index) => {
-      const card = document.createElement("div");
-      card.className = "game-card";
-      card.innerHTML = `
-        <span>${game.name}</span>
-        <div class="game-actions">
-          <button data-open="${index}">Open</button>
-          <button data-del="${index}">X</button>
-        </div>
-      `;
-      gamesList.appendChild(card);
-    });
-
-    gamesList.querySelectorAll("[data-open]").forEach(btn => {
-      btn.onclick = () => {
-        const game = games[btn.dataset.open];
-        window.open(game.url, "_blank");
-      };
-    });
-
-    gamesList.querySelectorAll("[data-del]").forEach(btn => {
-      btn.onclick = () => {
-        games.splice(btn.dataset.del, 1);
-        localStorage.setItem("customGames", JSON.stringify(games));
-        renderGames();
-      };
-    });
-  }
-
-  renderGames();
-
-  document.getElementById("addGameBtn").onclick = () => {
-    const name = prompt("Game name");
-    const url = prompt("Game URL");
-    if(!name || !url) return;
-    const games = JSON.parse(localStorage.getItem("customGames") || "[]");
-    games.push({name,url});
-    localStorage.setItem("customGames", JSON.stringify(games));
-    renderGames();
-  };
-
-  // chess branding
-  const chessPower = document.createElement("div");
-  chessPower.className = "chessverse-powered";
-  chessPower.innerText = "Powered by ChessVerse";
-  sidebar.appendChild(chessPower);
-
-});
-
-
-
-
-
-
-
-
-
-
-
-// ===== FINAL ADMIN / REPORT / SIGNUP PATCH =====
-(function(){
-
-document.addEventListener("DOMContentLoaded",()=>{
-
-const user=localStorage.getItem("username")||"guest";
-const role=localStorage.getItem("role")||"user";
-const isAdmin=user==="devshah"||role==="admin";
-
-if(!isAdmin){
- document.querySelectorAll(
-   "#REMOVED_ADMIN_UI,#REMOVED_ADMIN_UI,#,#"
- ).forEach(e=>e.remove());
-}
-
-// REPORT SYSTEM
-let reports=JSON.parse(localStorage.getItem("reports")||"[]");
-
-if(isAdmin){
-
- let adminTab=document.getElementById("adminPanel");
-
- if(adminTab){
-
-   const reportWrap=document.createElement("div");
-   reportWrap.className="report-admin-wrap";
-
-   reportWrap.innerHTML=`
-   <h2>Reports</h2>
-   <div id="reportsList"></div>
-
-   <h2>Signup Contacts</h2>
-   <div id="signupContacts"></div>
-   `;
-
-   adminTab.appendChild(reportWrap);
-
-   function renderReports(){
-
-     const list=document.getElementById("reportsList");
-     list.innerHTML="";
-
-     reports.forEach((r,i)=>{
-
-       const row=document.createElement("div");
-       row.className="report-row";
-
-       row.innerHTML=`
-       <div>
-       <b>${r.sender||"Unknown"}</b><br>
-       <small>${r.message||"No message"}</small>
-       </div>
-
-       <button data-seen="${i}">Mark Seen</button>
-       `;
-
-       list.appendChild(row);
-
-     });
-
-     list.querySelectorAll("[data-seen]").forEach(btn=>{
-       btn.onclick=()=>{
-         reports.splice(btn.dataset.seen,1);
-         localStorage.setItem("reports",JSON.stringify(reports));
-         renderReports();
-       };
-     });
-
-   }
-
-   renderReports();
-
-   // signup contacts
-   const contacts=JSON.parse(localStorage.getItem("signupContacts")||"[]");
-   const contactsWrap=document.getElementById("signupContacts");
-
-   contacts.forEach(c=>{
-     const div=document.createElement("div");
-     div.className="report-row";
-     div.innerHTML=`
-     <div>
-     <b>${c.username}</b><br>
-     <small>${c.email}</small><br>
-     <small>${c.phone||"No phone"}</small>
-     </div>
-     `;
-     contactsWrap.appendChild(div);
-   });
-
- }
-
-}
-
-// TEMP BAN FIX
-window.tempBanUser=function(username,minutes){
-
- let bans=JSON.parse(localStorage.getItem("tempBans")||"{}");
-
- bans[username]=Date.now()+(minutes*60*1000);
-
- localStorage.setItem("tempBans",JSON.stringify(bans));
-
-};
-
-window.checkTempBan=function(username){
-
- let bans=JSON.parse(localStorage.getItem("tempBans")||"{}");
-
- if(!bans[username]) return false;
-
- if(Date.now()>bans[username]){
-   delete bans[username];
-   localStorage.setItem("tempBans",JSON.stringify(bans));
-   return false;
- }
-
- return true;
-
-};
-
-// OPEN SIGNUP FIX
-window.innerSignup=function(data){
-
- let users=JSON.parse(localStorage.getItem("users")||"[]");
-
- if(users.find(u=>u.username===data.username)){
-   return {error:"Username exists"};
- }
-
- users.push(data);
-
- localStorage.setItem("users",JSON.stringify(users));
-
- let contacts=JSON.parse(localStorage.getItem("signupContacts")||"[]");
-
- contacts.push({
-   username:data.username,
-   email:data.email,
-   phone:data.phone||""
- });
-
- localStorage.setItem("signupContacts",JSON.stringify(contacts));
-
- return {success:true};
-
-};
-
-});
-})();
-
-
-document.addEventListener("DOMContentLoaded",()=>{
- const role=localStorage.getItem("role")||"user";
- const user=localStorage.getItem("username")||"guest";
- const isAdmin=user==="devshah"||role==="admin";
-
- if(!isAdmin){
-   document.querySelectorAll("*").forEach(el=>{
-      const t=(el.innerText||"").trim();
-      if(
-        t==="" ||
-        t.includes("Admin Controls")
-      ){
-        el.remove();
-      }
-   });
- }
-});
-
-
-document.addEventListener("DOMContentLoaded",()=>{
- const u=localStorage.getItem("username")||"guest";
- const r=localStorage.getItem("role")||"user";
- const admin=(u==="devshah"||r==="admin");
-
- document.querySelectorAll("[data-feature='admin'],#adminBtn,.admin-btn,.admin-nav,.admin-panel").forEach(el=>{
-   if(!admin){
-      el.remove();
-   }
- });
-
-});
-
-
-document.addEventListener("DOMContentLoaded",()=>{
- const username=localStorage.getItem("username")||"guest";
- const role=localStorage.getItem("role")||"user";
- const isAdmin=username==="devshah"||role==="admin";
-
- if(!isAdmin){
-   document.querySelectorAll(
-     ".admin-panel,#adminPanel,#adminBtn,.admin-btn,[data-feature='admin']"
-   ).forEach(el=>el.remove());
- }
-});

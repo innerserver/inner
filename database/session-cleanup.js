@@ -44,17 +44,3 @@ function cleanup() {
 
 setInterval(cleanup, 2000);
 console.log('[phase1] session cleanup enabled');
-
-
-document.addEventListener("DOMContentLoaded",()=>{
- const u=localStorage.getItem("username")||"guest";
- const r=localStorage.getItem("role")||"user";
- const admin=(u==="devshah"||r==="admin");
-
- document.querySelectorAll("[data-feature='admin'],#adminBtn,.admin-btn,.admin-nav,.admin-panel").forEach(el=>{
-   if(!admin){
-      el.remove();
-   }
- });
-
-});

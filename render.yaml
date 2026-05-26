@@ -41,18 +41,26 @@ services:
       - key: INNER_RTC_RELAY_ONLY
         value: "false"
       - key: INNER_SIGNUP_MODE
-        value: "request"
+        value: "open"
       - key: INNER_REQUIRE_CONTACT
-        value: "true"
+        value: "false"
       - key: INNER_REPORT_EMAILS
         sync: false
       - key: INNER_EMAIL_FROM
         sync: false
+      - key: INNER_EMAIL_REPLY_TO
+        sync: false
+      - key: INNER_SMTP_HOST
+        sync: false
+      - key: INNER_SMTP_PORT
+        sync: false
+      - key: INNER_SMTP_SECURE
+        sync: false
+      - key: INNER_SMTP_USER
+        sync: false
+      - key: INNER_SMTP_PASS
+        sync: false
       - key: RESEND_API_KEY
-        sync: false
-      - key: BREVO_API_KEY
-        sync: false
-      - key: SENDGRID_API_KEY
         sync: false
       - key: INNER_EMAIL_WEBHOOK_URL
         sync: false

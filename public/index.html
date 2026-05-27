@@ -85,6 +85,7 @@
           <button class="nav-button" type="button" data-view="files">Files</button>
           <button class="nav-button" type="button" data-view="chess">Chess</button>
           <button class="nav-button" type="button" data-view="games">Games</button>
+          <button class="nav-button" type="button" data-view="browser">Browser</button>
           <button class="nav-button" type="button" data-view="voice">Voice</button>
           <button class="nav-button" type="button" data-view="screen">Screen</button>
           <button id="adminNavButton" class="nav-button owner-only hidden" type="button" data-view="admin">Admin</button>
@@ -247,7 +248,7 @@
             <label>Badges<input id="profileBadges" maxlength="180" placeholder="Helpful, Funny, Supportive" autocomplete="off" /></label>
             <label>Status<select id="profileStatus"><option value="online">Online</option><option value="idle">Idle</option><option value="busy">Busy</option><option value="invisible">Invisible</option></select></label>
             <label>Custom status<input id="profileCustomStatus" maxlength="80" autocomplete="off" /></label>
-            <label>Theme<select id="profileTheme"><option value="system">System</option><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option></select></label>
+            <label>Theme<select id="profileTheme"><option value="system">System</option><option value="midnight">Dark mode</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option></select></label>
             <label>Bio<textarea id="profileBio" rows="4" maxlength="500"></textarea></label>
             <label class="switch-row"><input id="profileInvisible" type="checkbox" /><span>Invisible mode</span></label>
             <button id="saveProfileButton" class="primary-button" type="submit">Save profile</button>
@@ -312,6 +313,26 @@
             </div>
           </div>
           <div id="appLauncherList" class="file-grid"></div>
+          <div class="status-panel wide-panel">
+            <h3 id="gameFrameTitle">Game viewer</h3>
+            <p id="gameFrameStatus" class="panel-note">Choose an app above to open it inside Inner.</p>
+            <iframe id="gameFrame" class="admin-browser-frame" title="Game viewer"></iframe>
+          </div>
+        </section>
+
+        <section id="browserView" class="view">
+          <div class="section-header">
+            <div>
+              <h2>Browser</h2>
+              <p>Permission-controlled in-app browser</p>
+            </div>
+          </div>
+          <form id="userBrowserForm" class="upload-bar invite-join-bar">
+            <input id="userBrowserUrl" placeholder="https://example.com" autocomplete="off" />
+            <button id="userBrowserOpenButton" class="secondary-button" type="submit">Open</button>
+          </form>
+          <p id="userBrowserStatus" class="inline-status"></p>
+          <iframe id="userBrowserFrame" class="admin-browser-frame" title="In-app browser"></iframe>
         </section>
 
         <section id="storeView" class="view">

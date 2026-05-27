@@ -101,6 +101,7 @@ const allowedFeatureLocks = new Set([
   "store",
   "chess",
   "games",
+  "browser",
   "screen",
   "dms",
   "rooms",
@@ -665,6 +666,9 @@ async function ensureSettings() {
     changed = true;
   }
   const sanitizedVisibility = sanitizeFeatureVisibility(next.featureVisibility || {});
+  if (!sanitizedVisibility.browser) {
+    sanitizedVisibility.browser = { hidden: true, allowedUsers: [] };
+  }
   if (JSON.stringify(next.featureVisibility || {}) !== JSON.stringify(sanitizedVisibility)) {
     next.featureVisibility = sanitizedVisibility;
     changed = true;
@@ -973,7 +977,10 @@ async function routeApi(req, res, requestUrl) {
   if (!user) return;
 
   if (req.method === "GET" && pathname === "/api/browser/frame") {
-    if (!canManage(user)) return text(res, 403, "Admin access required");
+    const settings = await readJson(FILES.settings, {});
+    if (!canManage(user) && !canAccessVisibleFeature(settings, "browser", user) && !canAccessVisibleFeature(settings, "games", user)) {
+      return text(res, 403, "Browser access denied");
+    }
     return serveAdminBrowserFrame(req, res, requestUrl);
   }
 
@@ -4426,6 +4433,13 @@ function featureBlocked(settings, feature, user) {
   return `${label} disabled until ${new Date(lock.disabledUntil).toLocaleString()}${lock.reason ? `: ${lock.reason}` : ""}`;
 }
 
+function canAccessVisibleFeature(settings, feature, user) {
+  if (canManage(user)) return true;
+  const config = sanitizeFeatureVisibility(settings && settings.featureVisibility || {})[feature];
+  if (!config || !config.hidden) return true;
+  return Array.isArray(config.allowedUsers) && config.allowedUsers.includes(user && user.username);
+}
+
 function normalizeRole(role) {
   const value = String(role || "").toLowerCase();
   if (value === "owner") return "admin";
@@ -5092,7 +5106,7 @@ function emailFailureMessage(result, status) {
     return "Resend rejected the API key. Check RESEND_API_KEY in Render Environment, save, then redeploy/restart.";
   }
   if (result.provider === "resend" && result.status === 403) {
-    return "Resend rejected this sender/domain. Verify INNER_EMAIL_FROM in Resend or use onboarding@resend.dev for testing.";
+    return "Resend rejected this sender/domain. In Render set INNER_EMAIL_FROM exactly to Inner <onboarding@resend.dev> for testing, or verify your own domain in Resend first.";
   }
   return `Email was not sent. ${provider}${result.status ? `status ${result.status}. ` : ""}${detail}`.trim();
 }

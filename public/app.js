@@ -99,6 +99,7 @@ const viewRoutes = {
   files: "/files",
   chess: "/chess",
   games: "/games",
+  browser: "/browser",
   voice: "/voice",
   screen: "/screen",
   admin: "/admin",
@@ -169,6 +170,15 @@ function cacheElements() {
     "continueChessButton",
     "gamesView",
     "appLauncherList",
+    "gameFrameTitle",
+    "gameFrameStatus",
+    "gameFrame",
+    "browserView",
+    "userBrowserForm",
+    "userBrowserUrl",
+    "userBrowserOpenButton",
+    "userBrowserStatus",
+    "userBrowserFrame",
     "voiceView",
     "screenView",
     "adminView",
@@ -511,6 +521,7 @@ function bindEvents() {
   els.featureLockForm.addEventListener("submit", saveFeatureLock);
   els.featureVisibilityForm.addEventListener("submit", saveFeatureVisibility);
   els.appManagerForm.addEventListener("submit", addAppLink);
+  els.userBrowserForm.addEventListener("submit", openUserBrowser);
   els.quickEditForm.addEventListener("submit", saveQuickEdit);
   els.announcementForm.addEventListener("submit", sendAnnouncement);
   els.announcementScope.addEventListener("change", renderAnnouncements);
@@ -1762,6 +1773,15 @@ function openAdminBrowserNewTab() {
   if (els.adminBrowserStatus) {
     els.adminBrowserStatus.textContent = "Opened in a full tab. This is required for sites that block embedded browsers.";
   }
+}
+
+function openUserBrowser(event) {
+  event.preventDefault();
+  if (!canSeeFeature("browser")) return notify("Browser access is not enabled for your account");
+  const url = normalizeAdminBrowserUrl(els.userBrowserUrl.value);
+  if (!url) return notify("Enter a valid http or https URL");
+  els.userBrowserFrame.src = `/api/browser/frame?url=${encodeURIComponent(url)}`;
+  els.userBrowserStatus.textContent = "Opening inside Inner. Login-heavy sites may still need a full browser tab.";
 }
 
 async function createBackup() {
@@ -3721,10 +3741,19 @@ function renderAppLauncher() {
     if (app.description) meta.append(textNode(app.description));
     const actions = document.createElement("div");
     actions.className = "file-actions";
-    actions.append(accountButton("Open", () => window.open(app.url, "_blank", "noopener")));
+    actions.append(accountButton("Open inside", () => openAppInside(app)));
+    actions.append(accountButton("Full tab", () => window.open(app.url, "_blank", "noopener")));
     card.append(header, meta, actions);
     els.appLauncherList.append(card);
   });
+}
+
+function openAppInside(app) {
+  if (!els.gameFrame) return window.open(app.url, "_blank", "noopener");
+  showView("games");
+  els.gameFrameTitle.textContent = app.name || "Game viewer";
+  els.gameFrameStatus.textContent = "Opening inside Inner. If a site refuses embedding, use Full tab.";
+  els.gameFrame.src = `/api/browser/frame?url=${encodeURIComponent(app.url)}`;
 }
 
 function visibleAppLinks() {
@@ -4200,7 +4229,7 @@ function renderFeatureVisibility() {
   const admin = isOwner();
   els.featureVisibilityForm.classList.toggle("hidden", !admin);
   if (!admin) return;
-  const features = ["messages", "dms", "friends", "profile", "store", "files", "chess", "games", "voice", "screen"];
+  const features = ["messages", "dms", "friends", "profile", "store", "files", "chess", "games", "browser", "voice", "screen"];
   const labels = { dms: "DMs", profile: "Profile" };
   els.featureVisibilityList.replaceChildren();
   features.forEach((feature) => {
@@ -5498,6 +5527,7 @@ function featureLabel(feature) {
     store: "Store",
     chess: "Chess",
     games: "Games",
+    browser: "Browser",
     voice: "Voice",
     friends: "Friends",
     profile: "Profile",

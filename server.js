@@ -744,6 +744,11 @@ async function routeApi(req, res, requestUrl) {
     const user = users.find((entry) => entry.username.toLowerCase() === String(body.username || "").toLowerCase());
 
     if (!user || !verifyPassword(String(body.password || ""), user.passwordHash)) {
+      const requestLogin = await requestLoginStatus(String(body.username || ""), String(body.password || ""));
+      if (requestLogin) {
+        await addSystemLog("login.request-status", requestLogin.username, { status: requestLogin.status }, req);
+        return json(res, 403, { error: requestLogin.message, requestStatus: requestLogin.status });
+      }
       await addSystemLog("login.failed", String(body.username || "unknown").slice(0, 80), { reason: "Invalid username or password" }, req);
       await notifyAdminEmails("Inner failed login attempt", [
         `Username tried: ${String(body.username || "unknown").slice(0, 80)}`,
@@ -858,7 +863,9 @@ async function routeApi(req, res, requestUrl) {
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
     const email = String(body.email || "").trim().slice(0, 120);
     const phone = String(body.phone || "").trim().slice(0, 80);
+    const password = String(body.password || "");
     const contact = String(body.contact || [email, phone].filter(Boolean).join(" / ")).trim().slice(0, 160);
+    if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
     if (settings.requireContact !== false && !contact) {
       return json(res, 400, { error: "Add an email or phone number so admins can contact you after review." });
     }
@@ -884,6 +891,8 @@ async function routeApi(req, res, requestUrl) {
       contact,
       email,
       phone,
+      passwordHash: hashPassword(password),
+      passwordSet: true,
       note: body.note,
       location,
       status: "pending",
@@ -1397,10 +1406,11 @@ async function routeApi(req, res, requestUrl) {
 
   if (req.method === "POST" && pathname === "/api/reports") {
     const body = await readJsonBody(req);
-    const [reports, messages, dms] = await Promise.all([
+    const [reports, messages, dms, users] = await Promise.all([
       readJson(FILES.reports, []),
       readJson(FILES.messages, []),
       readJson(FILES.dms, []),
+      readJson(FILES.users, []),
     ]);
     const targetType = String(body.targetType || "message").slice(0, 40);
     const targetId = String(body.targetId || "").slice(0, 120);
@@ -1410,9 +1420,11 @@ async function routeApi(req, res, requestUrl) {
     const report = {
       id: crypto.randomUUID(),
       reporter: user.username,
+      reporterContact: userContactSnapshot(users, user.username),
       targetType,
       targetId,
       targetSender: target ? String(target.user || target.from || "").slice(0, 80) : "",
+      targetSenderContact: target ? userContactSnapshot(users, String(target.user || target.from || "")) : null,
       targetText: target ? String(target.text || "").slice(0, 1000) : "",
       reason: String(body.reason || "").trim().slice(0, 500),
       status: "open",
@@ -1424,11 +1436,13 @@ async function routeApi(req, res, requestUrl) {
     await addModerationLog(user.username, "report:create", `${report.targetType}:${report.targetId}`, report.reason);
     await notifyAdminEmails("Inner report", [
       `${user.username} reported ${report.targetType}:${report.targetId}`,
+      `Reporter contact: ${formatContactSnapshot(report.reporterContact)}`,
       `Sender: ${report.targetSender || "unknown"}`,
+      `Sender contact: ${formatContactSnapshot(report.targetSenderContact)}`,
       `Message: ${report.targetText || "(not found)"}`,
       `Reason: ${report.reason}`,
     ].join("\n"));
-    broadcastManagers({ type: "reports:update", reports: reports.slice(0, 250) });
+    broadcastManagers({ type: "reports:update", reports: safeActiveReports(reports) });
     return json(res, 201, { report });
   }
 
@@ -1447,8 +1461,9 @@ async function routeApi(req, res, requestUrl) {
     };
     await writeJson(FILES.reports, reports);
     await addModerationLog(user.username, "report:update", reports[index].targetId, reports[index].status);
-    broadcastManagers({ type: "reports:update", reports: reports.slice(0, 250) });
-    return json(res, 200, { reports });
+    const activeReports = safeActiveReports(reports);
+    broadcastManagers({ type: "reports:update", reports: activeReports });
+    return json(res, 200, { reports: activeReports });
   }
 
   if (req.method === "POST" && pathname === "/api/read-receipts") {
@@ -2042,6 +2057,8 @@ async function routeApi(req, res, requestUrl) {
       ...requests[index],
       status,
       adminNote: body.adminNote,
+      declinedAt: status === "declined" ? new Date().toISOString() : requests[index].declinedAt,
+      declinedBy: status === "declined" ? user.username : requests[index].declinedBy,
       updatedAt: new Date().toISOString(),
       updatedBy: user.username,
     });
@@ -2057,7 +2074,7 @@ async function routeApi(req, res, requestUrl) {
     const id = String(body.id || "");
     const password = String(body.password || "");
     const role = normalizeRole(body.role || "member");
-    if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
+    if (password.length > 0 && password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
     if (["hmd", "dev"].includes(role) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
 
     const [requests, users, profiles] = await Promise.all([
@@ -2069,6 +2086,8 @@ async function routeApi(req, res, requestUrl) {
     if (index === -1) return json(res, 404, { error: "Account request not found" });
     const request = sanitizeAccountRequest(requests[index]);
     if (request.status === "approved") return json(res, 409, { error: "Request already approved" });
+    const nextPasswordHash = password.length >= 4 ? hashPassword(password) : request.passwordHash;
+    if (!nextPasswordHash) return json(res, 400, { error: "This request has no password. Set one while approving." });
     if (users.some((entry) => entry.username.toLowerCase() === request.username.toLowerCase())) {
       return json(res, 409, { error: "That username already exists" });
     }
@@ -2077,9 +2096,16 @@ async function routeApi(req, res, requestUrl) {
     const account = {
       username: request.username,
       role,
-      passwordHash: hashPassword(password),
+      passwordHash: nextPasswordHash,
       passwordPreset: "",
       allowPersistentLogin: Boolean(body.allowPersistentLogin),
+      contact: request.contact,
+      email: request.email,
+      phone: request.phone,
+      sourceIp: request.sourceIp,
+      sourceDevice: request.sourceDevice,
+      sourceAgent: request.sourceAgent,
+      approximateLocation: request.approximateLocation,
       createdAt: now,
       createdBy: user.username,
       accountRequestId: request.id,
@@ -3760,6 +3786,54 @@ function safeUser(user) {
   };
 }
 
+async function requestLoginStatus(usernameValue, passwordValue) {
+  const username = normalizeUsername(usernameValue);
+  if (!username) return null;
+  const requests = await readJson(FILES.accountRequests, []).catch(() => []);
+  const request = requests.find((entry) => String(entry.username || "").toLowerCase() === username.toLowerCase());
+  if (!request || !request.passwordHash || !verifyPassword(passwordValue, request.passwordHash)) return null;
+  const safe = sanitizeAccountRequest(request);
+  if (safe.status === "pending" || safe.status === "reviewing") {
+    return {
+      username,
+      status: safe.status,
+      message: "Admin is reviewing your account request. Check back after an admin makes a decision.",
+    };
+  }
+  if (safe.status === "declined") {
+    const declinedAt = Date.parse(safe.declinedAt || safe.updatedAt || safe.createdAt);
+    if (Number.isFinite(declinedAt) && Date.now() - declinedAt <= 12 * 60 * 60 * 1000) {
+      return {
+        username,
+        status: "declined",
+        message: "Request denied. Ask an admin if you think this was a mistake.",
+      };
+    }
+  }
+  return null;
+}
+
+function userContactSnapshot(users, username) {
+  const target = (users || []).find((entry) => String(entry.username || "").toLowerCase() === String(username || "").toLowerCase());
+  if (!target) return { username: String(username || ""), contact: "", email: "", phone: "" };
+  return {
+    username: target.username || String(username || ""),
+    contact: target.contact || "",
+    email: target.email || "",
+    phone: target.phone || "",
+  };
+}
+
+function formatContactSnapshot(snapshot) {
+  if (!snapshot) return "not available";
+  const parts = [
+    snapshot.email ? `email ${snapshot.email}` : "",
+    snapshot.phone ? `phone ${snapshot.phone}` : "",
+    snapshot.contact && snapshot.contact !== [snapshot.email, snapshot.phone].filter(Boolean).join(" / ") ? `contact ${snapshot.contact}` : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join(", ") : "not provided";
+}
+
 function publicUser(user, profile = {}) {
   return {
     username: user.username,
@@ -4033,6 +4107,8 @@ function sanitizeAccountRequest(request) {
     contact: String(request.contact || "").trim().slice(0, 160),
     email: String(request.email || "").trim().slice(0, 120),
     phone: String(request.phone || "").trim().slice(0, 80),
+    passwordHash: String(request.passwordHash || "").slice(0, 240),
+    passwordSet: Boolean(request.passwordHash || request.passwordSet),
     note: String(request.note || "").trim().slice(0, 600),
     location: sanitizeLocation(request.location),
     status: normalizeAccountRequestStatus(request.status),
@@ -4047,11 +4123,14 @@ function sanitizeAccountRequest(request) {
     updatedBy: String(request.updatedBy || "").slice(0, 80),
     approvedAt: request.approvedAt || "",
     approvedBy: String(request.approvedBy || "").slice(0, 80),
+    declinedAt: request.declinedAt || "",
+    declinedBy: String(request.declinedBy || "").slice(0, 80),
   };
 }
 
 function safeAccountRequest(request) {
   const safe = sanitizeAccountRequest(request);
+  delete safe.passwordHash;
   return {
     ...safe,
     location: safe.location
@@ -4066,7 +4145,17 @@ function safeAccountRequest(request) {
 }
 
 function safeAccountRequests(requests) {
-  return (requests || []).map(safeAccountRequest).slice(0, 500);
+  return (requests || [])
+    .map(safeAccountRequest)
+    .filter((request) => {
+      if (request.status === "declined") return false;
+      if (request.status === "approved") {
+        const approvedAt = Date.parse(request.approvedAt || request.updatedAt || request.createdAt);
+        return Number.isFinite(approvedAt) ? Date.now() - approvedAt < 48 * 60 * 60 * 1000 : true;
+      }
+      return true;
+    })
+    .slice(0, 500);
 }
 
 function normalizeReceiptContext(context) {
@@ -4370,6 +4459,13 @@ function safeStore(store, user) {
   };
 }
 
+function safeActiveReports(reports) {
+  const closedStatuses = new Set(["done", "closed", "resolved", "dismissed"]);
+  return (reports || [])
+    .filter((report) => !closedStatuses.has(normalizeReportStatus(report.status)))
+    .slice(0, 250);
+}
+
 function activeFeatureLocks(featureLocks) {
   const active = {};
   const now = Date.now();
@@ -4543,7 +4639,7 @@ function normalizeBadgeList(value) {
 
 function normalizeReportStatus(status) {
   const value = String(status || "").trim().toLowerCase();
-  if (["open", "reviewing", "seen", "closed", "resolved", "dismissed"].includes(value)) return value;
+  if (["open", "reviewing", "seen", "done", "closed", "resolved", "dismissed"].includes(value)) return value;
   return "open";
 }
 

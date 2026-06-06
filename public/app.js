@@ -130,6 +130,7 @@ function cacheElements() {
     "requestDisplayName",
     "requestEmail",
     "requestPhone",
+    "requestPassword",
     "requestNote",
     "submitAccountRequestButton",
     "accountRequestStatus",
@@ -628,6 +629,7 @@ async function submitAccountRequest(event) {
         displayName: els.requestDisplayName.value.trim(),
         email: els.requestEmail.value.trim(),
         phone: els.requestPhone.value.trim(),
+        password: els.requestPassword.value,
         note: els.requestNote.value.trim(),
         location,
       },
@@ -4114,13 +4116,24 @@ function renderUsers() {
     const meta = document.createElement("div");
     meta.className = "account-meta";
     meta.append(textNode(`Access ${user.role}`));
-    meta.append(textNode(`Persistent login ${user.allowPersistentLogin ? "allowed" : "off"}`));
-    meta.append(textNode(`Created ${formatDate(user.createdAt) || "-"}`));
-    if (user.createdBy) meta.append(textNode(`By ${user.createdBy}`));
-    if (user.lastLoginAt) meta.append(textNode(`Last login ${formatDate(user.lastLoginAt)}`));
-    if (user.lastLoginIp) meta.append(textNode(`From ${user.lastLoginIp}`));
     if (user.bannedUntil) meta.append(textNode(`Ban until ${formatDate(user.bannedUntil)}`));
-    if (user.banReason) meta.append(textNode(user.banReason));
+
+    const details = document.createElement("div");
+    details.className = "account-meta account-details hidden";
+    details.append(textNode(`Username ${user.username}`));
+    details.append(textNode(`Role ${user.role}`));
+    details.append(textNode(`Email ${user.email || "not provided"}`));
+    details.append(textNode(`Phone ${user.phone || "not provided"}`));
+    details.append(textNode(`Contact ${user.contact || "not provided"}`));
+    details.append(textNode(`Persistent login ${user.allowPersistentLogin ? "allowed" : "off"}`));
+    details.append(textNode(`Created ${formatDate(user.createdAt) || "-"}`));
+    if (user.createdBy) details.append(textNode(`Created by ${user.createdBy}`));
+    if (user.lastLoginAt) details.append(textNode(`Last login ${formatDate(user.lastLoginAt)}`));
+    if (user.lastLoginIp) details.append(textNode(`Last IP ${user.lastLoginIp}`));
+    if (user.lastLoginDevice) details.append(textNode(`Last device ${user.lastLoginDevice}`));
+    if (user.sourceIp) details.append(textNode(`Signup IP ${user.sourceIp}`));
+    if (user.sourceDevice) details.append(textNode(`Signup device ${user.sourceDevice}`));
+    if (user.banReason) details.append(textNode(`Ban reason ${user.banReason}`));
 
     const actions = document.createElement("div");
     actions.className = "account-actions";
@@ -4131,6 +4144,10 @@ function renderUsers() {
     const persistentButton = accountButton(user.allowPersistentLogin ? "Disable persistent" : "Allow persistent", () =>
       updateUser(user.username, { allowPersistentLogin: !user.allowPersistentLogin })
     );
+    const detailsButton = accountButton("Account details", () => {
+      details.classList.toggle("hidden");
+      detailsButton.textContent = details.classList.contains("hidden") ? "Account details" : "Hide details";
+    });
     const banShort = accountButton("Ban 15m", () => banUser(user.username, 15));
     const banHour = accountButton("Ban 1h", () => banUser(user.username, 60));
     const banDay = accountButton("Ban 24h", () => banUser(user.username, 1440));
@@ -4141,9 +4158,9 @@ function renderUsers() {
     banDay.disabled = isMainAdmin;
     unban.disabled = isMainAdmin;
     remove.disabled = isMainAdmin || isCurrentUser;
-    actions.append(roleButton, persistentButton, banShort, banHour, banDay, unban, remove);
+    actions.append(detailsButton, roleButton, persistentButton, banShort, banHour, banDay, unban, remove);
 
-    item.append(head, meta, actions);
+    item.append(head, meta, details, actions);
     els.accountList.append(item);
   });
 }
@@ -4501,10 +4518,12 @@ function renderReports() {
     if (!state.reports.length) {
       els.reportList.append(emptyBlock("No reports"));
     } else {
-      state.reports.slice(0, 100).forEach((report) => {
+      state.reports.filter((report) => !["done", "closed", "resolved", "dismissed"].includes(report.status)).slice(0, 100).forEach((report) => {
         const card = adminCard(`${report.targetType} ${report.targetId}`, report.status, [
-          `By ${report.reporter}`,
+          `Reported by ${report.reporter}`,
+          contactLine("Reporter", report.reporterContact),
           report.targetSender ? `Sender: ${report.targetSender}` : "Sender: unknown",
+          contactLine("Sender", report.targetSenderContact),
           report.targetText ? `Reported message: ${report.targetText}` : "Reported message not found",
           report.reason,
           formatDate(report.createdAt),
@@ -4512,7 +4531,7 @@ function renderReports() {
         const actions = document.createElement("div");
         actions.className = "account-actions";
         actions.append(accountButton("Mark seen", () => updateReport(report.id, "seen")));
-        actions.append(accountButton("Close", () => updateReport(report.id, "closed")));
+        actions.append(accountButton("Done", () => updateReport(report.id, "done")));
         card.append(actions);
         els.reportList.append(card);
       });
@@ -4551,6 +4570,16 @@ async function updateReport(id, status) {
   } catch (error) {
     notify(error.message);
   }
+}
+
+function contactLine(label, contact) {
+  if (!contact) return `${label} contact: not available`;
+  const parts = [
+    contact.email ? `email ${contact.email}` : "",
+    contact.phone ? `phone ${contact.phone}` : "",
+    contact.contact && contact.contact !== [contact.email, contact.phone].filter(Boolean).join(" / ") ? `contact ${contact.contact}` : "",
+  ].filter(Boolean);
+  return `${label} contact: ${parts.length ? parts.join(", ") : "not provided"}`;
 }
 
 function renderLogs() {
@@ -5209,8 +5238,7 @@ async function updateAccountRequest(id, status) {
 
 async function approveAccountRequest(id, username) {
   if (!isOwner()) return notify("Admin access required");
-  const password = window.prompt(`Set a password for ${username}`);
-  if (!password) return;
+  const password = window.prompt(`Optional: override password for ${username}. Leave blank to use the password they requested with.`) || "";
   try {
     const data = await api("/api/account-requests/approve", {
       method: "POST",

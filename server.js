@@ -35,9 +35,11 @@ const CLOUDINARY_FOLDER = firstEnvValue("CLOUDINARY_FOLDER", "INNER_CLOUDINARY_F
 const UPLOAD_PROVIDER = String(firstEnvValue("INNER_UPLOAD_PROVIDER", "UPLOAD_PROVIDER") || "").toLowerCase();
 const REPORT_EMAILS = splitEnvList(firstEnvValue("INNER_REPORT_EMAILS", "REPORT_EMAILS", "INNER_ADMIN_EMAILS", "ADMIN_EMAILS")).slice(0, 4);
 const EMAIL_WEBHOOK_URL = firstEnvValue("INNER_EMAIL_WEBHOOK_URL", "REPORT_EMAIL_WEBHOOK_URL", "EMAIL_WEBHOOK_URL");
-const EMAIL_FROM = firstEnvValue("INNER_EMAIL_FROM", "EMAIL_FROM", "RESEND_FROM") || "Inner <onboarding@resend.dev>";
+const EMAIL_FROM = firstEnvValue("INNER_EMAIL_FROM", "EMAIL_FROM", "RESEND_FROM", "SENDGRID_FROM", "BREVO_FROM") || "Inner <innerservers@gmail.com>";
 const EMAIL_REPLY_TO = firstEnvValue("INNER_EMAIL_REPLY_TO", "EMAIL_REPLY_TO");
 const RESEND_API_KEY = firstEnvValue("INNER_RESEND_API_KEY", "RESEND_API_KEY", "RESEND_KEY");
+const BREVO_API_KEY = firstEnvValue("INNER_BREVO_API_KEY", "BREVO_API_KEY", "SENDINBLUE_API_KEY", "BREVO_KEY", "SIB_API_KEY");
+const SENDGRID_API_KEY = firstEnvValue("INNER_SENDGRID_API_KEY", "SENDGRID_API_KEY", "SENDGRID_KEY");
 const SMTP_HOST = firstEnvValue("INNER_SMTP_HOST", "SMTP_HOST");
 const SMTP_PORT = Number(firstEnvValue("INNER_SMTP_PORT", "SMTP_PORT") || 0);
 const SMTP_USER = firstEnvValue("INNER_SMTP_USER", "SMTP_USER");
@@ -95,30 +97,27 @@ const persistence = {
   ObjectId: null,
 };
 const allowedFeatureLocks = new Set([
-  "dashboard",
   "messages",
   "files",
-  "store",
-  "chess",
-  "games",
-  "browser",
   "screen",
   "dms",
   "rooms",
   "vpn",
   "friends",
-  "profile",
   "profiles",
   "voice",
   "invites",
   "moderation",
   "bots",
   "plugins",
+  "store",
+  "chess",
 ]);
 const managerRoles = new Set(["admin", "hmd", "dev"]);
 const developerRoles = new Set(["admin", "hmd", "dev"]);
 const moderatorRoles = new Set(["moderator", "admin", "hmd", "dev"]);
 const shutdownExemptUsernames = new Set(["admin", "admin2", "hmd", "dev"]);
+const ownerUsernames = new Set(["admin"]);
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -390,6 +389,8 @@ async function ensureStorage() {
     requireContact: DEFAULT_REQUIRE_CONTACT,
     reportEmails: REPORT_EMAILS,
     featureLocks: {},
+    featureVisibility: {},
+    paywalls: {},
     shutdownAt: "",
     shutdownBy: "",
     updatedAt: new Date().toISOString(),
@@ -665,19 +666,6 @@ async function ensureSettings() {
     next.chessUrl = "https://chessverse.co.in/";
     changed = true;
   }
-  const sanitizedVisibility = sanitizeFeatureVisibility(next.featureVisibility || {});
-  if (!sanitizedVisibility.browser) {
-    sanitizedVisibility.browser = { hidden: true, allowedUsers: [] };
-  }
-  if (JSON.stringify(next.featureVisibility || {}) !== JSON.stringify(sanitizedVisibility)) {
-    next.featureVisibility = sanitizedVisibility;
-    changed = true;
-  }
-  const sanitizedAppLinks = sanitizeAppLinks(next.appLinks || []);
-  if (JSON.stringify(next.appLinks || []) !== JSON.stringify(sanitizedAppLinks)) {
-    next.appLinks = sanitizedAppLinks;
-    changed = true;
-  }
   if (changed) {
     await writeJson(FILES.settings, {
       ...next,
@@ -746,7 +734,6 @@ async function routeApi(req, res, requestUrl) {
     if (!user || !verifyPassword(String(body.password || ""), user.passwordHash)) {
       const requestLogin = await requestLoginStatus(String(body.username || ""), String(body.password || ""));
       if (requestLogin) {
-        await addSystemLog("login.request-status", requestLogin.username, { status: requestLogin.status }, req);
         return json(res, 403, { error: requestLogin.message, requestStatus: requestLogin.status });
       }
       await addSystemLog("login.failed", String(body.username || "unknown").slice(0, 80), { reason: "Invalid username or password" }, req);
@@ -927,9 +914,7 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     const username = normalizeUsername(body.username);
     const password = String(body.password || "");
-    const email = String(body.email || "").trim().slice(0, 120);
-    const phone = String(body.phone || "").trim().slice(0, 80);
-    const contact = String(body.contact || [email, phone].filter(Boolean).join(" / ")).trim().slice(0, 160);
+    const contact = String(body.contact || "").trim().slice(0, 160);
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
     if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
     if (settings.requireContact !== false && !contact) {
@@ -949,8 +934,6 @@ async function routeApi(req, res, requestUrl) {
       passwordHash: hashPassword(password),
       passwordPreset: "",
       contact,
-      email,
-      phone,
       sourceIp: getClientIp(req),
       sourceHost: req.headers.host || "",
       sourceAgent: String(req.headers["user-agent"] || "").slice(0, 240),
@@ -986,10 +969,7 @@ async function routeApi(req, res, requestUrl) {
   if (!user) return;
 
   if (req.method === "GET" && pathname === "/api/browser/frame") {
-    const settings = await readJson(FILES.settings, {});
-    if (!canManage(user) && !canAccessVisibleFeature(settings, "browser", user) && !canAccessVisibleFeature(settings, "games", user)) {
-      return text(res, 403, "Browser access denied");
-    }
+    if (!canManage(user)) return text(res, 403, "Admin access required");
     return serveAdminBrowserFrame(req, res, requestUrl);
   }
 
@@ -1093,6 +1073,7 @@ async function routeApi(req, res, requestUrl) {
       friends: safeFriendState(friends, user),
       invites: canManage(user) ? invites.slice(-100) : safeInvitesForUser(invites, user),
       reports,
+      liveIpTracking: canManage(user) ? liveIpTracking(users) : [],
       readReceipts: safeReadReceipts(readReceipts, user, { messages: normalizedMessages, dms: visibleDms, dmGroups }),
       moderationLogs: moderationLogs.slice(-250),
       logs: canManage(user) ? logs.slice(0, 300) : [],
@@ -1111,7 +1092,7 @@ async function routeApi(req, res, requestUrl) {
   if (req.method === "POST" && pathname === "/api/messages") {
     const settings = await readJson(FILES.settings, {});
     if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
-    const featureError = featureBlocked(settings, "messages", user);
+    const featureError = await featureGateError(settings, "messages", user);
     if (featureError) return json(res, 423, { error: featureError });
     const rateError = await checkMessageRate(user);
     if (rateError) return json(res, 429, { error: rateError });
@@ -1124,7 +1105,7 @@ async function routeApi(req, res, requestUrl) {
     if (textValue.length > 2000) return json(res, 400, { error: "Message is too long" });
     textValue = applySlashCommand(textValue);
     if (roomId !== "main") {
-      const roomFeatureError = featureBlocked(settings, "rooms", user);
+      const roomFeatureError = await featureGateError(settings, "rooms", user);
       if (roomFeatureError) return json(res, 423, { error: roomFeatureError });
     }
 
@@ -1162,7 +1143,7 @@ async function routeApi(req, res, requestUrl) {
   if (req.method === "POST" && pathname === "/api/upload") {
     const settings = await readJson(FILES.settings, {});
     if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
-    const featureError = featureBlocked(settings, "files", user);
+    const featureError = await featureGateError(settings, "files", user);
     if (featureError) return json(res, 423, { error: featureError });
     return saveUpload(req, res, user);
   }
@@ -1170,7 +1151,7 @@ async function routeApi(req, res, requestUrl) {
   if (req.method === "POST" && pathname === "/api/uploads/direct-cloudinary/sign") {
     const settings = await readJson(FILES.settings, {});
     if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
-    const featureError = featureBlocked(settings, "files", user);
+    const featureError = await featureGateError(settings, "files", user);
     if (featureError) return json(res, 423, { error: featureError });
     if (!cloudinaryConfigured() || UPLOAD_PROVIDER === "mongodb") return json(res, 503, { error: "Direct Cloudinary uploads are not configured" });
     const body = await readJsonBody(req);
@@ -1207,7 +1188,7 @@ async function routeApi(req, res, requestUrl) {
   if (req.method === "POST" && pathname === "/api/uploads/direct-cloudinary/complete") {
     const settings = await readJson(FILES.settings, {});
     if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
-    const featureError = featureBlocked(settings, "files", user);
+    const featureError = await featureGateError(settings, "files", user);
     if (featureError) return json(res, 423, { error: featureError });
     const body = await readJsonBody(req);
     const draft = body.draft || {};
@@ -1316,7 +1297,7 @@ async function routeApi(req, res, requestUrl) {
 
   if (req.method === "POST" && pathname === "/api/profile") {
     const settings = await readJson(FILES.settings, {});
-    const featureError = featureBlocked(settings, "profiles", user);
+    const featureError = await featureGateError(settings, "profiles", user);
     if (featureError) return json(res, 423, { error: featureError });
     const body = await readJsonBody(req);
     const profiles = await readJson(FILES.profiles, {});
@@ -1342,7 +1323,7 @@ async function routeApi(req, res, requestUrl) {
 
   if (req.method === "POST" && pathname === "/api/friends/request") {
     const settings = await readJson(FILES.settings, {});
-    const featureError = featureBlocked(settings, "friends", user);
+    const featureError = await featureGateError(settings, "friends", user);
     if (featureError) return json(res, 423, { error: featureError });
     const body = await readJsonBody(req);
     const to = String(body.to || "").trim();
@@ -1736,7 +1717,7 @@ async function routeApi(req, res, requestUrl) {
   if (req.method === "POST" && pathname === "/api/rooms/invites") {
     if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
     const settings = await readJson(FILES.settings, {});
-    const featureError = featureBlocked(settings, "invites", user);
+    const featureError = await featureGateError(settings, "invites", user);
     if (featureError) return json(res, 423, { error: featureError });
     const body = await readJsonBody(req);
     const roomId = String(body.roomId || "").trim();
@@ -1819,7 +1800,7 @@ async function routeApi(req, res, requestUrl) {
   if (req.method === "POST" && pathname === "/api/dm-groups") {
     const settings = await readJson(FILES.settings, {});
     if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
-    const featureError = featureBlocked(settings, "dms", user);
+    const featureError = await featureGateError(settings, "dms", user);
     if (featureError) return json(res, 423, { error: featureError });
 
     const body = await readJsonBody(req);
@@ -1855,7 +1836,7 @@ async function routeApi(req, res, requestUrl) {
   if (req.method === "POST" && pathname === "/api/dms") {
     const settings = await readJson(FILES.settings, {});
     if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
-    const featureError = featureBlocked(settings, "dms", user);
+    const featureError = await featureGateError(settings, "dms", user);
     if (featureError) return json(res, 423, { error: featureError });
 
     const body = await readJsonBody(req);
@@ -2395,8 +2376,8 @@ async function routeApi(req, res, requestUrl) {
         updatedBy: user.username,
       }),
       serviceScale: sanitizeServiceScale(body.serviceScale && typeof body.serviceScale === "object" ? body.serviceScale : settings.serviceScale || {}),
-      featureVisibility: sanitizeFeatureVisibility(body.featureVisibility && typeof body.featureVisibility === "object" ? body.featureVisibility : settings.featureVisibility || {}),
-      appLinks: sanitizeAppLinks(Array.isArray(body.appLinks) ? body.appLinks : settings.appLinks || []),
+      featureVisibility: sanitizeFeatureVisibility(canOwn(user) && body.featureVisibility && typeof body.featureVisibility === "object" ? body.featureVisibility : settings.featureVisibility || {}),
+      paywalls: sanitizePaywalls(canOwn(user) && body.paywalls && typeof body.paywalls === "object" ? body.paywalls : settings.paywalls || {}),
       shutdownAt: nextServerEnabled ? "" : settings.shutdownAt || new Date().toISOString(),
       shutdownBy: nextServerEnabled ? "" : settings.shutdownBy || user.username,
       shutdownReason: nextServerEnabled ? "" : String(body.shutdownReason || settings.shutdownReason || "Admin shutdown").slice(0, 160),
@@ -3148,6 +3129,9 @@ async function handleUpgrade(req, socket) {
     role: user.role,
     socket,
     buffer: Buffer.alloc(0),
+    ip: getClientIp(req),
+    device: deviceSignature(req),
+    connectedAt: new Date().toISOString(),
     sharing: false,
     screenRoomId: "",
     status: "online",
@@ -3291,7 +3275,7 @@ async function handleWsMessage(client, message) {
   ) {
     return sendWs(client, { type: "error", error: "Server is shut down. Only admin, HMD, and dev access is open right now." });
   }
-  const screenFeatureError = featureBlocked(settings, "screen", client);
+  const screenFeatureError = await featureGateError(settings, "screen", client);
   if (screenFeatureError && (message.type === "signal" || message.type === "screen:status" || message.type === "screen:request")) {
     return sendWs(client, { type: "error", error: screenFeatureError });
   }
@@ -3333,7 +3317,7 @@ async function handleWsMessage(client, message) {
   }
 
   if (message.type === "voice:join") {
-    const voiceFeatureError = featureBlocked(settings, "voice", client);
+    const voiceFeatureError = await featureGateError(settings, "voice", client);
     if (voiceFeatureError) return sendWs(client, { type: "error", error: voiceFeatureError });
     const roomInfo = await resolveRealtimeRoom(message.roomId || "lobby", client);
     client.voiceRoomId = roomInfo.roomId;
@@ -3398,7 +3382,7 @@ async function handleWsMessage(client, message) {
   }
 
   if (message.type === "call:invite") {
-    const voiceFeatureError = featureBlocked(settings, "voice", client);
+    const voiceFeatureError = await featureGateError(settings, "voice", client);
     if (voiceFeatureError) return sendWs(client, { type: "error", error: voiceFeatureError });
     const roomInfo = await resolveRealtimeRoom(message.roomId || client.voiceRoomId || "lobby", client);
     const mode = message.mode === "video" ? "video" : "voice";
@@ -3414,7 +3398,7 @@ async function handleWsMessage(client, message) {
   }
 
   if (message.type === "soundboard:play") {
-    const voiceFeatureError = featureBlocked(settings, "voice", client);
+    const voiceFeatureError = await featureGateError(settings, "voice", client);
     if (voiceFeatureError) return sendWs(client, { type: "error", error: voiceFeatureError });
     const roomInfo = await resolveRealtimeRoom(message.roomId || client.voiceRoomId || "lobby", client);
     const sound = normalizeSoundboardSound(message.sound);
@@ -3762,6 +3746,7 @@ function safeUser(user) {
   return {
     username: user.username,
     role: normalizeRole(user.role),
+    owner: canOwn(user),
     createdAt: user.createdAt || "",
     createdBy: user.createdBy || "",
     updatedAt: user.updatedAt || "",
@@ -3784,54 +3769,6 @@ function safeUser(user) {
     muted: isUserMuted(user),
     shadowMuted: Boolean(user.shadowMuted),
   };
-}
-
-async function requestLoginStatus(usernameValue, passwordValue) {
-  const username = normalizeUsername(usernameValue);
-  if (!username) return null;
-  const requests = await readJson(FILES.accountRequests, []).catch(() => []);
-  const request = requests.find((entry) => String(entry.username || "").toLowerCase() === username.toLowerCase());
-  if (!request || !request.passwordHash || !verifyPassword(passwordValue, request.passwordHash)) return null;
-  const safe = sanitizeAccountRequest(request);
-  if (safe.status === "pending" || safe.status === "reviewing") {
-    return {
-      username,
-      status: safe.status,
-      message: "Admin is reviewing your account request. Check back after an admin makes a decision.",
-    };
-  }
-  if (safe.status === "declined") {
-    const declinedAt = Date.parse(safe.declinedAt || safe.updatedAt || safe.createdAt);
-    if (Number.isFinite(declinedAt) && Date.now() - declinedAt <= 12 * 60 * 60 * 1000) {
-      return {
-        username,
-        status: "declined",
-        message: "Request denied. Ask an admin if you think this was a mistake.",
-      };
-    }
-  }
-  return null;
-}
-
-function userContactSnapshot(users, username) {
-  const target = (users || []).find((entry) => String(entry.username || "").toLowerCase() === String(username || "").toLowerCase());
-  if (!target) return { username: String(username || ""), contact: "", email: "", phone: "" };
-  return {
-    username: target.username || String(username || ""),
-    contact: target.contact || "",
-    email: target.email || "",
-    phone: target.phone || "",
-  };
-}
-
-function formatContactSnapshot(snapshot) {
-  if (!snapshot) return "not available";
-  const parts = [
-    snapshot.email ? `email ${snapshot.email}` : "",
-    snapshot.phone ? `phone ${snapshot.phone}` : "",
-    snapshot.contact && snapshot.contact !== [snapshot.email, snapshot.phone].filter(Boolean).join(" / ") ? `contact ${snapshot.contact}` : "",
-  ].filter(Boolean);
-  return parts.length ? parts.join(", ") : "not provided";
 }
 
 function publicUser(user, profile = {}) {
@@ -4158,6 +4095,89 @@ function safeAccountRequests(requests) {
     .slice(0, 500);
 }
 
+async function requestLoginStatus(usernameValue, passwordValue) {
+  const username = normalizeUsername(usernameValue);
+  if (!username) return null;
+  const requests = await readJson(FILES.accountRequests, []);
+  const request = requests
+    .map(sanitizeAccountRequest)
+    .find((entry) => entry.username.toLowerCase() === username.toLowerCase());
+  if (!request || !request.passwordHash || !verifyPassword(passwordValue, request.passwordHash)) return null;
+  if (request.status === "pending" || request.status === "reviewing") {
+    return {
+      status: request.status,
+      message: "Admin is reviewing your account request. Check back after an admin makes a decision.",
+    };
+  }
+  if (request.status === "declined") {
+    const declinedAt = Date.parse(request.declinedAt || request.updatedAt || request.createdAt);
+    if (Number.isFinite(declinedAt) && Date.now() - declinedAt <= 12 * 60 * 60 * 1000) {
+      return {
+        status: "declined",
+        message: "Request denied. Ask an admin if you think this was a mistake.",
+      };
+    }
+  }
+  return null;
+}
+
+function safeActiveReports(reports) {
+  return (reports || [])
+    .filter((report) => !["done", "closed", "resolved", "dismissed"].includes(String(report.status || "").toLowerCase()))
+    .slice(0, 250);
+}
+
+function userContactSnapshot(users, username) {
+  const target = (users || []).find((entry) => entry.username.toLowerCase() === String(username || "").toLowerCase());
+  if (!target) return null;
+  return {
+    username: target.username,
+    contact: String(target.contact || "").slice(0, 160),
+    email: String(target.email || "").slice(0, 120),
+    phone: String(target.phone || "").slice(0, 80),
+    sourceIp: String(target.sourceIp || "").slice(0, 80),
+    lastLoginIp: String(target.lastLoginIp || "").slice(0, 80),
+  };
+}
+
+function formatContactSnapshot(contact) {
+  if (!contact) return "not available";
+  return [contact.email, contact.phone, contact.contact, contact.lastLoginIp ? `last IP ${contact.lastLoginIp}` : ""].filter(Boolean).join(" / ") || "not available";
+}
+
+function liveIpTracking(users) {
+  const rows = [];
+  const seen = new Set();
+  for (const client of wsClients.values()) {
+    seen.add(client.username.toLowerCase());
+    rows.push({
+      username: client.username,
+      role: normalizeRole(client.role),
+      live: true,
+      ip: client.ip || "",
+      device: client.device || "",
+      approximateLocation: approximateLocationFromIp(client.ip || ""),
+      lastSeenAt: client.connectedAt || new Date().toISOString(),
+      source: "live websocket",
+    });
+  }
+  for (const user of users || []) {
+    const username = String(user.username || "");
+    if (!username || seen.has(username.toLowerCase())) continue;
+    rows.push({
+      username,
+      role: normalizeRole(user.role),
+      live: false,
+      ip: user.lastLoginIp || user.sourceIp || "",
+      device: user.lastLoginDevice || user.sourceDevice || "",
+      approximateLocation: user.lastLoginApproximateLocation || user.approximateLocation || approximateLocationFromIp(user.lastLoginIp || user.sourceIp || ""),
+      lastSeenAt: user.lastLoginAt || user.createdAt || "",
+      source: user.lastLoginAt ? "last login" : "signup/request",
+    });
+  }
+  return rows.sort((a, b) => Number(Boolean(b.live)) - Number(Boolean(a.live)) || String(b.lastSeenAt || "").localeCompare(String(a.lastSeenAt || "")));
+}
+
 function normalizeReceiptContext(context) {
   const value = String(context || "").trim().toLowerCase();
   if (["messages", "dm", "group"].includes(value)) return value;
@@ -4220,10 +4240,10 @@ function safeSettings(settings) {
     ...settings,
     customizations: sanitizeCustomizations(settings.customizations || {}),
     serviceScale: sanitizeServiceScale(settings.serviceScale || {}),
-    featureLocks: activeFeatureLocks(settings.featureLocks || {}),
-    featureVisibility: sanitizeFeatureVisibility(settings.featureVisibility || {}),
-    appLinks: sanitizeAppLinks(settings.appLinks || []),
-    shutdownMode: settings.serverEnabled === false,
+      featureLocks: activeFeatureLocks(settings.featureLocks || {}),
+      featureVisibility: sanitizeFeatureVisibility(settings.featureVisibility || {}),
+      paywalls: sanitizePaywalls(settings.paywalls || {}),
+      shutdownMode: settings.serverEnabled === false,
     shutdownAt: settings.serverEnabled === false ? String(settings.shutdownAt || "") : "",
     shutdownBy: settings.serverEnabled === false ? String(settings.shutdownBy || "") : "",
     shutdownReason: settings.serverEnabled === false ? String(settings.shutdownReason || "") : "",
@@ -4459,13 +4479,6 @@ function safeStore(store, user) {
   };
 }
 
-function safeActiveReports(reports) {
-  const closedStatuses = new Set(["done", "closed", "resolved", "dismissed"]);
-  return (reports || [])
-    .filter((report) => !closedStatuses.has(normalizeReportStatus(report.status)))
-    .slice(0, 250);
-}
-
 function activeFeatureLocks(featureLocks) {
   const active = {};
   const now = Date.now();
@@ -4482,58 +4495,85 @@ function activeFeatureLocks(featureLocks) {
   return active;
 }
 
-function sanitizeFeatureVisibility(visibility) {
-  const next = {};
-  const source = visibility && typeof visibility === "object" && !Array.isArray(visibility) ? visibility : {};
-  for (const [feature, config] of Object.entries(source)) {
-    if (!allowedFeatureLocks.has(feature) || feature === "dashboard") continue;
-    const entry = config && typeof config === "object" ? config : {};
-    next[feature] = {
-      hidden: Boolean(entry.hidden),
-      allowedUsers: Array.isArray(entry.allowedUsers)
-        ? entry.allowedUsers.map(normalizeUsername).filter(Boolean).slice(0, 100)
-        : [],
-    };
-  }
-  return next;
-}
-
-function sanitizeAppLinks(links) {
-  return (Array.isArray(links) ? links : [])
-    .map((entry) => {
-      const url = sanitizeExternalUrl(entry && entry.url);
-      const name = String(entry && entry.name || "").trim().slice(0, 80);
-      if (!url || !name) return null;
-      return {
-        id: String(entry.id || crypto.randomUUID()).slice(0, 80),
-        name,
-        url,
-        description: String(entry.description || "").trim().slice(0, 240),
-        icon: String(entry.icon || "").trim().slice(0, 16),
-        visibleTo: Array.isArray(entry.visibleTo)
-          ? entry.visibleTo.map(normalizeUsername).filter(Boolean).slice(0, 100)
-          : [],
-        active: entry.active !== false,
-        createdAt: entry.createdAt || new Date().toISOString(),
-      };
-    })
-    .filter(Boolean)
-    .slice(0, 100);
-}
-
 function featureBlocked(settings, feature, user) {
   if (canManage(user)) return "";
+  const visibility = sanitizeFeatureVisibility(settings.featureVisibility || {})[feature];
+  if (visibility && visibility.hidden && !visibility.allowedUsers.includes(String(user && user.username || "").toLowerCase())) {
+    return `${featureLabel(feature)} is hidden for your account`;
+  }
   const lock = activeFeatureLocks(settings.featureLocks || {})[feature];
   if (!lock) return "";
   const label = feature === "dms" ? "DMs" : feature.charAt(0).toUpperCase() + feature.slice(1);
   return `${label} disabled until ${new Date(lock.disabledUntil).toLocaleString()}${lock.reason ? `: ${lock.reason}` : ""}`;
 }
 
-function canAccessVisibleFeature(settings, feature, user) {
-  if (canManage(user)) return true;
-  const config = sanitizeFeatureVisibility(settings && settings.featureVisibility || {})[feature];
-  if (!config || !config.hidden) return true;
-  return Array.isArray(config.allowedUsers) && config.allowedUsers.includes(user && user.username);
+async function featureGateError(settings, feature, user) {
+  const blocked = featureBlocked(settings, feature, user);
+  if (blocked) return blocked;
+  const paywalls = sanitizePaywalls(settings.paywalls || {});
+  if (!paywalls[feature] || !paywalls[feature].enabled) return "";
+  return featurePaywallBlocked(settings, await readJson(FILES.store, { items: [], orders: [] }), feature, user);
+}
+
+async function featurePaywallBlocked(settings, store, feature, user) {
+  if (canManage(user)) return "";
+  const paywall = sanitizePaywalls(settings.paywalls || {})[feature];
+  if (!paywall || !paywall.enabled || !paywall.itemId) return "";
+  const orders = Array.isArray(store && store.orders) ? store.orders : [];
+  const paid = orders.some((order) =>
+    order &&
+    order.user === user.username &&
+    order.itemId === paywall.itemId &&
+    order.status === "paid"
+  );
+  if (paid) return "";
+  const items = Array.isArray(store && store.items) ? store.items : [];
+  const item = items.find((entry) => entry.id === paywall.itemId);
+  return paywall.message || `${featureLabel(feature)} needs ${item ? item.name : "a paid pass"} before you can use it. Open Store to request access.`;
+}
+
+function featureLabel(feature) {
+  const labels = {
+    messages: "Messages",
+    files: "Files",
+    screen: "Screen",
+    dms: "DMs",
+    rooms: "Side rooms",
+    vpn: "VPN",
+    friends: "Friends",
+    profiles: "Profiles",
+    voice: "Voice",
+    invites: "Invites",
+    moderation: "Moderation",
+    bots: "Bots",
+    plugins: "Plugins",
+  };
+  return labels[feature] || String(feature || "Feature");
+}
+
+function sanitizeFeatureVisibility(source) {
+  const result = {};
+  for (const feature of allowedFeatureLocks) {
+    const entry = source && source[feature] && typeof source[feature] === "object" ? source[feature] : {};
+    result[feature] = {
+      hidden: Boolean(entry.hidden),
+      allowedUsers: normalizeUsernameList(entry.allowedUsers || []),
+    };
+  }
+  return result;
+}
+
+function sanitizePaywalls(source) {
+  const result = {};
+  for (const feature of allowedFeatureLocks) {
+    const entry = source && source[feature] && typeof source[feature] === "object" ? source[feature] : {};
+    result[feature] = {
+      enabled: Boolean(entry.enabled),
+      itemId: String(entry.itemId || "").slice(0, 120),
+      message: String(entry.message || "").trim().slice(0, 220),
+    };
+  }
+  return result;
 }
 
 function normalizeRole(role) {
@@ -4551,6 +4591,10 @@ function normalizeSoundboardSound(sound) {
 
 function canManage(user) {
   return managerRoles.has(normalizeRole(user && user.role));
+}
+
+function canOwn(user) {
+  return ownerUsernames.has(String(user && user.username || "").toLowerCase());
 }
 
 function canDev(user) {
@@ -4639,7 +4683,7 @@ function normalizeBadgeList(value) {
 
 function normalizeReportStatus(status) {
   const value = String(status || "").trim().toLowerCase();
-  if (["open", "reviewing", "seen", "done", "closed", "resolved", "dismissed"].includes(value)) return value;
+  if (["open", "reviewing", "resolved", "dismissed", "done"].includes(value)) return value;
   return "open";
 }
 
@@ -4943,8 +4987,10 @@ async function notifyAdminEmails(subject, body, options = {}) {
   }
 
   const attempts = [
-    RESEND_API_KEY ? () => sendResendEmail(payload) : null,
     smtpConfigured() ? () => sendSmtpEmail(payload) : null,
+    RESEND_API_KEY ? () => sendResendEmail(payload) : null,
+    BREVO_API_KEY ? () => sendBrevoEmail(payload) : null,
+    SENDGRID_API_KEY ? () => sendSendGridEmail(payload) : null,
     EMAIL_WEBHOOK_URL ? () => sendWebhookEmail(payload) : null,
   ].filter(Boolean);
   if (!attempts.length) {
@@ -5140,6 +5186,65 @@ function sanitizeMailHeader(value) {
   return String(value || "").replace(/[\r\n]+/g, " ").slice(0, 180);
 }
 
+async function sendBrevoEmail(payload) {
+  const { email, name } = parseEmailFrom(EMAIL_FROM);
+  if (!email || !email.includes("@")) {
+    return {
+      provider: "brevo",
+      ok: false,
+      status: 0,
+      error: "INNER_EMAIL_FROM must be a real sender, for example Inner <innerservers@gmail.com>",
+    };
+  }
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "api-key": BREVO_API_KEY,
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify({
+      sender: { email, name: name || "Inner" },
+      to: payload.recipients.map((address) => ({ email: address })),
+      subject: payload.subject,
+      textContent: payload.body,
+      replyTo: EMAIL_REPLY_TO ? { email: EMAIL_REPLY_TO } : undefined,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  return {
+    provider: "brevo",
+    ok: response.ok,
+    status: response.status,
+    error: data.message || "",
+  };
+}
+
+async function sendSendGridEmail(payload) {
+  const { email, name } = parseEmailFrom(EMAIL_FROM);
+  const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${SENDGRID_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      personalizations: [{ to: payload.recipients.map((address) => ({ email: address })) }],
+      from: { email, name: name || "Inner" },
+      reply_to: EMAIL_REPLY_TO ? { email: EMAIL_REPLY_TO } : undefined,
+      subject: payload.subject,
+      content: [{ type: "text/plain", value: payload.body }],
+    }),
+  });
+  const text = await response.text().catch(() => "");
+  return {
+    provider: "sendgrid",
+    ok: response.ok,
+    status: response.status,
+    error: text.slice(0, 300),
+  };
+}
+
 async function sendWebhookEmail(payload) {
   try {
     const response = await fetch(EMAIL_WEBHOOK_URL, {
@@ -5184,8 +5289,10 @@ function emailProviderStatus(recipients = []) {
     fromEmail: parsedFrom.email,
     replyTo: EMAIL_REPLY_TO || "",
     providers: {
-      resend: Boolean(RESEND_API_KEY),
       smtp: smtpConfigured(),
+      brevo: Boolean(BREVO_API_KEY),
+      resend: Boolean(RESEND_API_KEY),
+      sendgrid: Boolean(SENDGRID_API_KEY),
       webhook: Boolean(EMAIL_WEBHOOK_URL),
     },
   };
@@ -5193,16 +5300,16 @@ function emailProviderStatus(recipients = []) {
 
 function emailFailureMessage(result, status) {
   if (!status.recipients.length) return "Email was not sent because no report emails are configured.";
-  if (!status.providers.resend && !status.providers.smtp && !status.providers.webhook) {
-    return "Email provider is not visible to the server yet. Add RESEND_API_KEY in Render Environment, save changes, then redeploy/restart.";
+  if (!status.providers.smtp && !status.providers.brevo && !status.providers.resend && !status.providers.sendgrid && !status.providers.webhook) {
+    return "Email provider is not visible to the server yet. Add SMTP settings or BREVO_API_KEY in Render Environment, save changes, then redeploy/restart.";
   }
   const provider = result.provider ? `${result.provider} ` : "";
   const detail = result.reason || result.error || "";
-  if (result.provider === "resend" && result.status === 401) {
-    return "Resend rejected the API key. Check RESEND_API_KEY in Render Environment, save, then redeploy/restart.";
+  if (result.provider === "brevo" && result.status === 403 && /not yet activated|smtp account/i.test(detail)) {
+    return "Brevo is connected, but Brevo rejected the email because your Brevo SMTP/API account is not activated yet. Activate transactional SMTP/API in Brevo or contact contact@brevo.com, then click Send test email again.";
   }
-  if (result.provider === "resend" && result.status === 403) {
-    return "Resend rejected this sender/domain. In Render set INNER_EMAIL_FROM exactly to Inner <onboarding@resend.dev> for testing, or verify your own domain in Resend first.";
+  if (result.provider === "brevo" && result.status === 401) {
+    return "Brevo rejected the API key. Check BREVO_API_KEY in Render Environment, save, then redeploy/restart.";
   }
   return `Email was not sent. ${provider}${result.status ? `status ${result.status}. ` : ""}${detail}`.trim();
 }
@@ -5691,7 +5798,7 @@ async function serveStatic(res, filePath) {
 async function serveUpload(req, res, pathname, user) {
   const settings = await readJson(FILES.settings, {});
   if (!settings.serverEnabled && !canManage(user)) return text(res, 423, "Server room is off");
-  const featureError = featureBlocked(settings, "files", user);
+  const featureError = await featureGateError(settings, "files", user);
   if (featureError) return text(res, 423, featureError);
   const storedName = path.basename(pathname);
   const files = await readJson(FILES.uploads, []);

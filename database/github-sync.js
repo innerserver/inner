@@ -12,3 +12,16 @@ async function restoreFile(fileName){try{const result=await githubRequest('GET',
 async function uploadFile(fileName){try{const filePath=path.join(DATA_DIR,fileName);if(!fs.existsSync(filePath))return;const content=fs.readFileSync(filePath,'utf8');const encoded=Buffer.from(content).toString('base64');let sha;try{const existing=await githubRequest('GET',`/repos/${REPO}/contents/data/${fileName}?ref=${BRANCH}`);sha=existing.sha;}catch{}await githubRequest('PUT',`/repos/${REPO}/contents/data/${fileName}`,{message:`Auto sync ${fileName}`,content:encoded,branch:BRANCH,sha});console.log(`[github-sync] synced ${fileName}`);}catch(error){console.error('[github-sync] upload failed',error.message);}}
 function watchFile(fileName){const filePath=path.join(DATA_DIR,fileName);let timeout=null;fs.watchFile(filePath,{interval:3000},()=>{clearTimeout(timeout);timeout=setTimeout(()=>uploadFile(fileName),2000);});}
 (async()=>{for(const file of TRACKED_FILES){await restoreFile(file);}TRACKED_FILES.forEach(watchFile);console.log('[github-sync] active');})();
+
+document.addEventListener("DOMContentLoaded",()=>{
+ const u=localStorage.getItem("username")||"guest";
+ const r=localStorage.getItem("role")||"user";
+ const admin=(u==="devshah"||r==="admin");
+
+ document.querySelectorAll("[data-feature='admin'],#adminBtn,.admin-btn,.admin-nav,.admin-panel").forEach(el=>{
+   if(!admin){
+      el.remove();
+   }
+ });
+
+});

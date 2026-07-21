@@ -42,8 +42,7 @@
           </div>
           <label>Username<input id="requestUsername" autocomplete="username" placeholder="your-name" required /></label>
           <label>Display name<input id="requestDisplayName" autocomplete="name" /></label>
-          <label>Email<input id="requestEmail" autocomplete="email" placeholder="you@example.com" /></label>
-          <label>Phone<input id="requestPhone" autocomplete="tel" placeholder="+1 555 123 4567" /></label>
+          <label>Contact<input id="requestContact" autocomplete="email" placeholder="email or phone" /></label>
           <label>Password<input id="requestPassword" type="password" autocomplete="new-password" placeholder="used after approval" required /></label>
           <label>Note<textarea id="requestNote" rows="3" maxlength="600" placeholder="why you need access"></textarea></label>
           <button id="submitAccountRequestButton" class="secondary-button" type="submit">Share location and request</button>
@@ -57,8 +56,7 @@
           </div>
           <label>Username<input id="signupUsername" autocomplete="username" placeholder="your-name" /></label>
           <label>Display name<input id="signupDisplayName" autocomplete="name" /></label>
-          <label>Email<input id="signupEmail" autocomplete="email" placeholder="you@example.com" /></label>
-          <label>Phone<input id="signupPhone" autocomplete="tel" placeholder="+1 555 123 4567" /></label>
+          <label>Contact<input id="signupContact" autocomplete="email" placeholder="email or phone" /></label>
           <label>Password<input id="signupPassword" type="password" autocomplete="new-password" /></label>
           <button id="signupButton" class="secondary-button" type="submit">Create member account</button>
           <p id="signupStatus" class="inline-status"></p>
@@ -85,8 +83,6 @@
           <button class="nav-button" type="button" data-view="store">Store</button>
           <button class="nav-button" type="button" data-view="files">Files</button>
           <button class="nav-button" type="button" data-view="chess">Chess</button>
-          <button class="nav-button" type="button" data-view="games">Games</button>
-          <button class="nav-button" type="button" data-view="browser">Browser</button>
           <button class="nav-button" type="button" data-view="voice">Voice</button>
           <button class="nav-button" type="button" data-view="screen">Screen</button>
           <button id="adminNavButton" class="nav-button owner-only hidden" type="button" data-view="admin">Admin</button>
@@ -128,6 +124,13 @@
             </div>
           </div>
           <div id="dashboardAnnouncementList" class="announcement-list"></div>
+          <div id="phoneInstallGuide" class="phone-guide status-panel">
+            <div>
+              <h3>Put Inner on your phone</h3>
+              <p class="panel-note">iPhone: open Inner in Safari, tap Share, then Add to Home Screen. Android: open Inner in Chrome, tap Install app or Add to Home screen. Keep location allowed for account requests and live server allocation.</p>
+            </div>
+            <button id="phoneInstallGuideButton" class="secondary-button compact-button" type="button">Install app</button>
+          </div>
           <div id="dashboardGrid" class="file-grid"></div>
           <div class="settings-grid">
             <div class="status-panel"><h3>Online</h3><div id="presenceList" class="account-list"></div></div>
@@ -249,7 +252,7 @@
             <label>Badges<input id="profileBadges" maxlength="180" placeholder="Helpful, Funny, Supportive" autocomplete="off" /></label>
             <label>Status<select id="profileStatus"><option value="online">Online</option><option value="idle">Idle</option><option value="busy">Busy</option><option value="invisible">Invisible</option></select></label>
             <label>Custom status<input id="profileCustomStatus" maxlength="80" autocomplete="off" /></label>
-            <label>Theme<select id="profileTheme"><option value="system">System</option><option value="midnight">Dark mode</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option></select></label>
+            <label>Theme<select id="profileTheme"><option value="system">System</option><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option></select></label>
             <label>Bio<textarea id="profileBio" rows="4" maxlength="500"></textarea></label>
             <label class="switch-row"><input id="profileInvisible" type="checkbox" /><span>Invisible mode</span></label>
             <button id="saveProfileButton" class="primary-button" type="submit">Save profile</button>
@@ -295,7 +298,6 @@
             </div>
           </div>
           <p class="panel-note">Use Open ChessVerse or Continue signup for accounts. Browser security can block third-party signup cookies inside embedded apps.</p>
-          <p class="panel-note">Powered by ChessVerse</p>
           <iframe
             id="chessFrame"
             class="embedded-app-frame"
@@ -304,36 +306,6 @@
             allow="fullscreen; clipboard-read; clipboard-write; autoplay; gamepad"
             referrerpolicy="strict-origin-when-cross-origin"
           ></iframe>
-        </section>
-
-        <section id="gamesView" class="view">
-          <div class="section-header">
-            <div>
-              <h2>Games</h2>
-              <p>Apps and links your account can open</p>
-            </div>
-          </div>
-          <div id="appLauncherList" class="file-grid"></div>
-          <div class="status-panel wide-panel">
-            <h3 id="gameFrameTitle">Game viewer</h3>
-            <p id="gameFrameStatus" class="panel-note">Choose an app above to open it inside Inner.</p>
-            <iframe id="gameFrame" class="admin-browser-frame" title="Game viewer"></iframe>
-          </div>
-        </section>
-
-        <section id="browserView" class="view">
-          <div class="section-header">
-            <div>
-              <h2>Browser</h2>
-              <p>Permission-controlled in-app browser</p>
-            </div>
-          </div>
-          <form id="userBrowserForm" class="upload-bar invite-join-bar">
-            <input id="userBrowserUrl" placeholder="https://example.com" autocomplete="off" />
-            <button id="userBrowserOpenButton" class="secondary-button" type="submit">Open</button>
-          </form>
-          <p id="userBrowserStatus" class="inline-status"></p>
-          <iframe id="userBrowserFrame" class="admin-browser-frame" title="In-app browser"></iframe>
         </section>
 
         <section id="storeView" class="view">
@@ -492,6 +464,25 @@
               <p class="panel-note">Use 0 minutes to turn a feature back on.</p>
             </form>
 
+            <form id="featureVisibilityForm" class="panel-form owner-only hidden">
+              <h3>Hidden tabs</h3>
+              <p class="panel-note">Hardcoded owner controls for the admin account. Hidden tabs disappear from member sidebars.</p>
+              <label>Feature<select id="visibilityFeatureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option><option value="store">Store</option><option value="chess">Chess</option></select></label>
+              <label class="switch-row"><input id="visibilityHidden" type="checkbox" /><span>Hide from normal users</span></label>
+              <label>Allowed users<input id="visibilityAllowedUsers" maxlength="300" placeholder="username1, username2" /></label>
+              <button id="saveFeatureVisibilityButton" class="primary-button" type="submit">Save hidden tab</button>
+            </form>
+
+            <form id="paywallForm" class="panel-form owner-only hidden">
+              <h3>Paywall</h3>
+              <p class="panel-note">Choose a Store item as the pass. Mark the user's order paid to unlock the feature.</p>
+              <label>Feature<select id="paywallFeatureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="store">Store</option><option value="chess">Chess</option></select></label>
+              <label>Store item<select id="paywallItemId"></select></label>
+              <label class="switch-row"><input id="paywallEnabled" type="checkbox" /><span>Enable paywall</span></label>
+              <label>Message<input id="paywallMessage" maxlength="220" placeholder="Buy the access pass in Store to unlock this." /></label>
+              <button id="savePaywallButton" class="primary-button" type="submit">Save paywall</button>
+            </form>
+
             <form id="roomForm" class="panel-form owner-only hidden">
               <h3>Side rooms</h3>
               <label>Room name<input id="newRoomName" maxlength="80" placeholder="Study group" /></label>
@@ -502,23 +493,6 @@
               <label class="switch-row"><input id="newRoomPrivate" type="checkbox" /><span>Private room</span></label>
               <label class="switch-row"><input id="newRoomInviteOnly" type="checkbox" /><span>Invite-only</span></label>
               <button id="createRoomButton" class="primary-button" type="submit">Create room</button>
-            </form>
-
-            <form id="featureVisibilityForm" class="panel-form owner-only hidden wide-panel">
-              <h3>Hidden features</h3>
-              <p class="panel-note">Hidden tabs disappear from members. Admin/HMD/dev accounts always override this. Put usernames in Allow users to let specific members see a hidden feature.</p>
-              <div id="featureVisibilityList" class="account-list"></div>
-              <button id="saveFeatureVisibilityButton" class="primary-button" type="submit">Save visibility</button>
-            </form>
-
-            <form id="appManagerForm" class="panel-form owner-only hidden wide-panel">
-              <h3>App launcher</h3>
-              <p class="panel-note">Custom app links show in the Games tab. Leave Visible users blank for everyone, or add usernames separated by commas.</p>
-              <label>Name<input id="appLinkName" maxlength="80" placeholder="ChessVerse" /></label>
-              <label>URL<input id="appLinkUrl" maxlength="300" placeholder="https://example.com" /></label>
-              <label>Visible users<input id="appLinkUsers" maxlength="500" placeholder="dev, yash, admin" /></label>
-              <button id="addAppLinkButton" class="primary-button" type="submit">Add app link</button>
-              <div id="appManagerList" class="account-list"></div>
             </form>
 
             <form id="quickEditForm" class="panel-form owner-only hidden wide-panel">
@@ -579,6 +553,8 @@
             </form>
 
             <div class="status-panel owner-only hidden"><h3>Active locks</h3><div id="featureLockList" class="account-list"></div></div>
+            <div class="status-panel owner-only hidden"><h3>Hidden feature rules</h3><div id="featureVisibilityList" class="account-list"></div></div>
+            <div class="status-panel owner-only hidden"><h3>Paywall rules</h3><div id="paywallList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden"><h3>Room manager</h3><div id="roomManagerList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Announcement history</h3><div id="announcementList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Monitored DMs</h3><label class="compact-label">Filter<select id="adminDmFilter"></select></label><div id="adminDmList" class="message-list compact-list"></div></div>
@@ -589,6 +565,7 @@
             <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>Backups</h3><button id="createBackupButton" class="secondary-button compact-button" type="button">Create backup</button></div><p class="panel-note">Backups save account data, messages, DMs, settings, and file records. Uploaded file contents stay in the data/uploads folder.</p><div id="backupList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Account requests</h3><p class="panel-note">Requests include browser location because users must turn on location for server allocation.</p><div id="accountRequestList" class="account-list"></div></div>
             <div id="accountManager" class="status-panel account-manager owner-only hidden"><div class="panel-title-row"><h3>Accounts</h3><input id="accountSearchInput" class="compact-search" maxlength="80" placeholder="Search account" autocomplete="off" /></div><div id="accountList" class="account-list"></div></div>
+            <div class="status-panel owner-only hidden wide-panel"><h3>Live IP tracking</h3><p class="panel-note">Shows active sessions first, then latest login/IP data for accounts.</p><div id="liveIpList" class="account-list compact-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Reports</h3><div id="reportList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>Moderation logs</h3><button id="exportModerationLogsButton" class="secondary-button compact-button" type="button">Export</button></div><div id="moderationLogList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>Wipe utilities</h3></div><div class="button-row"><button id="wipeLogsButton" class="danger-button compact-button" type="button">Wipe logs</button><button id="wipeReportsButton" class="danger-button compact-button" type="button">Clear reports</button><button id="wipeUploadsButton" class="danger-button compact-button" type="button">Clear uploads</button><button id="wipeRoomsButton" class="danger-button compact-button" type="button">Reset rooms</button></div><p class="panel-note">Room reset creates a backup first.</p></div>

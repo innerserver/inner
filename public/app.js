@@ -27,11 +27,11 @@ const state = {
   profiles: {},
   friends: { friends: [], incoming: [], outgoing: [] },
   invites: [],
-  appLinks: [],
   reports: [],
   readReceipts: {},
   moderationLogs: [],
   logs: [],
+  liveIpTracking: [],
   dev: null,
   presence: [],
   voiceRooms: [],
@@ -98,8 +98,6 @@ const viewRoutes = {
   store: "/store",
   files: "/files",
   chess: "/chess",
-  games: "/games",
-  browser: "/browser",
   voice: "/voice",
   screen: "/screen",
   admin: "/admin",
@@ -128,8 +126,7 @@ function cacheElements() {
     "accountRequestForm",
     "requestUsername",
     "requestDisplayName",
-    "requestEmail",
-    "requestPhone",
+    "requestContact",
     "requestPassword",
     "requestNote",
     "submitAccountRequestButton",
@@ -137,8 +134,7 @@ function cacheElements() {
     "signupForm",
     "signupUsername",
     "signupDisplayName",
-    "signupEmail",
-    "signupPhone",
+    "signupContact",
     "signupPassword",
     "signupButton",
     "signupStatus",
@@ -157,6 +153,8 @@ function cacheElements() {
     "dashboardState",
     "dashboardGrid",
     "dashboardAnnouncementList",
+    "phoneInstallGuide",
+    "phoneInstallGuideButton",
     "presenceList",
     "mentionList",
     "messagesView",
@@ -169,17 +167,6 @@ function cacheElements() {
     "chessFrame",
     "openChessButton",
     "continueChessButton",
-    "gamesView",
-    "appLauncherList",
-    "gameFrameTitle",
-    "gameFrameStatus",
-    "gameFrame",
-    "browserView",
-    "userBrowserForm",
-    "userBrowserUrl",
-    "userBrowserOpenButton",
-    "userBrowserStatus",
-    "userBrowserFrame",
     "voiceView",
     "screenView",
     "adminView",
@@ -319,14 +306,18 @@ function cacheElements() {
     "saveFeatureLockButton",
     "featureLockList",
     "featureVisibilityForm",
-    "featureVisibilityList",
+    "visibilityFeatureName",
+    "visibilityHidden",
+    "visibilityAllowedUsers",
     "saveFeatureVisibilityButton",
-    "appManagerForm",
-    "appLinkName",
-    "appLinkUrl",
-    "appLinkUsers",
-    "addAppLinkButton",
-    "appManagerList",
+    "featureVisibilityList",
+    "paywallForm",
+    "paywallFeatureName",
+    "paywallItemId",
+    "paywallEnabled",
+    "paywallMessage",
+    "savePaywallButton",
+    "paywallList",
     "quickEditForm",
     "quickAppName",
     "quickNotice",
@@ -383,6 +374,7 @@ function cacheElements() {
     "createBackupButton",
     "backupList",
     "accountRequestList",
+    "liveIpList",
     "reportList",
     "exportModerationLogsButton",
     "moderationLogList",
@@ -520,9 +512,10 @@ function bindEvents() {
     renderUsers();
   });
   els.featureLockForm.addEventListener("submit", saveFeatureLock);
-  els.featureVisibilityForm.addEventListener("submit", saveFeatureVisibility);
-  els.appManagerForm.addEventListener("submit", addAppLink);
-  els.userBrowserForm.addEventListener("submit", openUserBrowser);
+  if (els.featureVisibilityForm) els.featureVisibilityForm.addEventListener("submit", saveFeatureVisibility);
+  if (els.visibilityFeatureName) els.visibilityFeatureName.addEventListener("change", renderFeatureVisibility);
+  if (els.paywallForm) els.paywallForm.addEventListener("submit", savePaywall);
+  if (els.paywallFeatureName) els.paywallFeatureName.addEventListener("change", renderPaywalls);
   els.quickEditForm.addEventListener("submit", saveQuickEdit);
   els.announcementForm.addEventListener("submit", sendAnnouncement);
   els.announcementScope.addEventListener("change", renderAnnouncements);
@@ -562,6 +555,7 @@ function bindEvents() {
   els.wipeRoomsButton.addEventListener("click", () => wipeUtility("rooms"));
   els.notificationsButton.addEventListener("click", handleNotifications);
   els.installButton.addEventListener("click", installApp);
+  if (els.phoneInstallGuideButton) els.phoneInstallGuideButton.addEventListener("click", installApp);
 
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.addEventListener("click", () => showView(button.dataset.view));
@@ -627,8 +621,7 @@ async function submitAccountRequest(event) {
       json: {
         username: els.requestUsername.value.trim(),
         displayName: els.requestDisplayName.value.trim(),
-        email: els.requestEmail.value.trim(),
-        phone: els.requestPhone.value.trim(),
+        contact: els.requestContact.value.trim(),
         password: els.requestPassword.value,
         note: els.requestNote.value.trim(),
         location,
@@ -656,8 +649,7 @@ async function handleSignup(event) {
       json: {
         username: els.signupUsername.value.trim(),
         displayName: els.signupDisplayName.value.trim(),
-        email: els.signupEmail.value.trim(),
-        phone: els.signupPhone.value.trim(),
+        contact: els.signupContact.value.trim(),
         password: els.signupPassword.value,
         location,
       },
@@ -751,11 +743,11 @@ async function loadState() {
   state.profiles = data.profiles || {};
   state.friends = data.friends || { friends: [], incoming: [], outgoing: [] };
   state.invites = data.invites || [];
-  state.appLinks = Array.isArray(state.settings.appLinks) ? state.settings.appLinks : [];
   state.reports = data.reports || [];
   state.readReceipts = data.readReceipts || {};
   state.moderationLogs = data.moderationLogs || [];
   state.logs = data.logs || [];
+  state.liveIpTracking = data.liveIpTracking || [];
   state.dev = data.dev || null;
   state.presence = data.presence || [];
   state.voiceRooms = data.voiceRooms || [];
@@ -800,7 +792,11 @@ function showView(viewName, options = {}) {
   if (!viewRoutes[viewName]) viewName = "dashboard";
   if (viewName === "admin" && !isOwner()) viewName = "dashboard";
   if (viewName === "hmd" && !isDev()) viewName = "dashboard";
-  if (!canSeeFeature(viewName)) viewName = "dashboard";
+  const feature = viewFeature(viewName);
+  if (feature && !featureAvailable(feature)) {
+    notify(lockMessage(feature) || `${featureLabel(feature)} is not available for this account`);
+    viewName = "dashboard";
+  }
   state.activeView = viewName;
   saveUiState();
   if (options.updateHistory !== false) updateRoute(viewName);
@@ -1124,8 +1120,6 @@ function serverSettingsPayload(extra = {}) {
     requireContact: els.requireContact.checked,
     reportEmails: els.reportEmails.value.split(",").map((entry) => entry.trim()).filter(Boolean),
     chessUrl: normalizeExternalUrl(els.chessUrlInput ? els.chessUrlInput.value : ""),
-    featureVisibility: state.settings.featureVisibility || {},
-    appLinks: state.settings.appLinks || [],
     ...extra,
   };
 }
@@ -1142,7 +1136,7 @@ async function sendTestEmail() {
     const data = await api("/api/email/test", { method: "POST" });
     state.emailStatus = data.email || state.emailStatus;
     renderEmailStatus();
-    const provider = data.email && data.email.providers && data.email.providers.resend ? "Resend" : "email provider";
+    const provider = data.email && data.email.providers && data.email.providers.brevo ? "Brevo" : "email provider";
     notify(`Test email sent with ${provider}`);
   } catch (error) {
     refreshEmailStatus().catch(() => {});
@@ -1377,6 +1371,61 @@ async function saveFeatureLock(event) {
   }
 }
 
+async function saveFeatureVisibility(event) {
+  event.preventDefault();
+  if (!isOwner()) return notify("Hardcoded admin owner access required");
+  const feature = els.visibilityFeatureName.value;
+  const nextVisibility = {
+    ...(state.settings.featureVisibility || {}),
+    [feature]: {
+      hidden: els.visibilityHidden.checked,
+      allowedUsers: splitUserList(els.visibilityAllowedUsers.value),
+    },
+  };
+  try {
+    const data = await api("/api/settings", {
+      method: "POST",
+      json: {
+        ...serverSettingsPayload(),
+        featureVisibility: nextVisibility,
+      },
+    });
+    state.settings = data.settings || state.settings;
+    renderAll();
+    notify("Hidden tab rule saved");
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function savePaywall(event) {
+  event.preventDefault();
+  if (!isOwner()) return notify("Hardcoded admin owner access required");
+  const feature = els.paywallFeatureName.value;
+  const nextPaywalls = {
+    ...(state.settings.paywalls || {}),
+    [feature]: {
+      enabled: els.paywallEnabled.checked,
+      itemId: els.paywallItemId.value,
+      message: els.paywallMessage.value,
+    },
+  };
+  try {
+    const data = await api("/api/settings", {
+      method: "POST",
+      json: {
+        ...serverSettingsPayload(),
+        paywalls: nextPaywalls,
+      },
+    });
+    state.settings = data.settings || state.settings;
+    renderAll();
+    notify("Paywall saved");
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
 async function createRoom(event) {
   event.preventDefault();
   if (!isOwner()) return notify("Admin access required");
@@ -1406,80 +1455,6 @@ async function createRoom(event) {
     renderMessages();
     renderRoomManager();
     notify("Room created");
-  } catch (error) {
-    notify(error.message);
-  }
-}
-
-async function saveFeatureVisibility(event) {
-  event.preventDefault();
-  if (!isOwner()) return notify("Admin access required");
-  const featureVisibility = {};
-  els.featureVisibilityList.querySelectorAll("[data-feature-row]").forEach((row) => {
-    const feature = row.dataset.featureRow;
-    featureVisibility[feature] = {
-      hidden: row.querySelector("[data-feature-hidden]").checked,
-      allowedUsers: row.querySelector("[data-feature-users]").value.split(",").map((entry) => entry.trim()).filter(Boolean),
-    };
-  });
-  try {
-    const data = await api("/api/settings", {
-      method: "POST",
-      json: serverSettingsPayload({ featureVisibility }),
-    });
-    state.settings = data.settings || state.settings;
-    renderAll();
-    notify("Feature visibility saved");
-  } catch (error) {
-    notify(error.message);
-  }
-}
-
-async function addAppLink(event) {
-  event.preventDefault();
-  if (!isOwner()) return notify("Admin access required");
-  const url = normalizeExternalUrl(els.appLinkUrl.value);
-  const name = els.appLinkName.value.trim();
-  if (!name || !url) return notify("Add an app name and valid URL");
-  const appLinks = [
-    ...(state.settings.appLinks || []),
-    {
-      id: cryptoId(),
-      name,
-      url,
-      visibleTo: els.appLinkUsers.value.split(",").map((entry) => entry.trim()).filter(Boolean),
-      active: true,
-    },
-  ];
-  try {
-    const data = await api("/api/settings", {
-      method: "POST",
-      json: serverSettingsPayload({ appLinks }),
-    });
-    state.settings = data.settings || state.settings;
-    state.appLinks = state.settings.appLinks || [];
-    els.appLinkName.value = "";
-    els.appLinkUrl.value = "";
-    els.appLinkUsers.value = "";
-    renderAll();
-    notify("App link added");
-  } catch (error) {
-    notify(error.message);
-  }
-}
-
-async function deleteAppLink(id) {
-  if (!isOwner()) return notify("Admin access required");
-  const appLinks = (state.settings.appLinks || []).filter((entry) => entry.id !== id);
-  try {
-    const data = await api("/api/settings", {
-      method: "POST",
-      json: serverSettingsPayload({ appLinks }),
-    });
-    state.settings = data.settings || state.settings;
-    state.appLinks = state.settings.appLinks || [];
-    renderAll();
-    notify("App link removed");
   } catch (error) {
     notify(error.message);
   }
@@ -1775,15 +1750,6 @@ function openAdminBrowserNewTab() {
   if (els.adminBrowserStatus) {
     els.adminBrowserStatus.textContent = "Opened in a full tab. This is required for sites that block embedded browsers.";
   }
-}
-
-function openUserBrowser(event) {
-  event.preventDefault();
-  if (!canSeeFeature("browser")) return notify("Browser access is not enabled for your account");
-  const url = normalizeAdminBrowserUrl(els.userBrowserUrl.value);
-  if (!url) return notify("Enter a valid http or https URL");
-  els.userBrowserFrame.src = `/api/browser/frame?url=${encodeURIComponent(url)}`;
-  els.userBrowserStatus.textContent = "Opening inside Inner. Login-heavy sites may still need a full browser tab.";
 }
 
 async function createBackup() {
@@ -2933,7 +2899,6 @@ function renderAll() {
   renderFriends();
   renderProfile();
   renderStore();
-  renderAppLauncher();
   renderFiles();
   renderVoice();
   renderScreen();
@@ -2944,7 +2909,7 @@ function renderAll() {
   renderUsers();
   renderFeatureLocks();
   renderFeatureVisibility();
-  renderAppManager();
+  renderPaywalls();
   renderRoomManager();
   renderAnnouncements();
   renderServiceScale();
@@ -2955,6 +2920,7 @@ function renderAll() {
   renderBackups();
   renderAdminAutomod();
   renderAccountRequests();
+  renderLiveIpTracking();
   renderReports();
   renderLogs();
   renderHmd();
@@ -2977,27 +2943,10 @@ function renderShell() {
   document.querySelectorAll(".dev-only").forEach((element) => {
     element.classList.toggle("hidden", !isDev());
   });
-  applyFeatureVisibility();
+  syncHiddenNav();
   updateNotificationButton();
   if (!isOwner() && state.activeView === "admin") showView("dashboard");
   if (!isDev() && state.activeView === "hmd") showView("dashboard");
-  if (!canSeeFeature(state.activeView)) showView("dashboard");
-}
-
-function canSeeFeature(feature) {
-  if (!feature || isOwner()) return true;
-  const config = (state.settings.featureVisibility || {})[feature];
-  if (!config || !config.hidden) return true;
-  const username = state.user && state.user.username;
-  return Array.isArray(config.allowedUsers) && config.allowedUsers.includes(username);
-}
-
-function applyFeatureVisibility() {
-  document.querySelectorAll(".nav-button[data-view]").forEach((button) => {
-    const view = button.dataset.view;
-    const roleHidden = (view === "admin" && !isOwner()) || (view === "hmd" && !isDev());
-    button.classList.toggle("hidden-by-permission", roleHidden || !canSeeFeature(view));
-  });
 }
 
 function renderDashboard() {
@@ -3719,52 +3668,6 @@ function renderStore() {
   renderOrders(els.orderList, state.store.orders || [], false);
 }
 
-function renderAppLauncher() {
-  if (!els.appLauncherList) return;
-  els.appLauncherList.replaceChildren();
-  const links = visibleAppLinks();
-  if (!links.length) {
-    els.appLauncherList.append(emptyBlock("No apps available for this account"));
-    return;
-  }
-  links.forEach((app) => {
-    const card = document.createElement("article");
-    card.className = "file-card";
-    const header = document.createElement("header");
-    const title = document.createElement("h3");
-    title.textContent = app.name;
-    const tag = document.createElement("span");
-    tag.className = "tag";
-    tag.textContent = app.visibleTo && app.visibleTo.length ? "Limited" : "Everyone";
-    header.append(title, tag);
-    const meta = document.createElement("div");
-    meta.className = "file-meta";
-    meta.append(textNode(app.url));
-    if (app.description) meta.append(textNode(app.description));
-    const actions = document.createElement("div");
-    actions.className = "file-actions";
-    actions.append(accountButton("Open inside", () => openAppInside(app)));
-    actions.append(accountButton("Full tab", () => window.open(app.url, "_blank", "noopener")));
-    card.append(header, meta, actions);
-    els.appLauncherList.append(card);
-  });
-}
-
-function openAppInside(app) {
-  if (!els.gameFrame) return window.open(app.url, "_blank", "noopener");
-  showView("games");
-  els.gameFrameTitle.textContent = app.name || "Game viewer";
-  els.gameFrameStatus.textContent = "Opening inside Inner. If a site refuses embedding, use Full tab.";
-  els.gameFrame.src = `/api/browser/frame?url=${encodeURIComponent(app.url)}`;
-}
-
-function visibleAppLinks() {
-  const username = state.user && state.user.username;
-  return (state.settings.appLinks || [])
-    .filter((app) => app && app.active !== false)
-    .filter((app) => isOwner() || !Array.isArray(app.visibleTo) || !app.visibleTo.length || app.visibleTo.includes(username));
-}
-
 function createFilePreview(file) {
   if (file.kind === "image") {
     const image = document.createElement("img");
@@ -4038,7 +3941,7 @@ function renderEmailStatus() {
     return;
   }
   if (!enabledProviders.length) {
-    els.emailStatusText.textContent = "Email alerts need RESEND_API_KEY in Render. SMTP or webhook can be used as fallback.";
+    els.emailStatusText.textContent = "Email alerts need SMTP settings, BREVO_API_KEY, RESEND_API_KEY, SENDGRID_API_KEY, or INNER_EMAIL_WEBHOOK_URL in Render.";
     return;
   }
   els.emailStatusText.textContent = `Email alerts: ${enabledProviders.join(", ")} configured. Sending from ${from} to ${recipients.join(", ")}.`;
@@ -4116,24 +4019,13 @@ function renderUsers() {
     const meta = document.createElement("div");
     meta.className = "account-meta";
     meta.append(textNode(`Access ${user.role}`));
+    meta.append(textNode(`Persistent login ${user.allowPersistentLogin ? "allowed" : "off"}`));
+    meta.append(textNode(`Created ${formatDate(user.createdAt) || "-"}`));
+    if (user.createdBy) meta.append(textNode(`By ${user.createdBy}`));
+    if (user.lastLoginAt) meta.append(textNode(`Last login ${formatDate(user.lastLoginAt)}`));
+    if (user.lastLoginIp) meta.append(textNode(`From ${user.lastLoginIp}`));
     if (user.bannedUntil) meta.append(textNode(`Ban until ${formatDate(user.bannedUntil)}`));
-
-    const details = document.createElement("div");
-    details.className = "account-meta account-details hidden";
-    details.append(textNode(`Username ${user.username}`));
-    details.append(textNode(`Role ${user.role}`));
-    details.append(textNode(`Email ${user.email || "not provided"}`));
-    details.append(textNode(`Phone ${user.phone || "not provided"}`));
-    details.append(textNode(`Contact ${user.contact || "not provided"}`));
-    details.append(textNode(`Persistent login ${user.allowPersistentLogin ? "allowed" : "off"}`));
-    details.append(textNode(`Created ${formatDate(user.createdAt) || "-"}`));
-    if (user.createdBy) details.append(textNode(`Created by ${user.createdBy}`));
-    if (user.lastLoginAt) details.append(textNode(`Last login ${formatDate(user.lastLoginAt)}`));
-    if (user.lastLoginIp) details.append(textNode(`Last IP ${user.lastLoginIp}`));
-    if (user.lastLoginDevice) details.append(textNode(`Last device ${user.lastLoginDevice}`));
-    if (user.sourceIp) details.append(textNode(`Signup IP ${user.sourceIp}`));
-    if (user.sourceDevice) details.append(textNode(`Signup device ${user.sourceDevice}`));
-    if (user.banReason) details.append(textNode(`Ban reason ${user.banReason}`));
+    if (user.banReason) meta.append(textNode(user.banReason));
 
     const actions = document.createElement("div");
     actions.className = "account-actions";
@@ -4144,10 +4036,6 @@ function renderUsers() {
     const persistentButton = accountButton(user.allowPersistentLogin ? "Disable persistent" : "Allow persistent", () =>
       updateUser(user.username, { allowPersistentLogin: !user.allowPersistentLogin })
     );
-    const detailsButton = accountButton("Account details", () => {
-      details.classList.toggle("hidden");
-      detailsButton.textContent = details.classList.contains("hidden") ? "Account details" : "Hide details";
-    });
     const banShort = accountButton("Ban 15m", () => banUser(user.username, 15));
     const banHour = accountButton("Ban 1h", () => banUser(user.username, 60));
     const banDay = accountButton("Ban 24h", () => banUser(user.username, 1440));
@@ -4158,9 +4046,9 @@ function renderUsers() {
     banDay.disabled = isMainAdmin;
     unban.disabled = isMainAdmin;
     remove.disabled = isMainAdmin || isCurrentUser;
-    actions.append(detailsButton, roleButton, persistentButton, banShort, banHour, banDay, unban, remove);
+    actions.append(roleButton, persistentButton, banShort, banHour, banDay, unban, remove);
 
-    item.append(head, meta, details, actions);
+    item.append(head, meta, actions);
     els.accountList.append(item);
   });
 }
@@ -4195,6 +4083,60 @@ function renderFeatureLocks() {
     const unlock = accountButton("Unlock", () => quickFeatureUnlock(feature));
     item.append(head, meta, unlock);
     els.featureLockList.append(item);
+  });
+}
+
+function renderFeatureVisibility() {
+  if (!els.featureVisibilityList || !isOwner()) return;
+  const feature = els.visibilityFeatureName ? els.visibilityFeatureName.value || "messages" : "messages";
+  const rules = state.settings.featureVisibility || {};
+  const current = rules[feature] || { hidden: false, allowedUsers: [] };
+  if (els.visibilityHidden) els.visibilityHidden.checked = Boolean(current.hidden);
+  if (els.visibilityAllowedUsers && document.activeElement !== els.visibilityAllowedUsers) {
+    els.visibilityAllowedUsers.value = Array.isArray(current.allowedUsers) ? current.allowedUsers.join(", ") : "";
+  }
+  els.featureVisibilityList.replaceChildren();
+  const visibleRules = Object.entries(rules).filter(([, rule]) => rule && (rule.hidden || (rule.allowedUsers || []).length));
+  if (!visibleRules.length) {
+    els.featureVisibilityList.append(emptyBlock("No hidden tab rules"));
+    return;
+  }
+  visibleRules.forEach(([name, rule]) => {
+    els.featureVisibilityList.append(adminCard(featureLabel(name), rule.hidden ? "Hidden" : "Visible", [
+      (rule.allowedUsers || []).length ? `Allowed: ${(rule.allowedUsers || []).join(", ")}` : "No allowed users",
+    ]));
+  });
+}
+
+function renderPaywalls() {
+  if (!els.paywallList || !isOwner()) return;
+  const items = state.store.items || [];
+  if (els.paywallItemId) {
+    const previous = els.paywallItemId.value;
+    els.paywallItemId.replaceChildren(
+      optionElement("", "Choose a Store item"),
+      ...items.map((item) => optionElement(item.id, `${item.name} - ${formatMoney(item.priceCents, item.currency)}`))
+    );
+    els.paywallItemId.value = previous;
+  }
+  const feature = els.paywallFeatureName ? els.paywallFeatureName.value || "messages" : "messages";
+  const rules = state.settings.paywalls || {};
+  const current = rules[feature] || { enabled: false, itemId: "", message: "" };
+  if (els.paywallEnabled) els.paywallEnabled.checked = Boolean(current.enabled);
+  if (els.paywallItemId && current.itemId) els.paywallItemId.value = current.itemId;
+  if (els.paywallMessage && document.activeElement !== els.paywallMessage) els.paywallMessage.value = current.message || "";
+  els.paywallList.replaceChildren();
+  const visibleRules = Object.entries(rules).filter(([, rule]) => rule && (rule.enabled || rule.itemId));
+  if (!visibleRules.length) {
+    els.paywallList.append(emptyBlock("No paywalls"));
+    return;
+  }
+  visibleRules.forEach(([name, rule]) => {
+    const item = items.find((entry) => entry.id === rule.itemId);
+    els.paywallList.append(adminCard(featureLabel(name), rule.enabled ? "Enabled" : "Off", [
+      item ? `Pass: ${item.name}` : "No Store item selected",
+      rule.message || "",
+    ].filter(Boolean)));
   });
 }
 
@@ -4238,66 +4180,6 @@ function renderRoomManager() {
 
     item.append(head, meta, actions);
     els.roomManagerList.append(item);
-  });
-}
-
-function renderFeatureVisibility() {
-  if (!els.featureVisibilityForm || !els.featureVisibilityList) return;
-  const admin = isOwner();
-  els.featureVisibilityForm.classList.toggle("hidden", !admin);
-  if (!admin) return;
-  const features = ["messages", "dms", "friends", "profile", "store", "files", "chess", "games", "browser", "voice", "screen"];
-  const labels = { dms: "DMs", profile: "Profile" };
-  els.featureVisibilityList.replaceChildren();
-  features.forEach((feature) => {
-    const config = (state.settings.featureVisibility || {})[feature] || {};
-    const card = document.createElement("article");
-    card.className = "account-card";
-    card.dataset.featureRow = feature;
-    const head = document.createElement("div");
-    head.className = "account-head";
-    const title = document.createElement("strong");
-    title.textContent = labels[feature] || featureLabel(feature);
-    const badge = document.createElement("span");
-    badge.className = "tag";
-    badge.textContent = config.hidden ? "Hidden" : "Visible";
-    head.append(title, badge);
-    const hiddenLabel = document.createElement("label");
-    hiddenLabel.className = "switch-row";
-    hiddenLabel.innerHTML = `<input data-feature-hidden type="checkbox" ${config.hidden ? "checked" : ""} /><span>Hide from members</span>`;
-    const usersLabel = document.createElement("label");
-    usersLabel.textContent = "Allow users";
-    const users = document.createElement("input");
-    users.dataset.featureUsers = "true";
-    users.placeholder = "user1, user2";
-    users.value = Array.isArray(config.allowedUsers) ? config.allowedUsers.join(", ") : "";
-    usersLabel.append(users);
-    card.append(head, hiddenLabel, usersLabel);
-    els.featureVisibilityList.append(card);
-  });
-}
-
-function renderAppManager() {
-  if (!els.appManagerForm || !els.appManagerList) return;
-  const admin = isOwner();
-  els.appManagerForm.classList.toggle("hidden", !admin);
-  if (!admin) return;
-  els.appManagerList.replaceChildren();
-  const links = state.settings.appLinks || [];
-  if (!links.length) {
-    els.appManagerList.append(emptyBlock("No custom app links"));
-    return;
-  }
-  links.forEach((app) => {
-    const card = adminCard(app.name, app.visibleTo && app.visibleTo.length ? `Only ${app.visibleTo.join(", ")}` : "Everyone", [
-      app.url,
-      app.active === false ? "Disabled" : "Active",
-    ]);
-    const actions = document.createElement("div");
-    actions.className = "account-actions";
-    actions.append(accountButton("Delete", () => deleteAppLink(app.id)));
-    card.append(actions);
-    els.appManagerList.append(card);
   });
 }
 
@@ -4492,8 +4374,6 @@ function renderAccountRequests() {
     const card = adminCard(request.username, status, [
       request.displayName ? `Name ${request.displayName}` : "",
       request.contact ? `Contact ${request.contact}` : "",
-      request.email ? `Email ${request.email}` : "",
-      request.phone ? `Phone ${request.phone}` : "",
       request.note,
       `Location ${location}`,
       request.sourceIp ? `From ${request.sourceIp}` : "",
@@ -4515,23 +4395,26 @@ function renderAccountRequests() {
 function renderReports() {
   if (els.reportList && isOwner()) {
     els.reportList.replaceChildren();
-    if (!state.reports.length) {
+    const activeReports = (state.reports || []).filter((report) => !["done", "closed", "resolved", "dismissed"].includes(String(report.status || "").toLowerCase()));
+    if (!activeReports.length) {
       els.reportList.append(emptyBlock("No reports"));
     } else {
-      state.reports.filter((report) => !["done", "closed", "resolved", "dismissed"].includes(report.status)).slice(0, 100).forEach((report) => {
+      activeReports.slice(0, 100).forEach((report) => {
         const card = adminCard(`${report.targetType} ${report.targetId}`, report.status, [
           `Reported by ${report.reporter}`,
           contactLine("Reporter", report.reporterContact),
-          report.targetSender ? `Sender: ${report.targetSender}` : "Sender: unknown",
+          report.targetSender ? `Message from ${report.targetSender}` : "Message sender unknown",
           contactLine("Sender", report.targetSenderContact),
-          report.targetText ? `Reported message: ${report.targetText}` : "Reported message not found",
+          report.targetText ? `Message: ${report.targetText}` : "Message text unavailable",
           report.reason,
           formatDate(report.createdAt),
         ]);
         const actions = document.createElement("div");
         actions.className = "account-actions";
-        actions.append(accountButton("Mark seen", () => updateReport(report.id, "seen")));
-        actions.append(accountButton("Done", () => updateReport(report.id, "done")));
+        actions.append(
+          accountButton("Mark seen", () => updateReport(report.id, "reviewing")),
+          accountButton("Done", () => updateReport(report.id, "done"))
+        );
         card.append(actions);
         els.reportList.append(card);
       });
@@ -4557,29 +4440,44 @@ function renderReports() {
   }
 }
 
+function renderLiveIpTracking() {
+  if (!els.liveIpList || !isOwner()) return;
+  els.liveIpList.replaceChildren();
+  const rows = state.liveIpTracking || [];
+  if (!rows.length) {
+    els.liveIpList.append(emptyBlock("No IP activity yet"));
+    return;
+  }
+  rows.slice(0, 120).forEach((row) => {
+    const title = `${row.username || "unknown"}${row.live ? " live" : ""}`;
+    els.liveIpList.append(adminCard(title, row.role || "member", [
+      row.ip ? `IP ${row.ip}` : "IP unknown",
+      row.device ? `Device ${row.device}` : "",
+      row.approximateLocation ? `Approx ${row.approximateLocation.note || row.approximateLocation.ip || JSON.stringify(row.approximateLocation)}` : "",
+      row.lastSeenAt ? `Last seen ${formatDate(row.lastSeenAt)}` : "",
+      row.source ? `Source ${row.source}` : "",
+    ].filter(Boolean)));
+  });
+}
+
 async function updateReport(id, status) {
-  if (!isOwner()) return notify("Admin access required");
   try {
     const data = await api("/api/reports/update", {
       method: "POST",
       json: { id, status },
     });
-    state.reports = data.reports || state.reports;
+    state.reports = data.reports || [];
     renderReports();
-    notify(status === "seen" ? "Report marked seen" : "Report updated");
+    notify(status === "done" ? "Report removed" : "Report updated");
   } catch (error) {
     notify(error.message);
   }
 }
 
 function contactLine(label, contact) {
-  if (!contact) return `${label} contact: not available`;
-  const parts = [
-    contact.email ? `email ${contact.email}` : "",
-    contact.phone ? `phone ${contact.phone}` : "",
-    contact.contact && contact.contact !== [contact.email, contact.phone].filter(Boolean).join(" / ") ? `contact ${contact.contact}` : "",
-  ].filter(Boolean);
-  return `${label} contact: ${parts.length ? parts.join(", ") : "not provided"}`;
+  if (!contact || typeof contact !== "object") return "";
+  const parts = [contact.email, contact.phone, contact.contact].filter(Boolean);
+  return parts.length ? `${label} contact: ${parts.join(" / ")}` : "";
 }
 
 function renderLogs() {
@@ -5238,7 +5136,8 @@ async function updateAccountRequest(id, status) {
 
 async function approveAccountRequest(id, username) {
   if (!isOwner()) return notify("Admin access required");
-  const password = window.prompt(`Optional: override password for ${username}. Leave blank to use the password they requested with.`) || "";
+  const password = window.prompt(`Set a password for ${username}`);
+  if (!password) return;
   try {
     const data = await api("/api/account-requests/approve", {
       method: "POST",
@@ -5535,13 +5434,27 @@ function featureLock(feature) {
 }
 
 function featureAvailable(feature) {
-  return isOwner() || (canSeeFeature(feature) && !featureLock(feature));
+  if (isOwner()) return true;
+  const hidden = hiddenRule(feature);
+  if (hidden.hidden && !hidden.allowedUsers.includes((state.user && state.user.username || "").toLowerCase())) return false;
+  if (featureLock(feature)) return false;
+  const paywall = paywallRule(feature);
+  if (paywall.enabled && paywall.itemId && !hasPaidOrder(paywall.itemId)) return false;
+  return true;
 }
 
 function lockMessage(feature) {
+  const hidden = hiddenRule(feature);
+  if (!isOwner() && hidden.hidden && !hidden.allowedUsers.includes((state.user && state.user.username || "").toLowerCase())) {
+    return `${featureLabel(feature)} is hidden for your account`;
+  }
   const lock = featureLock(feature);
-  if (!lock) return "";
-  return `${featureLabel(feature)} disabled until ${formatDate(lock.disabledUntil)}`;
+  if (lock) return `${featureLabel(feature)} disabled until ${formatDate(lock.disabledUntil)}`;
+  const paywall = paywallRule(feature);
+  if (paywall.enabled && paywall.itemId && !hasPaidOrder(paywall.itemId)) {
+    return paywall.message || `${featureLabel(feature)} needs a paid pass from Store`;
+  }
+  return "";
 }
 
 function featureLabel(feature) {
@@ -5552,20 +5465,69 @@ function featureLabel(feature) {
     rooms: "Side rooms",
     screen: "Screen",
     vpn: "VPN",
+    friends: "Friends",
+    profiles: "Profiles",
+    voice: "Voice",
+    invites: "Invites",
+    moderation: "Moderation",
+    bots: "Bots",
+    plugins: "Plugins",
     store: "Store",
     chess: "Chess",
-    games: "Games",
-    browser: "Browser",
-    voice: "Voice",
-    friends: "Friends",
-    profile: "Profile",
   };
   return labels[feature] || feature;
 }
 
-function cryptoId() {
-  if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
-  return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+function viewFeature(viewName) {
+  const map = {
+    messages: "messages",
+    dms: "dms",
+    friends: "friends",
+    profile: "profiles",
+    store: "store",
+    files: "files",
+    chess: "chess",
+    voice: "voice",
+    screen: "screen",
+  };
+  return map[viewName] || "";
+}
+
+function hiddenRule(feature) {
+  const rule = (state.settings.featureVisibility || {})[feature] || {};
+  return {
+    hidden: Boolean(rule.hidden),
+    allowedUsers: Array.isArray(rule.allowedUsers) ? rule.allowedUsers.map((name) => String(name).toLowerCase()) : [],
+  };
+}
+
+function paywallRule(feature) {
+  const rule = (state.settings.paywalls || {})[feature] || {};
+  return {
+    enabled: Boolean(rule.enabled),
+    itemId: String(rule.itemId || ""),
+    message: String(rule.message || ""),
+  };
+}
+
+function hasPaidOrder(itemId) {
+  return (state.store.orders || []).some((order) => order.itemId === itemId && order.user === state.user.username && order.status === "paid");
+}
+
+function splitUserList(value) {
+  return String(value || "")
+    .split(/[,\n]/)
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function syncHiddenNav() {
+  document.querySelectorAll(".nav-button[data-view]").forEach((button) => {
+    const feature = viewFeature(button.dataset.view);
+    const rule = feature ? hiddenRule(feature) : { hidden: false, allowedUsers: [] };
+    const blocked = feature && !isOwner() && rule.hidden && !rule.allowedUsers.includes((state.user && state.user.username || "").toLowerCase());
+    button.classList.toggle("hidden", Boolean(blocked));
+  });
 }
 
 function renderMessageBubble({ mine, title, text, createdAt, sourceIp, attachment, onDelete }) {
@@ -5979,7 +5941,7 @@ async function api(path, options = {}) {
 }
 
 function isOwner() {
-  return state.user && ["owner", "admin", "hmd", "dev"].includes(state.user.role);
+  return state.user && (state.user.owner || state.user.username === "admin");
 }
 
 function isDev() {
@@ -6008,6 +5970,13 @@ function textNode(value) {
   const span = document.createElement("span");
   span.textContent = value;
   return span;
+}
+
+function optionElement(value, label) {
+  const option = document.createElement("option");
+  option.value = value;
+  option.textContent = label;
+  return option;
 }
 
 function formatDate(value) {

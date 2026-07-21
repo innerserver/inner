@@ -160,10 +160,6 @@ select:disabled {
   display: none !important;
 }
 
-.hidden-by-permission {
-  display: none !important;
-}
-
 .login-shell {
   min-height: 100vh;
   display: grid;
@@ -733,6 +729,11 @@ textarea:focus {
   background: var(--ink);
   color: var(--surface);
   font-weight: 900;
+}
+
+.phone-guide {
+  display: none;
+  margin-bottom: 12px;
 }
 
 .soundboard-panel {
@@ -1435,6 +1436,167 @@ select[multiple] {
   }
 
   .file-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  .app {
+    display: block;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    height: auto;
+    max-height: 42vh;
+    padding: 10px 12px;
+    overflow: auto;
+    background: var(--surface);
+  }
+
+  .brand-row {
+    gap: 8px;
+  }
+
+  .brand-row h1 {
+    font-size: 1.05rem;
+  }
+
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+  }
+
+  .nav-list {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+  }
+
+  .nav-button {
+    flex: 0 0 auto;
+    min-height: 38px;
+    padding: 8px 12px;
+    scroll-snap-align: start;
+  }
+
+  .sidebar-footer {
+    display: none;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 45;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--surface);
+  }
+
+  .topbar-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .topbar-metrics span,
+  .topbar-actions button {
+    min-width: 0;
+    padding: 8px;
+    font-size: 0.9rem;
+    text-align: center;
+  }
+
+  .topbar-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .phone-guide {
+    display: grid;
+    gap: 8px;
+  }
+
+  .view {
+    padding: 14px 12px 20px;
+  }
+
+  #messagesView,
+  #dmsView {
+    height: auto;
+    min-height: calc(100svh - 160px);
+    overflow: visible;
+  }
+
+  #messagesView .message-list,
+  #dmsView .message-list {
+    max-height: 52svh;
+    min-height: 220px;
+    padding-bottom: 6px;
+  }
+
+  #dmGroupForm {
+    gap: 8px;
+  }
+
+  .member-picker {
+    max-height: 122px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-content: start;
+  }
+
+  .member-chip {
+    min-width: 0;
+    padding: 6px 8px;
+    font-size: 0.86rem;
+  }
+
+  .member-chip small {
+    display: none;
+  }
+
+  .composer,
+  .upload-bar {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  #messagesView .composer,
+  #dmsView .composer {
+    bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow: 0 -8px 18px rgba(21, 21, 21, 0.08);
+  }
+
+  .composer input[type="file"] {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .jump-bottom-button {
+    right: 14px;
+    bottom: calc(148px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .dm-call-panel,
+  .dm-call-grid,
+  .call-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-grid,
+  .settings-grid {
     grid-template-columns: 1fr;
   }
 }

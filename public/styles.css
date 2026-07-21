@@ -736,6 +736,20 @@ textarea:focus {
   margin-bottom: 12px;
 }
 
+.build-badge {
+  display: inline-flex;
+  width: max-content;
+  margin-top: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
 .soundboard-panel {
   display: flex;
   flex-wrap: wrap;
@@ -1451,13 +1465,13 @@ select[multiple] {
   }
 
   .sidebar {
-    position: sticky;
+    position: relative;
     top: 0;
     z-index: 50;
     height: auto;
-    max-height: 42vh;
+    max-height: none;
     padding: 10px 12px;
-    overflow: auto;
+    overflow: visible;
     background: var(--surface);
   }
 
@@ -1480,6 +1494,7 @@ select[multiple] {
     overflow-x: auto;
     padding-bottom: 4px;
     scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
   }
 
   .nav-button {
@@ -1534,13 +1549,13 @@ select[multiple] {
   #messagesView,
   #dmsView {
     height: auto;
-    min-height: calc(100svh - 160px);
+    min-height: calc(100svh - 120px);
     overflow: visible;
   }
 
   #messagesView .message-list,
   #dmsView .message-list {
-    max-height: 52svh;
+    max-height: 46svh;
     min-height: 220px;
     padding-bottom: 6px;
   }
@@ -1550,7 +1565,7 @@ select[multiple] {
   }
 
   .member-picker {
-    max-height: 122px;
+    max-height: 96px;
     display: grid;
     grid-template-columns: 1fr 1fr;
     align-content: start;
@@ -1575,6 +1590,7 @@ select[multiple] {
 
   #messagesView .composer,
   #dmsView .composer {
+    position: sticky;
     bottom: env(safe-area-inset-bottom, 0px);
     box-shadow: 0 -8px 18px rgba(21, 21, 21, 0.08);
   }

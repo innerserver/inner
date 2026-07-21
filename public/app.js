@@ -1861,6 +1861,7 @@ function connectSocket() {
     const wasReconnect = state.wsEverConnected;
     state.wsEverConnected = true;
     setConnection("Live");
+    sendWs({ type: "client:network", network: browserNetworkInfo() });
     flushWsOutbox();
     recoverRealtimeState(wasReconnect).catch(() => {});
     clearInterval(state.wsPingTimer);
@@ -2951,7 +2952,11 @@ function renderShell() {
 
 function renderDashboard() {
   if (!els.dashboardGrid) return;
-  els.dashboardState.textContent = state.settings.serverEnabled ? "Workspace live" : "Workspace paused";
+  const wholeAppPaywall = paywallRule("all");
+  const paywallLocked = !isOwner() && wholeAppPaywall.enabled && wholeAppPaywall.itemId && !hasPaidOrder(wholeAppPaywall.itemId);
+  els.dashboardState.textContent = paywallLocked
+    ? (wholeAppPaywall.message || "Access is paywalled. Open Store to request the access pass.")
+    : state.settings.serverEnabled ? "Workspace live" : "Workspace paused";
   renderDashboardAnnouncements();
   els.dashboardGrid.replaceChildren(
     metricCard("Messages", state.messages.length, "Persistent room history"),
@@ -4453,6 +4458,9 @@ function renderLiveIpTracking() {
     els.liveIpList.append(adminCard(title, row.role || "member", [
       row.ip ? `IP ${row.ip}` : "IP unknown",
       row.device ? `Device ${row.device}` : "",
+      row.network && row.network.effectiveType ? `Network ${row.network.effectiveType}${row.network.downlink ? `, ${row.network.downlink} Mbps` : ""}` : "",
+      row.network && row.network.rtt ? `RTT ${row.network.rtt} ms` : "",
+      row.network && row.network.saveData ? "Data saver on" : "",
       row.approximateLocation ? `Approx ${row.approximateLocation.note || row.approximateLocation.ip || JSON.stringify(row.approximateLocation)}` : "",
       row.lastSeenAt ? `Last seen ${formatDate(row.lastSeenAt)}` : "",
       row.source ? `Source ${row.source}` : "",
@@ -5459,6 +5467,7 @@ function lockMessage(feature) {
 
 function featureLabel(feature) {
   const labels = {
+    all: "All / whole app",
     dms: "DMs",
     files: "Files",
     messages: "Messages",
@@ -5502,7 +5511,8 @@ function hiddenRule(feature) {
 }
 
 function paywallRule(feature) {
-  const rule = (state.settings.paywalls || {})[feature] || {};
+  const wholeApp = (state.settings.paywalls || {}).all || {};
+  const rule = feature !== "store" && wholeApp.enabled ? wholeApp : (state.settings.paywalls || {})[feature] || {};
   return {
     enabled: Boolean(rule.enabled),
     itemId: String(rule.itemId || ""),
@@ -5519,6 +5529,20 @@ function splitUserList(value) {
     .split(/[,\n]/)
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean);
+}
+
+function browserNetworkInfo() {
+  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection || {};
+  return {
+    effectiveType: String(connection.effectiveType || "").slice(0, 30),
+    type: String(connection.type || "").slice(0, 30),
+    downlink: Number(connection.downlink || 0),
+    rtt: Number(connection.rtt || 0),
+    saveData: Boolean(connection.saveData),
+    platform: String(navigator.platform || "").slice(0, 80),
+    language: String(navigator.language || "").slice(0, 40),
+    screen: `${window.screen.width}x${window.screen.height}`,
+  };
 }
 
 function syncHiddenNav() {

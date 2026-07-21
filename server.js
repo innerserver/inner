@@ -97,6 +97,7 @@ const persistence = {
   ObjectId: null,
 };
 const allowedFeatureLocks = new Set([
+  "all",
   "messages",
   "files",
   "screen",
@@ -3131,6 +3132,7 @@ async function handleUpgrade(req, socket) {
     buffer: Buffer.alloc(0),
     ip: getClientIp(req),
     device: deviceSignature(req),
+    network: {},
     connectedAt: new Date().toISOString(),
     sharing: false,
     screenRoomId: "",
@@ -3231,6 +3233,12 @@ function handleWsData(client, chunk) {
 async function handleWsMessage(client, message) {
   if (message.type === "ping") {
     return sendWs(client, { type: "pong", at: Date.now() });
+  }
+
+  if (message.type === "client:network") {
+    client.network = sanitizeClientNetwork(message.network);
+    await addSystemLog("client.network", client.username, { network: client.network });
+    return;
   }
 
   if (message.type === "presence:update") {
@@ -4156,6 +4164,7 @@ function liveIpTracking(users) {
       live: true,
       ip: client.ip || "",
       device: client.device || "",
+      network: client.network || {},
       approximateLocation: approximateLocationFromIp(client.ip || ""),
       lastSeenAt: client.connectedAt || new Date().toISOString(),
       source: "live websocket",
@@ -4511,6 +4520,10 @@ async function featureGateError(settings, feature, user) {
   const blocked = featureBlocked(settings, feature, user);
   if (blocked) return blocked;
   const paywalls = sanitizePaywalls(settings.paywalls || {});
+  const wholeAppPaywall = paywalls.all;
+  if (feature !== "store" && wholeAppPaywall && wholeAppPaywall.enabled) {
+    return featurePaywallBlocked(settings, await readJson(FILES.store, { items: [], orders: [] }), "all", user);
+  }
   if (!paywalls[feature] || !paywalls[feature].enabled) return "";
   return featurePaywallBlocked(settings, await readJson(FILES.store, { items: [], orders: [] }), feature, user);
 }
@@ -4535,6 +4548,7 @@ async function featurePaywallBlocked(settings, store, feature, user) {
 function featureLabel(feature) {
   const labels = {
     messages: "Messages",
+    all: "All / whole app",
     files: "Files",
     screen: "Screen",
     dms: "DMs",
@@ -4547,6 +4561,8 @@ function featureLabel(feature) {
     moderation: "Moderation",
     bots: "Bots",
     plugins: "Plugins",
+    store: "Store",
+    chess: "Chess",
   };
   return labels[feature] || String(feature || "Feature");
 }
@@ -4574,6 +4590,20 @@ function sanitizePaywalls(source) {
     };
   }
   return result;
+}
+
+function sanitizeClientNetwork(network) {
+  const source = network && typeof network === "object" ? network : {};
+  return {
+    effectiveType: String(source.effectiveType || "").slice(0, 30),
+    type: String(source.type || "").slice(0, 30),
+    downlink: Math.max(0, Math.min(10000, Number(source.downlink || 0))),
+    rtt: Math.max(0, Math.min(60000, Number(source.rtt || 0))),
+    saveData: Boolean(source.saveData),
+    platform: String(source.platform || "").slice(0, 80),
+    language: String(source.language || "").slice(0, 40),
+    screen: String(source.screen || "").slice(0, 40),
+  };
 }
 
 function normalizeRole(role) {

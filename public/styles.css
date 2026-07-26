@@ -14,60 +14,60 @@
 
 body[data-theme="midnight"] {
   color-scheme: dark;
-  --bg: #121416;
-  --surface: #1b1f23;
-  --surface-muted: #252b30;
-  --ink: #f3f1ea;
-  --muted: #b8b1a6;
-  --line: #343a40;
-  --accent: #7fc7b3;
-  --accent-soft: #17352e;
-  --danger: #db7a70;
+  --bg: #101113;
+  --surface: #191b1f;
+  --surface-muted: #24272d;
+  --ink: #f6f2ea;
+  --muted: #b9b2a7;
+  --line: #31343b;
+  --accent: #7cc7a7;
+  --accent-soft: #183229;
+  --danger: #e0766d;
 }
 
 body[data-theme="ocean"] {
-  --bg: #eef7f8;
+  --bg: #f1f8f9;
   --surface: #ffffff;
-  --surface-muted: #ddecf0;
+  --surface-muted: #e5f0f2;
   --ink: #102326;
-  --muted: #596f75;
-  --line: #bfd4da;
-  --accent: #116b7a;
-  --accent-soft: #dff0f3;
+  --muted: #5f7177;
+  --line: #cddfe3;
+  --accent: #0e6c78;
+  --accent-soft: #e0f3f5;
 }
 
 body[data-theme="forest"] {
-  --bg: #f1f6ee;
+  --bg: #f4f7f0;
   --surface: #ffffff;
-  --surface-muted: #e1eadb;
-  --ink: #182315;
-  --muted: #62705e;
-  --line: #ccd8c4;
-  --accent: #3e6d35;
-  --accent-soft: #e6f1e2;
+  --surface-muted: #e7eddf;
+  --ink: #182115;
+  --muted: #626f5d;
+  --line: #d5dfca;
+  --accent: #3f6f39;
+  --accent-soft: #e7f2e2;
 }
 
 body[data-theme="rose"] {
-  --bg: #fbf3f5;
+  --bg: #fbf5f6;
   --surface: #ffffff;
-  --surface-muted: #f2e4e8;
+  --surface-muted: #f3e7ea;
   --ink: #26171b;
-  --muted: #765f67;
-  --line: #e2cbd2;
-  --accent: #9b405c;
-  --accent-soft: #f7e5eb;
+  --muted: #735f67;
+  --line: #ead2d8;
+  --accent: #93465d;
+  --accent-soft: #f7e7ec;
 }
 
 body[data-theme="slate"] {
   color-scheme: dark;
-  --bg: #171a1f;
-  --surface: #22272e;
-  --surface-muted: #2d333c;
-  --ink: #f1f3f5;
-  --muted: #b4bac2;
-  --line: #3d4652;
-  --accent: #d0b36a;
-  --accent-soft: #3a321f;
+  --bg: #14171b;
+  --surface: #20252b;
+  --surface-muted: #2b3139;
+  --ink: #f3f4f6;
+  --muted: #b8bec7;
+  --line: #3a424d;
+  --accent: #d7ba73;
+  --accent-soft: #3b3220;
 }
 
 body[data-theme="glass"] {
@@ -83,6 +83,17 @@ body[data-theme="glass"] {
   --danger: #f08b82;
   background:
     linear-gradient(135deg, #102023 0%, #1d2933 52%, #1b1830 100%);
+}
+
+body[data-theme="custom"] {
+  --bg: var(--custom-bg, #f7f7f4);
+  --surface: var(--custom-surface, #ffffff);
+  --surface-muted: var(--custom-surface-muted, #eeeeea);
+  --ink: var(--custom-ink, #151515);
+  --muted: var(--custom-muted, #6d6d67);
+  --line: var(--custom-line, #ddddd6);
+  --accent: var(--custom-accent, #245c4f);
+  --accent-soft: var(--custom-accent-soft, #e9f2ef);
 }
 
 body[data-theme="glass"] .login-panel,
@@ -921,6 +932,65 @@ textarea:focus {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
+}
+
+.profile-preview {
+  --preview-accent: var(--accent);
+  position: relative;
+  display: grid;
+  min-height: 168px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+}
+
+.profile-preview-banner {
+  min-height: 92px;
+  background:
+    linear-gradient(135deg, var(--preview-accent), color-mix(in srgb, var(--preview-accent) 30%, var(--surface)));
+  background-position: center;
+  background-size: cover;
+}
+
+.profile-preview-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: end;
+  padding: 0 14px 14px;
+  margin-top: -28px;
+}
+
+.profile-preview-avatar {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border: 4px solid var(--surface);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, var(--preview-accent), color-mix(in srgb, var(--preview-accent) 35%, #111));
+  background-position: center;
+  background-size: cover;
+  color: #fff;
+  font-size: 1.65rem;
+  font-weight: 950;
+}
+
+.profile-preview-main strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.theme-editor {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.theme-editor label {
+  min-width: 0;
 }
 
 .dm-call-panel h3 {
@@ -1801,6 +1871,14 @@ select[multiple] {
   .scale-row b {
     text-align: left;
   }
+
+  .theme-editor {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .profile-preview-main {
+    align-items: center;
+  }
 }
 
 @media (max-width: 420px) {
@@ -1813,5 +1891,9 @@ select[multiple] {
 
   .nav-button {
     min-width: 86px;
+  }
+
+  .theme-editor {
+    grid-template-columns: 1fr;
   }
 }

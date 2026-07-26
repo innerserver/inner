@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-26-mobile-status-scale" />
+    <link rel="stylesheet" href="/styles.css?v=inner-26-themes-pfps-final" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -247,13 +247,29 @@
             </div>
           </div>
           <form id="profileForm" class="panel-form wide-panel">
+            <div id="profilePreview" class="profile-preview">
+              <div id="profilePreviewBanner" class="profile-preview-banner"></div>
+              <div class="profile-preview-main">
+                <div id="profilePreviewAvatar" class="profile-preview-avatar">U</div>
+                <div>
+                  <strong id="profilePreviewName">User</strong>
+                  <span id="profilePreviewStatus" class="muted-label">online</span>
+                </div>
+              </div>
+            </div>
             <label>Display name<input id="profileDisplayName" maxlength="80" autocomplete="off" /></label>
-            <label>Avatar URL<input id="profileAvatarUrl" placeholder="https://..." autocomplete="off" /></label>
-            <label>Banner URL<input id="profileBannerUrl" placeholder="https://..." autocomplete="off" /></label>
+            <label>Profile picture URL<input id="profileAvatarUrl" placeholder="https://..." autocomplete="off" /></label>
+            <label>Banner image URL<input id="profileBannerUrl" placeholder="https://..." autocomplete="off" /></label>
             <label>Badges<input id="profileBadges" maxlength="180" placeholder="Helpful, Funny, Supportive" autocomplete="off" /></label>
             <label>Status<select id="profileStatus"><option value="online">Online</option><option value="idle">Idle</option><option value="busy">Busy</option><option value="invisible">Invisible</option></select></label>
             <label>Custom status<input id="profileCustomStatus" maxlength="80" autocomplete="off" /></label>
-            <label>Theme<select id="profileTheme"><option value="system">System</option><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option></select></label>
+            <label>Theme<select id="profileTheme"><option value="system">Light</option><option value="midnight">Night</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="custom">Custom</option></select></label>
+            <div id="customThemeFields" class="theme-editor">
+              <label>Background<input id="profileThemeBg" type="color" value="#f7f7f4" /></label>
+              <label>Cards<input id="profileThemeSurface" type="color" value="#ffffff" /></label>
+              <label>Text<input id="profileThemeInk" type="color" value="#151515" /></label>
+              <label>Accent<input id="profileThemeAccent" type="color" value="#245c4f" /></label>
+            </div>
             <label>Bio<textarea id="profileBio" rows="4" maxlength="500"></textarea></label>
             <label class="switch-row"><input id="profileInvisible" type="checkbox" /><span>Invisible mode</span></label>
             <button id="saveProfileButton" class="primary-button" type="submit">Save profile</button>
@@ -647,8 +663,8 @@
     </div>
 
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-26-mobile-status-scale" defer></script>
-    <script src="/app.js?v=inner-26-mobile-status-scale" defer></script>
-    <script src="/force-logout.js?v=inner-26-mobile-status-scale" defer></script>
+    <script src="/session-guard.js?v=inner-26-themes-pfps-final" defer></script>
+    <script src="/app.js?v=inner-26-themes-pfps-final" defer></script>
+    <script src="/force-logout.js?v=inner-26-themes-pfps-final" defer></script>
   </body>
 </html>

@@ -1314,6 +1314,7 @@ async function routeApi(req, res, requestUrl) {
       status: body.status,
       invisible: Boolean(body.invisible),
       theme: body.theme,
+      customTheme: body.customTheme,
       updatedAt: new Date().toISOString(),
     });
     profiles[user.username] = next;
@@ -3804,6 +3805,7 @@ function defaultProfile(username) {
     status: "offline",
     invisible: false,
     theme: "system",
+    customTheme: defaultCustomTheme(),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -3820,6 +3822,7 @@ function sanitizeProfile(profile) {
     status: normalizePresenceStatus(profile.status),
     invisible: Boolean(profile.invisible),
     theme: normalizeRoomTheme(profile.theme),
+    customTheme: sanitizeCustomTheme(profile.customTheme || {}),
     createdAt: profile.createdAt || new Date().toISOString(),
     updatedAt: profile.updatedAt || new Date().toISOString(),
   };
@@ -4700,8 +4703,32 @@ function normalizePresenceStatus(status) {
 
 function normalizeRoomTheme(theme) {
   const value = String(theme || "system").trim().toLowerCase();
-  if (["system", "midnight", "ocean", "forest", "rose", "slate", "glass"].includes(value)) return value;
+  if (["system", "midnight", "ocean", "forest", "rose", "slate", "glass", "custom"].includes(value)) return value;
   return "system";
+}
+
+function defaultCustomTheme() {
+  return {
+    bg: "#f7f7f4",
+    surface: "#ffffff",
+    ink: "#151515",
+    accent: "#245c4f",
+  };
+}
+
+function sanitizeCustomTheme(theme) {
+  const defaults = defaultCustomTheme();
+  return {
+    bg: sanitizeHexColor(theme.bg, defaults.bg),
+    surface: sanitizeHexColor(theme.surface, defaults.surface),
+    ink: sanitizeHexColor(theme.ink, defaults.ink),
+    accent: sanitizeHexColor(theme.accent, defaults.accent),
+  };
+}
+
+function sanitizeHexColor(value, fallback) {
+  const text = String(value || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(text) ? text : fallback;
 }
 
 function normalizeUsernameList(value) {

@@ -222,6 +222,11 @@ function cacheElements() {
     "friendRequestList",
     "friendState",
     "profileForm",
+    "profilePreview",
+    "profilePreviewBanner",
+    "profilePreviewAvatar",
+    "profilePreviewName",
+    "profilePreviewStatus",
     "profileDisplayName",
     "profileAvatarUrl",
     "profileBannerUrl",
@@ -229,6 +234,11 @@ function cacheElements() {
     "profileStatus",
     "profileCustomStatus",
     "profileTheme",
+    "customThemeFields",
+    "profileThemeBg",
+    "profileThemeSurface",
+    "profileThemeInk",
+    "profileThemeAccent",
     "profileBio",
     "profileInvisible",
     "saveProfileButton",
@@ -484,7 +494,13 @@ function bindEvents() {
   els.dmDeclineCallButton.addEventListener("click", clearIncomingCall);
   els.friendRequestForm.addEventListener("submit", sendFriendRequest);
   els.profileForm.addEventListener("submit", saveProfile);
-  els.profileTheme.addEventListener("change", () => applyProfileTheme(els.profileTheme.value));
+  els.profileTheme.addEventListener("change", () => {
+    applyProfileTheme(els.profileTheme.value);
+    updateProfilePreview();
+  });
+  [els.profileDisplayName, els.profileAvatarUrl, els.profileBannerUrl, els.profileStatus, els.profileCustomStatus, els.profileThemeBg, els.profileThemeSurface, els.profileThemeInk, els.profileThemeAccent].forEach((input) => {
+    if (input) input.addEventListener("input", updateProfilePreview);
+  });
   els.uploadForm.addEventListener("submit", uploadFile);
   els.openChessButton.addEventListener("click", () => window.open(currentChessUrl(), "_blank", "noopener"));
   els.continueChessButton.addEventListener("click", () => {
@@ -3549,6 +3565,7 @@ function renderFriends() {
 function renderProfile() {
   if (!els.profileForm || !state.user) return;
   const profile = state.profiles[state.user.username] || {};
+  const customTheme = profile.customTheme || {};
   els.profileDisplayName.value = profile.displayName || state.user.username;
   els.profileAvatarUrl.value = profile.avatarUrl || "";
   els.profileBannerUrl.value = profile.bannerUrl || "";
@@ -3556,15 +3573,77 @@ function renderProfile() {
   els.profileStatus.value = profile.invisible ? "invisible" : profile.status || "online";
   els.profileCustomStatus.value = profile.customStatus || "";
   els.profileTheme.value = profile.theme || "system";
+  els.profileThemeBg.value = safeColor(customTheme.bg, "#f7f7f4");
+  els.profileThemeSurface.value = safeColor(customTheme.surface, "#ffffff");
+  els.profileThemeInk.value = safeColor(customTheme.ink, "#151515");
+  els.profileThemeAccent.value = safeColor(customTheme.accent, "#245c4f");
   els.profileBio.value = profile.bio || "";
   els.profileInvisible.checked = Boolean(profile.invisible);
+  updateProfilePreview();
 }
 
 function applyProfileTheme(themeOverride = "") {
   const profile = state.user ? state.profiles[state.user.username] || {} : {};
   const theme = themeOverride || profile.theme || "system";
-  const normalized = ["midnight", "ocean", "forest", "rose", "slate", "glass"].includes(theme) ? theme : "";
+  const normalized = ["midnight", "ocean", "forest", "rose", "slate", "glass", "custom"].includes(theme) ? theme : "";
   document.body.dataset.theme = normalized;
+  const editorTheme = els.profileThemeBg && els.profileTheme && els.profileTheme.value === "custom" ? currentProfileThemeEditor() : null;
+  applyCustomThemeVariables(normalized === "custom" ? editorTheme || profile.customTheme : null);
+}
+
+function updateProfilePreview() {
+  if (!els.profilePreview) return;
+  const displayName = (els.profileDisplayName && els.profileDisplayName.value.trim()) || (state.user && state.user.username) || "User";
+  const avatarUrl = els.profileAvatarUrl ? els.profileAvatarUrl.value.trim() : "";
+  const bannerUrl = els.profileBannerUrl ? els.profileBannerUrl.value.trim() : "";
+  const status = els.profileStatus ? els.profileStatus.value : "online";
+  const customStatus = els.profileCustomStatus ? els.profileCustomStatus.value.trim() : "";
+  const customTheme = currentProfileThemeEditor();
+  els.profilePreviewName.textContent = displayName;
+  els.profilePreviewStatus.textContent = customStatus || status;
+  els.profilePreviewAvatar.textContent = avatarUrl ? "" : displayName.slice(0, 1).toUpperCase();
+  els.profilePreviewAvatar.style.backgroundImage = avatarUrl ? `url("${cssUrl(avatarUrl)}")` : "";
+  els.profilePreviewBanner.style.backgroundImage = bannerUrl ? `url("${cssUrl(bannerUrl)}")` : "";
+  els.profilePreview.style.setProperty("--preview-accent", customTheme.accent || "#245c4f");
+  els.customThemeFields.classList.toggle("hidden", els.profileTheme.value !== "custom");
+  if (els.profileTheme.value === "custom") applyCustomThemeVariables(customTheme);
+}
+
+function currentProfileThemeEditor() {
+  return {
+    bg: els.profileThemeBg ? els.profileThemeBg.value : "#f7f7f4",
+    surface: els.profileThemeSurface ? els.profileThemeSurface.value : "#ffffff",
+    ink: els.profileThemeInk ? els.profileThemeInk.value : "#151515",
+    accent: els.profileThemeAccent ? els.profileThemeAccent.value : "#245c4f",
+  };
+}
+
+function applyCustomThemeVariables(customTheme) {
+  const root = document.documentElement;
+  ["--custom-bg", "--custom-surface", "--custom-ink", "--custom-accent", "--custom-accent-soft", "--custom-line", "--custom-muted", "--custom-surface-muted"].forEach((name) => {
+    root.style.removeProperty(name);
+  });
+  if (!customTheme) return;
+  const bg = safeColor(customTheme.bg, "#f7f7f4");
+  const surface = safeColor(customTheme.surface, "#ffffff");
+  const ink = safeColor(customTheme.ink, "#151515");
+  const accent = safeColor(customTheme.accent, "#245c4f");
+  root.style.setProperty("--custom-bg", bg);
+  root.style.setProperty("--custom-surface", surface);
+  root.style.setProperty("--custom-ink", ink);
+  root.style.setProperty("--custom-accent", accent);
+  root.style.setProperty("--custom-accent-soft", `${accent}24`);
+  root.style.setProperty("--custom-line", `${ink}26`);
+  root.style.setProperty("--custom-muted", `${ink}aa`);
+  root.style.setProperty("--custom-surface-muted", `${surface}dd`);
+}
+
+function safeColor(value, fallback) {
+  return /^#[0-9a-f]{6}$/i.test(String(value || "")) ? String(value) : fallback;
+}
+
+function cssUrl(value) {
+  return String(value || "").replace(/["\\\n\r]/g, "");
 }
 
 function applyCustomizations() {
@@ -5850,6 +5929,7 @@ async function saveProfile(event) {
         status: els.profileStatus.value,
         customStatus: els.profileCustomStatus.value,
         theme: els.profileTheme.value,
+        customTheme: currentProfileThemeEditor(),
         bio: els.profileBio.value,
         invisible: els.profileInvisible.checked,
       },

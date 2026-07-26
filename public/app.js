@@ -130,6 +130,7 @@ function cacheElements() {
     "requestUsername",
     "requestDisplayName",
     "requestContact",
+    "requestRole",
     "requestPassword",
     "requestNote",
     "submitAccountRequestButton",
@@ -659,6 +660,7 @@ async function submitAccountRequest(event) {
         username: els.requestUsername.value.trim(),
         displayName: els.requestDisplayName.value.trim(),
         contact: els.requestContact.value.trim(),
+        requestedRole: els.requestRole.value,
         password: els.requestPassword.value,
         note: els.requestNote.value.trim(),
         location,
@@ -717,6 +719,13 @@ async function refreshSignupStatus() {
   } else if (els.signupStatus) {
     els.signupStatus.textContent = "Open signup is on.";
   }
+  syncSignupModePanels(data.signupMode || state.settings.signupMode || "request");
+}
+
+function syncSignupModePanels(mode) {
+  const open = String(mode || "request") === "open";
+  if (els.accountRequestForm) els.accountRequestForm.classList.toggle("hidden", open);
+  if (els.signupForm) els.signupForm.classList.toggle("hidden", !open);
 }
 
 function getAccountRequestLocation() {
@@ -4607,6 +4616,7 @@ function renderAccountRequests() {
       : "No location";
     const card = adminCard(request.username, status, [
       request.displayName ? `Name ${request.displayName}` : "",
+      `Requested type ${request.requestedRole || "member"}`,
       request.contact ? `Contact ${request.contact}` : "",
       request.note,
       `Location ${location}`,
@@ -4616,7 +4626,7 @@ function renderAccountRequests() {
     ].filter(Boolean));
     const actions = document.createElement("div");
     actions.className = "account-actions";
-    const create = accountButton("Create account", () => approveAccountRequest(request.id, request.username));
+    const create = accountButton("Create account", () => approveAccountRequest(request.id, request.username, request.requestedRole || "member"));
     const reviewing = accountButton("Reviewing", () => updateAccountRequest(request.id, "reviewing"));
     const decline = accountButton("Decline", () => updateAccountRequest(request.id, "declined"));
     create.disabled = status === "approved";
@@ -5371,14 +5381,16 @@ async function updateAccountRequest(id, status) {
   }
 }
 
-async function approveAccountRequest(id, username) {
+async function approveAccountRequest(id, username, requestedRole = "member") {
   if (!isOwner()) return notify("Admin access required");
-  const password = window.prompt(`Set a password for ${username}`);
-  if (!password) return;
+  const password = window.prompt(`Set a password for ${username}. Leave blank to use the requested password.`);
+  if (password === null) return;
+  const roleInput = window.prompt(`Account type for ${username}`, requestedRole || "member");
+  const role = normalizeRoleInput(roleInput || requestedRole || "member");
   try {
     const data = await api("/api/account-requests/approve", {
       method: "POST",
-      json: { id, password, role: "member" },
+      json: { id, password, role },
     });
     state.users = data.users || state.users;
     state.accountRequests = data.accountRequests || state.accountRequests;
@@ -5389,6 +5401,11 @@ async function approveAccountRequest(id, username) {
   } catch (error) {
     notify(error.message);
   }
+}
+
+function normalizeRoleInput(role) {
+  const value = String(role || "member").trim().toLowerCase();
+  return ["member", "moderator", "admin", "hmd", "dev"].includes(value) ? value : "member";
 }
 
 function accountButton(label, onClick) {

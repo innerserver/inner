@@ -880,6 +880,7 @@ async function routeApi(req, res, requestUrl) {
       contact,
       email,
       phone,
+      requestedRole: body.requestedRole,
       passwordHash: hashPassword(password),
       passwordSet: true,
       note: body.note,
@@ -897,6 +898,7 @@ async function routeApi(req, res, requestUrl) {
     await addSystemLog("account.requested", username, { displayName: request.displayName, location: request.location }, req);
     await notifyAdminEmails("Inner account request", [
       `${username} requested access.`,
+      `Requested role: ${request.requestedRole}`,
       `Contact: ${contact || "not provided"}`,
       `IP: ${request.sourceIp || "unknown"}`,
       `Approx location: ${JSON.stringify(request.approximateLocation || {})}`,
@@ -2057,9 +2059,7 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     const id = String(body.id || "");
     const password = String(body.password || "");
-    const role = normalizeRole(body.role || "member");
     if (password.length > 0 && password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
-    if (["hmd", "dev"].includes(role) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
 
     const [requests, users, profiles] = await Promise.all([
       readJson(FILES.accountRequests, []),
@@ -2069,6 +2069,8 @@ async function routeApi(req, res, requestUrl) {
     const index = requests.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "Account request not found" });
     const request = sanitizeAccountRequest(requests[index]);
+    const grantedRole = normalizeRole(body.role || request.requestedRole || "member");
+    if (["hmd", "dev"].includes(grantedRole) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
     if (request.status === "approved") return json(res, 409, { error: "Request already approved" });
     const nextPasswordHash = password.length >= 4 ? hashPassword(password) : request.passwordHash;
     if (!nextPasswordHash) return json(res, 400, { error: "This request has no password. Set one while approving." });
@@ -2079,7 +2081,7 @@ async function routeApi(req, res, requestUrl) {
     const now = new Date().toISOString();
     const account = {
       username: request.username,
-      role,
+      role: grantedRole,
       passwordHash: nextPasswordHash,
       passwordPreset: "",
       allowPersistentLogin: Boolean(body.allowPersistentLogin),
@@ -2113,10 +2115,11 @@ async function routeApi(req, res, requestUrl) {
       writeJson(FILES.profiles, profiles),
       writeJson(FILES.accountRequests, requests),
     ]);
-    await addSystemLog("account.request.approved", user.username, { requestUsername: request.username, role }, req);
+    await addSystemLog("account.request.approved", user.username, { requestUsername: request.username, requestedRole: request.requestedRole, role: grantedRole }, req);
     await notifyAdminEmails("Inner account approved", [
       `${request.username} was approved by ${user.username}.`,
-      `Role: ${role}`,
+      `Requested role: ${request.requestedRole}`,
+      `Granted role: ${grantedRole}`,
       `Contact: ${request.contact || "not provided"}`,
       `Original request IP: ${request.sourceIp || "unknown"}`,
       `Original request device: ${request.sourceDevice || "unknown"}`,
@@ -4056,6 +4059,7 @@ function sanitizeAccountRequest(request) {
     contact: String(request.contact || "").trim().slice(0, 160),
     email: String(request.email || "").trim().slice(0, 120),
     phone: String(request.phone || "").trim().slice(0, 80),
+    requestedRole: normalizeRole(request.requestedRole || "member"),
     passwordHash: String(request.passwordHash || "").slice(0, 240),
     passwordSet: Boolean(request.passwordHash || request.passwordSet),
     note: String(request.note || "").trim().slice(0, 600),
@@ -4101,6 +4105,10 @@ function safeAccountRequests(requests) {
       if (request.status === "approved") {
         const approvedAt = Date.parse(request.approvedAt || request.updatedAt || request.createdAt);
         return Number.isFinite(approvedAt) ? Date.now() - approvedAt < 48 * 60 * 60 * 1000 : true;
+      }
+      if (request.status === "pending" || request.status === "reviewing") {
+        const createdAt = Date.parse(request.createdAt || request.updatedAt);
+        return Number.isFinite(createdAt) ? Date.now() - createdAt < 7 * 24 * 60 * 60 * 1000 : true;
       }
       return true;
     })

@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-26-hamburger-hidden-owner-final" />
+    <link rel="stylesheet" href="/styles.css?v=inner-26-signup-request-role-final" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -43,13 +43,14 @@
           <label>Username<input id="requestUsername" autocomplete="username" placeholder="your-name" required /></label>
           <label>Display name<input id="requestDisplayName" autocomplete="name" /></label>
           <label>Contact<input id="requestContact" autocomplete="email" placeholder="email or phone" /></label>
+          <label>Requested account type<select id="requestRole"><option value="member">Member</option><option value="moderator">Moderator</option><option value="admin">Admin</option><option value="hmd">HMD</option><option value="dev">Dev</option></select></label>
           <label>Password<input id="requestPassword" type="password" autocomplete="new-password" placeholder="used after approval" required /></label>
           <label>Note<textarea id="requestNote" rows="3" maxlength="600" placeholder="why you need access"></textarea></label>
           <button id="submitAccountRequestButton" class="secondary-button" type="submit">Share location and request</button>
           <p id="accountRequestStatus" class="inline-status"></p>
         </form>
 
-        <form id="signupForm" class="login-panel request-panel">
+        <form id="signupForm" class="login-panel request-panel hidden">
           <div>
             <h2>Open signup</h2>
             <p>If admins turn on open signup, you can create a member account here. Location helps server allocation; if it is blocked, admins still see IP/device details.</p>
@@ -691,8 +692,8 @@
     </div>
 
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-26-hamburger-hidden-owner-final" defer></script>
-    <script src="/app.js?v=inner-26-hamburger-hidden-owner-final" defer></script>
-    <script src="/force-logout.js?v=inner-26-hamburger-hidden-owner-final" defer></script>
+    <script src="/session-guard.js?v=inner-26-signup-request-role-final" defer></script>
+    <script src="/app.js?v=inner-26-signup-request-role-final" defer></script>
+    <script src="/force-logout.js?v=inner-26-signup-request-role-final" defer></script>
   </body>
 </html>

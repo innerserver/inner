@@ -3046,7 +3046,8 @@ function toggleSidebar() {
     const open = !els.appView.classList.contains("sidebar-open");
     els.appView.classList.toggle("sidebar-open", open);
     if (els.sidebarToggleButton) {
-      els.sidebarToggleButton.textContent = open ? "Close" : "Menu";
+      els.sidebarToggleButton.innerHTML = open ? '<span aria-hidden="true">×</span>' : '<span aria-hidden="true">☰</span>';
+      els.sidebarToggleButton.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
       els.sidebarToggleButton.setAttribute("aria-expanded", String(open));
     }
     return;
@@ -3054,7 +3055,8 @@ function toggleSidebar() {
   const closed = !els.appView.classList.contains("sidebar-closed");
   els.appView.classList.toggle("sidebar-closed", closed);
   if (els.sidebarToggleButton) {
-    els.sidebarToggleButton.textContent = closed ? "Open sidebar" : "Hide sidebar";
+    els.sidebarToggleButton.innerHTML = closed ? '<span aria-hidden="true">☰</span>' : '<span aria-hidden="true">×</span>';
+    els.sidebarToggleButton.setAttribute("aria-label", closed ? "Open navigation" : "Close navigation");
     els.sidebarToggleButton.setAttribute("aria-expanded", String(!closed));
   }
 }
@@ -3063,9 +3065,47 @@ function closeSidebar() {
   if (!els.appView) return;
   els.appView.classList.remove("sidebar-open");
   if (els.sidebarToggleButton) {
-    els.sidebarToggleButton.textContent = window.matchMedia("(max-width: 920px)").matches
-      ? "Menu"
-      : els.appView.classList.contains("sidebar-closed") ? "Open sidebar" : "Hide sidebar";
+    const closed = els.appView.classList.contains("sidebar-closed");
+    els.sidebarToggleButton.innerHTML = closed ? '<span aria-hidden="true">☰</span>' : '<span aria-hidden="true">☰</span>';
+    els.sidebarToggleButton.setAttribute("aria-label", "Open navigation");
+    els.sidebarToggleButton.setAttribute("aria-expanded", String(!els.appView.classList.contains("sidebar-closed")));
+  }
+}
+
+function setSidebarButtonIcon(open) {
+  if (!els.sidebarToggleButton) return;
+  els.sidebarToggleButton.replaceChildren();
+  const wrap = document.createElement("span");
+  wrap.className = open ? "hamburger-lines is-open" : "hamburger-lines";
+  wrap.setAttribute("aria-hidden", "true");
+  wrap.append(document.createElement("span"), document.createElement("span"), document.createElement("span"));
+  els.sidebarToggleButton.append(wrap);
+}
+
+function toggleSidebar() {
+  if (!els.appView) return;
+  const phoneMode = window.matchMedia("(max-width: 920px)").matches;
+  if (phoneMode) {
+    const open = !els.appView.classList.contains("sidebar-open");
+    els.appView.classList.toggle("sidebar-open", open);
+    setSidebarButtonIcon(open);
+    els.sidebarToggleButton.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+    els.sidebarToggleButton.setAttribute("aria-expanded", String(open));
+    return;
+  }
+  const closed = !els.appView.classList.contains("sidebar-closed");
+  els.appView.classList.toggle("sidebar-closed", closed);
+  setSidebarButtonIcon(!closed);
+  els.sidebarToggleButton.setAttribute("aria-label", closed ? "Open navigation" : "Close navigation");
+  els.sidebarToggleButton.setAttribute("aria-expanded", String(!closed));
+}
+
+function closeSidebar() {
+  if (!els.appView) return;
+  els.appView.classList.remove("sidebar-open");
+  setSidebarButtonIcon(false);
+  if (els.sidebarToggleButton) {
+    els.sidebarToggleButton.setAttribute("aria-label", "Open navigation");
     els.sidebarToggleButton.setAttribute("aria-expanded", String(!els.appView.classList.contains("sidebar-closed")));
   }
 }
@@ -4149,6 +4189,10 @@ function renderUsers() {
 
   els.accountList.replaceChildren();
   const visibleUsers = filterUsersForAdmin(state.users);
+  if (!String(state.accountSearch || "").trim()) {
+    els.accountList.append(emptyBlock("Search a username, email, role, IP, or device to show accounts"));
+    return;
+  }
   if (!state.users.length) {
     els.accountList.append(emptyBlock("No accounts yet"));
     return;
@@ -5441,7 +5485,7 @@ async function deleteUser(username) {
 
 function filterUsersForAdmin(users) {
   const term = String(state.accountSearch || "").trim().toLowerCase();
-  if (!term) return users;
+  if (!term) return [];
   return (users || []).filter((user) => {
     const profile = state.profiles[user.username] || {};
     return searchableText({
@@ -5668,6 +5712,7 @@ function featureLabel(feature) {
     plugins: "Plugins",
     store: "Store",
     chess: "Chess",
+    domain: "Domain",
   };
   return labels[feature] || feature;
 }
@@ -5683,6 +5728,7 @@ function viewFeature(viewName) {
     chess: "chess",
     voice: "voice",
     screen: "screen",
+    domain: "domain",
   };
   return map[viewName] || "";
 }

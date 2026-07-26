@@ -113,6 +113,7 @@ const allowedFeatureLocks = new Set([
   "plugins",
   "store",
   "chess",
+  "domain",
 ]);
 const managerRoles = new Set(["admin", "hmd", "dev"]);
 const developerRoles = new Set(["admin", "hmd", "dev"]);
@@ -4519,11 +4520,11 @@ function activeFeatureLocks(featureLocks) {
 }
 
 function featureBlocked(settings, feature, user) {
-  if (canManage(user)) return "";
   const visibility = sanitizeFeatureVisibility(settings.featureVisibility || {})[feature];
-  if (visibility && visibility.hidden && !visibility.allowedUsers.includes(String(user && user.username || "").toLowerCase())) {
+  if (visibility && visibility.hidden && !canOwn(user) && !visibility.allowedUsers.includes(String(user && user.username || "").toLowerCase())) {
     return `${featureLabel(feature)} is hidden for your account`;
   }
+  if (canManage(user)) return "";
   const lock = activeFeatureLocks(settings.featureLocks || {})[feature];
   if (!lock) return "";
   const label = feature === "dms" ? "DMs" : feature.charAt(0).toUpperCase() + feature.slice(1);
@@ -4577,6 +4578,7 @@ function featureLabel(feature) {
     plugins: "Plugins",
     store: "Store",
     chess: "Chess",
+    domain: "Domain",
   };
   return labels[feature] || String(feature || "Feature");
 }

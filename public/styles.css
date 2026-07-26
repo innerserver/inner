@@ -1934,13 +1934,66 @@ select[multiple] {
 
 .sidebar-toggle-button {
   flex: 0 0 auto;
-  min-height: 42px;
-  padding: 8px 12px;
+  display: grid;
+  place-items: center;
+  min-width: 46px;
+  min-height: 46px;
+  padding: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--ink);
+  font-size: 1.35rem;
   font-weight: 950;
+  line-height: 1;
+}
+
+.hamburger-lines {
+  display: grid;
+  gap: 4px;
+  width: 22px;
+}
+
+.hamburger-lines span {
+  display: block;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.hamburger-lines.is-open span:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+
+.hamburger-lines.is-open span:nth-child(2) {
+  opacity: 0;
+}
+
+.hamburger-lines.is-open span:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
+.compact-account-list .account-card {
+  grid-template-columns: minmax(130px, 0.8fr) minmax(180px, 1.2fr) minmax(260px, 1.4fr);
+  align-items: center;
+}
+
+.compact-account-list .account-meta {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.compact-account-list .account-actions {
+  justify-content: flex-end;
+}
+
+.compact-account-list .account-actions button {
+  min-height: 34px;
+  padding: 6px 9px;
+  font-size: 0.82rem;
 }
 
 .app.sidebar-closed {
@@ -2019,6 +2072,15 @@ select[multiple] {
     min-width: 0;
     justify-content: flex-start;
     text-align: left;
+    white-space: normal;
+  }
+
+  .compact-account-list .account-card {
+    grid-template-columns: 1fr;
+  }
+
+  .compact-account-list .account-meta {
+    flex-wrap: wrap;
     white-space: normal;
   }
 

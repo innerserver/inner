@@ -143,6 +143,7 @@ function cacheElements() {
     "serverPill",
     "currentUser",
     "connectionStatus",
+    "buildBadge",
     "messageCount",
     "fileCount",
     "peerCount",
@@ -320,6 +321,11 @@ function cacheElements() {
     "paywallList",
     "quickEditForm",
     "quickAppName",
+    "quickConnectedLabel",
+    "quickDisconnectedLabel",
+    "quickServerOnLabel",
+    "quickServerOffLabel",
+    "quickVersionLabel",
     "quickNotice",
     "quickAccent",
     "quickDensity",
@@ -384,6 +390,7 @@ function cacheElements() {
     "logDateInput",
     "serviceScaleForm",
     "serviceScaleList",
+    "serviceScaleCostSummary",
     "saveServiceScaleButton",
     "adminBrowserForm",
     "adminBrowserUrl",
@@ -1157,6 +1164,11 @@ async function saveQuickEdit(event) {
         ...serverSettingsPayload(),
         customizations: {
           appName: els.quickAppName.value,
+          connectedLabel: els.quickConnectedLabel.value,
+          disconnectedLabel: els.quickDisconnectedLabel.value,
+          serverOnLabel: els.quickServerOnLabel.value,
+          serverOffLabel: els.quickServerOffLabel.value,
+          versionLabel: els.quickVersionLabel.value,
           notice: els.quickNotice.value,
           accent: els.quickAccent.value,
           density: els.quickDensity.value,
@@ -2930,10 +2942,15 @@ function renderAll() {
 
 function renderShell() {
   const enabled = Boolean(state.settings.serverEnabled);
+  const custom = state.settings.customizations || {};
   els.roomName.textContent = (state.settings.customizations && state.settings.customizations.appName) || state.settings.roomName || "Inner";
-  els.serverPill.textContent = enabled ? "Server on" : "Server off";
+  els.serverPill.textContent = enabled ? (custom.serverOnLabel || "Server on") : (custom.serverOffLabel || "Server off");
   els.serverPill.classList.toggle("on", enabled);
   els.serverPill.classList.toggle("off", !enabled);
+  if (els.buildBadge) {
+    els.buildBadge.textContent = custom.versionLabel || "";
+    els.buildBadge.classList.toggle("hidden", !custom.versionLabel);
+  }
   els.currentUser.textContent = state.user ? `${state.user.username} (${state.user.role})` : "-";
   els.messageCount.textContent = String(state.messages.length);
   els.fileCount.textContent = String(state.files.length);
@@ -3555,6 +3572,10 @@ function applyCustomizations() {
   const appName = custom.appName || state.settings.roomName || "Inner";
   if (els.roomName) els.roomName.textContent = appName;
   document.title = appName;
+  if (els.buildBadge) {
+    els.buildBadge.textContent = custom.versionLabel || "";
+    els.buildBadge.classList.toggle("hidden", !custom.versionLabel);
+  }
   if (els.siteNotice) {
     els.siteNotice.textContent = custom.notice || "";
     els.siteNotice.classList.toggle("hidden", !custom.notice);
@@ -3966,6 +3987,11 @@ function renderQuickEdit() {
   if (!admin) return;
   const custom = state.settings.customizations || {};
   els.quickAppName.value = custom.appName || "";
+  els.quickConnectedLabel.value = custom.connectedLabel || "";
+  els.quickDisconnectedLabel.value = custom.disconnectedLabel || "";
+  els.quickServerOnLabel.value = custom.serverOnLabel || "";
+  els.quickServerOffLabel.value = custom.serverOffLabel || "";
+  els.quickVersionLabel.value = custom.versionLabel || "";
   els.quickNotice.value = custom.notice || "";
   els.quickAccent.value = /^#[0-9a-f]{6}$/i.test(custom.accent || "") ? custom.accent : "#245c4f";
   els.quickDensity.value = custom.density || "comfortable";
@@ -4189,14 +4215,14 @@ function renderRoomManager() {
 }
 
 const serviceScaleLabels = [
-  ["messages", "Messages", "Rate limit capacity"],
-  ["dms", "DMs", "Direct and group message capacity"],
-  ["uploads", "Uploads", "Maximum upload size"],
-  ["voice", "Voice calls", "Voice and video call capacity"],
-  ["screen", "Screen share", "Screen sharing capacity"],
-  ["notifications", "Notifications", "Live alert capacity"],
-  ["moderation", "Moderation", "Report and log processing"],
-  ["realtime", "Realtime", "Socket reconnect and event flow"],
+  ["messages", "Messages", "Rate limit capacity", 2],
+  ["dms", "DMs", "Direct and group message capacity", 2],
+  ["uploads", "Uploads", "Maximum upload size / storage pressure", 8],
+  ["voice", "Voice calls", "TURN/WebRTC usage planning", 10],
+  ["screen", "Screen share", "TURN/WebRTC usage planning", 12],
+  ["notifications", "Notifications", "Live alert capacity", 3],
+  ["moderation", "Moderation", "Report and log processing", 4],
+  ["realtime", "Realtime", "Socket reconnect and event flow", 6],
 ];
 
 function defaultServiceScale() {
@@ -4218,27 +4244,46 @@ function renderServiceScale() {
   els.serviceScaleForm.classList.toggle("hidden", !admin);
   if (!admin) return;
   const scale = { ...defaultServiceScale(), ...(state.settings.serviceScale || {}) };
+  let total = 0;
   els.serviceScaleList.replaceChildren();
-  serviceScaleLabels.forEach(([key, title, detail]) => {
+  serviceScaleLabels.forEach(([key, title, detail, baseCost]) => {
+    const value = scale[key] || 100;
+    const estimatedCost = Math.round((Number(baseCost || 0) * value) / 100);
+    total += estimatedCost;
     const row = document.createElement("label");
     row.className = "scale-row";
     const text = document.createElement("span");
-    text.innerHTML = `<strong>${title}</strong><small>${detail}</small>`;
+    text.innerHTML = `<strong>${title}</strong><small>${detail}</small><em>Estimate: $${estimatedCost}/mo</em>`;
     const output = document.createElement("b");
-    output.textContent = `${scale[key] || 100}%`;
+    output.textContent = `${value}%`;
     const input = document.createElement("input");
     input.type = "range";
     input.min = "25";
     input.max = "200";
     input.step = "5";
-    input.value = String(scale[key] || 100);
+    input.value = String(value);
     input.dataset.scaleKey = key;
     input.addEventListener("input", () => {
       output.textContent = `${input.value}%`;
+      renderServiceScaleCostSummary();
     });
     row.append(text, input, output);
     els.serviceScaleList.append(row);
   });
+  renderServiceScaleCostSummary(total);
+}
+
+function renderServiceScaleCostSummary(presetTotal) {
+  if (!els.serviceScaleCostSummary) return;
+  const inputs = Array.from(els.serviceScaleList.querySelectorAll("[data-scale-key]"));
+  const total = typeof presetTotal === "number"
+    ? presetTotal
+    : inputs.reduce((sum, input) => {
+        const meta = serviceScaleLabels.find(([key]) => key === input.dataset.scaleKey);
+        const baseCost = meta ? Number(meta[3] || 0) : 0;
+        return sum + Math.round((baseCost * Number(input.value || 100)) / 100);
+      }, 0);
+  els.serviceScaleCostSummary.textContent = `Estimated app/service add-on cost: about $${total}/month. This is only a planning estimate; your real bill comes from Render, Cloudinary, Resend, TURN, and any other services you connect.`;
 }
 
 function renderAdminDms() {
@@ -5973,7 +6018,18 @@ function isDev() {
 }
 
 function setConnection(value) {
-  if (els.connectionStatus) els.connectionStatus.textContent = value;
+  if (!els.connectionStatus) return;
+  const custom = state.settings.customizations || {};
+  const normalized = String(value || "").toLowerCase();
+  const connected = ["live", "connected", "online"].includes(normalized);
+  const disconnected = ["offline", "disconnected", "reconnecting"].includes(normalized);
+  if (connected) {
+    els.connectionStatus.textContent = custom.connectedLabel || "Live";
+  } else if (disconnected) {
+    els.connectionStatus.textContent = custom.disconnectedLabel || "Not live";
+  } else {
+    els.connectionStatus.textContent = value;
+  }
 }
 
 function notify(message) {

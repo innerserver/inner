@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-21-all-monitoring-phone" />
+    <link rel="stylesheet" href="/styles.css?v=inner-26-mobile-status-scale" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -103,7 +103,7 @@
           <div>
             <span class="muted-label">Connection</span>
             <strong id="connectionStatus">Offline</strong>
-            <span class="build-badge">NEW BUILD 2026-07-21 ALL PAYWALL</span>
+            <span id="buildBadge" class="build-badge hidden"></span>
           </div>
           <div class="topbar-metrics">
             <span><b id="messageCount">0</b> messages</span>
@@ -500,6 +500,11 @@
               <h3>Quick edit studio</h3>
               <p class="panel-note">Free in-app changes. No API key needed.</p>
               <label>App name<input id="quickAppName" maxlength="60" placeholder="Inner" /></label>
+              <label>Connected text<input id="quickConnectedLabel" maxlength="40" placeholder="Live" /></label>
+              <label>Disconnected text<input id="quickDisconnectedLabel" maxlength="40" placeholder="Not live" /></label>
+              <label>Server-on label<input id="quickServerOnLabel" maxlength="40" placeholder="Server on" /></label>
+              <label>Server-off label<input id="quickServerOffLabel" maxlength="40" placeholder="Server off" /></label>
+              <label>Version badge optional<input id="quickVersionLabel" maxlength="80" placeholder="Leave blank to hide" /></label>
               <label>Notice banner<input id="quickNotice" maxlength="240" placeholder="Announcement for everyone" /></label>
               <label>Accent color<input id="quickAccent" type="color" value="#245c4f" /></label>
               <label>Density<select id="quickDensity"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
@@ -573,8 +578,9 @@
             <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>System logs</h3><button id="exportLogsButton" class="secondary-button compact-button" type="button">Export</button></div><div class="log-filter-row"><input id="logSearchInput" class="compact-search" maxlength="120" placeholder="Search account, action, IP, details" autocomplete="off" /><input id="logDateInput" class="compact-search" type="date" /></div><div id="logList" class="account-list compact-list"></div></div>
             <form id="serviceScaleForm" class="panel-form owner-only hidden wide-panel">
               <h3>Service scaling</h3>
-              <p class="panel-note">Tune capacity targets for each service. Messages affect rate limits; uploads affect max file size. Other services are saved for rollout and monitoring.</p>
+              <p class="panel-note">Tune capacity targets for each service. Estimates are planning numbers only; Render/Cloudinary/Resend/TURN bills depend on your actual provider plans and usage.</p>
               <div id="serviceScaleList" class="account-list"></div>
+              <div id="serviceScaleCostSummary" class="cost-summary"></div>
               <button id="saveServiceScaleButton" class="primary-button" type="submit">Save scaling</button>
             </form>
             <div class="status-panel owner-only hidden wide-panel">
@@ -641,8 +647,8 @@
     </div>
 
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-21-all-monitoring-phone" defer></script>
-    <script src="/app.js?v=inner-21-all-monitoring-phone" defer></script>
-    <script src="/force-logout.js?v=inner-21-all-monitoring-phone" defer></script>
+    <script src="/session-guard.js?v=inner-26-mobile-status-scale" defer></script>
+    <script src="/app.js?v=inner-26-mobile-status-scale" defer></script>
+    <script src="/force-logout.js?v=inner-26-mobile-status-scale" defer></script>
   </body>
 </html>

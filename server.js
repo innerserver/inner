@@ -4323,6 +4323,11 @@ function serviceScaleMultiplier(settings, key) {
 function defaultCustomizations() {
   return {
     appName: "",
+    connectedLabel: "",
+    disconnectedLabel: "",
+    serverOnLabel: "",
+    serverOffLabel: "",
+    versionLabel: "",
     notice: "",
     accent: "",
     density: "comfortable",
@@ -4338,6 +4343,11 @@ function sanitizeCustomizations(customizations) {
   return {
     ...defaultCustomizations(),
     appName: String(customizations.appName || "").trim().slice(0, 60),
+    connectedLabel: String(customizations.connectedLabel || "").trim().slice(0, 40),
+    disconnectedLabel: String(customizations.disconnectedLabel || "").trim().slice(0, 40),
+    serverOnLabel: String(customizations.serverOnLabel || "").trim().slice(0, 40),
+    serverOffLabel: String(customizations.serverOffLabel || "").trim().slice(0, 40),
+    versionLabel: String(customizations.versionLabel || "").trim().slice(0, 80),
     notice: String(customizations.notice || "").trim().slice(0, 240),
     accent: /^#[0-9a-f]{6}$/i.test(accent) ? accent : "",
     density: ["compact", "comfortable"].includes(String(customizations.density || "").toLowerCase()) ? String(customizations.density).toLowerCase() : "comfortable",

@@ -1118,12 +1118,29 @@ textarea:focus {
   font-size: 0.78rem;
 }
 
+.scale-row em {
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
 .scale-row b {
   text-align: right;
 }
 
 .scale-row input[type="range"] {
   width: 100%;
+}
+
+.cost-summary {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-weight: 800;
+  line-height: 1.35;
 }
 
 .admin-browser-frame {
@@ -1614,5 +1631,187 @@ select[multiple] {
   .admin-grid,
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  *,
+  *::before,
+  *::after {
+    max-width: 100%;
+  }
+
+  html,
+  body {
+    width: 100%;
+    touch-action: manipulation;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    min-height: 46px;
+    font-size: 16px;
+  }
+
+  button {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .app {
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  .sidebar {
+    position: static;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .brand-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .server-pill {
+    width: max-content;
+    max-width: 100%;
+  }
+
+  .nav-list {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .nav-button {
+    flex: 0 0 auto;
+    min-width: 96px;
+    white-space: nowrap;
+  }
+
+  .workspace {
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    width: 100%;
+  }
+
+  .topbar > div:first-child {
+    display: grid;
+    gap: 2px;
+  }
+
+  .build-badge.hidden {
+    display: none;
+  }
+
+  .topbar-actions,
+  .topbar-metrics,
+  .button-row,
+  .account-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .topbar-actions > *,
+  .button-row > *,
+  .account-actions > * {
+    width: 100%;
+    min-width: 0;
+    flex: none;
+  }
+
+  .topbar-metrics span {
+    display: grid;
+    place-items: center;
+    min-height: 42px;
+  }
+
+  .panel-form,
+  .status-panel,
+  .account-card,
+  .file-card {
+    width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .panel-form label,
+  .compact-label {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .panel-form input,
+  .panel-form select,
+  .panel-form textarea,
+  .upload-bar input,
+  .upload-bar select,
+  .composer input,
+  .composer select,
+  .composer textarea {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .switch-row {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .switch-row input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
+    min-height: 22px;
+  }
+
+  #messagesView .message-list,
+  #dmsView .message-list {
+    max-height: 44svh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #messagesView .composer,
+  #dmsView .composer {
+    position: sticky;
+    bottom: 0;
+    z-index: 30;
+    margin-inline: -2px;
+  }
+
+  .member-picker {
+    grid-template-columns: 1fr;
+    max-height: 156px;
+    overflow-y: auto;
+  }
+
+  .scale-row {
+    grid-template-columns: 1fr;
+  }
+
+  .scale-row b {
+    text-align: left;
+  }
+}
+
+@media (max-width: 420px) {
+  .topbar-actions,
+  .topbar-metrics,
+  .button-row,
+  .account-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .nav-button {
+    min-width: 86px;
   }
 }

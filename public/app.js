@@ -100,6 +100,7 @@ const viewRoutes = {
   chess: "/chess",
   voice: "/voice",
   screen: "/screen",
+  domain: "/domain",
   admin: "/admin",
   hmd: "/hmd",
 };
@@ -119,6 +120,8 @@ function cacheElements() {
   [
     "loginView",
     "appView",
+    "sidebarToggleButton",
+    "sidebarBackdrop",
     "loginForm",
     "loginUsername",
     "loginPassword",
@@ -170,8 +173,10 @@ function cacheElements() {
     "continueChessButton",
     "voiceView",
     "screenView",
+    "domainView",
     "adminView",
     "hmdView",
+    "domainNavButton",
     "adminNavButton",
     "hmdNavButton",
     "messageState",
@@ -401,6 +406,7 @@ function cacheElements() {
     "serviceScaleForm",
     "serviceScaleList",
     "serviceScaleCostSummary",
+    "domainBillSummary",
     "saveServiceScaleButton",
     "adminBrowserForm",
     "adminBrowserUrl",
@@ -448,6 +454,8 @@ function cacheElements() {
 }
 
 function bindEvents() {
+  if (els.sidebarToggleButton) els.sidebarToggleButton.addEventListener("click", toggleSidebar);
+  if (els.sidebarBackdrop) els.sidebarBackdrop.addEventListener("click", closeSidebar);
   els.loginForm.addEventListener("submit", handleLogin);
   els.accountRequestForm.addEventListener("submit", submitAccountRequest);
   els.signupForm.addEventListener("submit", handleSignup);
@@ -581,7 +589,13 @@ function bindEvents() {
   if (els.phoneInstallGuideButton) els.phoneInstallGuideButton.addEventListener("click", installApp);
 
   document.querySelectorAll(".nav-button").forEach((button) => {
-    button.addEventListener("click", () => showView(button.dataset.view));
+    button.addEventListener("click", () => {
+      showView(button.dataset.view);
+      closeSidebar();
+    });
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeSidebar();
   });
   document.addEventListener("pointerdown", unlockRingtone, { once: true });
   document.querySelectorAll("[data-soundboard]").forEach((button) => {
@@ -813,6 +827,7 @@ function showApp() {
 
 function showView(viewName, options = {}) {
   if (!viewRoutes[viewName]) viewName = "dashboard";
+  if (viewName === "domain" && !isOwner()) viewName = "dashboard";
   if (viewName === "admin" && !isOwner()) viewName = "dashboard";
   if (viewName === "hmd" && !isDev()) viewName = "dashboard";
   const feature = viewFeature(viewName);
@@ -2978,8 +2993,10 @@ function renderShell() {
     element.classList.toggle("hidden", !isDev());
   });
   syncHiddenNav();
+  closeSidebar();
   updateNotificationButton();
   if (!isOwner() && state.activeView === "admin") showView("dashboard");
+  if (!isOwner() && state.activeView === "domain") showView("dashboard");
   if (!isDev() && state.activeView === "hmd") showView("dashboard");
 }
 
@@ -3020,6 +3037,37 @@ function renderDashboard() {
 
 function metricCard(title, value, detail) {
   return adminCard(title, String(value), [detail]);
+}
+
+function toggleSidebar() {
+  if (!els.appView) return;
+  const phoneMode = window.matchMedia("(max-width: 920px)").matches;
+  if (phoneMode) {
+    const open = !els.appView.classList.contains("sidebar-open");
+    els.appView.classList.toggle("sidebar-open", open);
+    if (els.sidebarToggleButton) {
+      els.sidebarToggleButton.textContent = open ? "Close" : "Menu";
+      els.sidebarToggleButton.setAttribute("aria-expanded", String(open));
+    }
+    return;
+  }
+  const closed = !els.appView.classList.contains("sidebar-closed");
+  els.appView.classList.toggle("sidebar-closed", closed);
+  if (els.sidebarToggleButton) {
+    els.sidebarToggleButton.textContent = closed ? "Open sidebar" : "Hide sidebar";
+    els.sidebarToggleButton.setAttribute("aria-expanded", String(!closed));
+  }
+}
+
+function closeSidebar() {
+  if (!els.appView) return;
+  els.appView.classList.remove("sidebar-open");
+  if (els.sidebarToggleButton) {
+    els.sidebarToggleButton.textContent = window.matchMedia("(max-width: 920px)").matches
+      ? "Menu"
+      : els.appView.classList.contains("sidebar-closed") ? "Open sidebar" : "Hide sidebar";
+    els.sidebarToggleButton.setAttribute("aria-expanded", String(!els.appView.classList.contains("sidebar-closed")));
+  }
 }
 
 function renderDashboardAnnouncements() {
@@ -4294,15 +4342,18 @@ function renderRoomManager() {
 }
 
 const serviceScaleLabels = [
-  ["messages", "Messages", "Rate limit capacity", 2],
-  ["dms", "DMs", "Direct and group message capacity", 2],
-  ["uploads", "Uploads", "Maximum upload size / storage pressure", 8],
-  ["voice", "Voice calls", "TURN/WebRTC usage planning", 10],
-  ["screen", "Screen share", "TURN/WebRTC usage planning", 12],
-  ["notifications", "Notifications", "Live alert capacity", 3],
-  ["moderation", "Moderation", "Report and log processing", 4],
-  ["realtime", "Realtime", "Socket reconnect and event flow", 6],
+  { key: "messages", title: "Messages", detail: "Render web service + JSON/database writes", baseUsd: 7, provider: "Render", url: "https://render.com/pricing" },
+  { key: "dms", title: "DMs", detail: "Render web service + realtime message storage", baseUsd: 4, provider: "Render", url: "https://render.com/pricing" },
+  { key: "uploads", title: "Uploads", detail: "Cloudinary/file storage and bandwidth", baseUsd: 10, provider: "Cloudinary", url: "https://cloudinary.com/pricing" },
+  { key: "voice", title: "Voice calls", detail: "TURN/WebRTC relay usage planning", baseUsd: 12, provider: "Open Relay / TURN", url: "https://www.metered.ca/tools/openrelay/" },
+  { key: "screen", title: "Screen share", detail: "TURN bandwidth for screen/video streams", baseUsd: 14, provider: "TURN relay", url: "https://www.metered.ca/tools/openrelay/" },
+  { key: "notifications", title: "Notifications", detail: "Browser alerts + email provider", baseUsd: 3, provider: "Resend", url: "https://resend.com/pricing" },
+  { key: "moderation", title: "Moderation", detail: "Logs, reports, and admin review tools", baseUsd: 4, provider: "Render", url: "https://render.com/pricing" },
+  { key: "realtime", title: "Realtime", detail: "WebSocket connection load on Render", baseUsd: 6, provider: "Render", url: "https://render.com/pricing" },
+  { key: "domain", title: "Domain", detail: "Custom domain / DNS planning", baseUsd: 1, provider: "Cloudflare / Registrar", url: "https://www.cloudflare.com/products/registrar/" },
 ];
+
+const usdToInrEstimate = 85;
 
 function defaultServiceScale() {
   return {
@@ -4314,6 +4365,7 @@ function defaultServiceScale() {
     notifications: 100,
     moderation: 100,
     realtime: 100,
+    domain: 100,
   };
 }
 
@@ -4325,14 +4377,15 @@ function renderServiceScale() {
   const scale = { ...defaultServiceScale(), ...(state.settings.serviceScale || {}) };
   let total = 0;
   els.serviceScaleList.replaceChildren();
-  serviceScaleLabels.forEach(([key, title, detail, baseCost]) => {
+  serviceScaleLabels.forEach((service) => {
+    const { key, title, detail, baseUsd, provider, url } = service;
     const value = scale[key] || 100;
-    const estimatedCost = Math.round((Number(baseCost || 0) * value) / 100);
+    const estimatedCost = Math.round((Number(baseUsd || 0) * value) / 100);
     total += estimatedCost;
     const row = document.createElement("label");
     row.className = "scale-row";
     const text = document.createElement("span");
-    text.innerHTML = `<strong>${title}</strong><small>${detail}</small><em>Estimate: $${estimatedCost}/mo</em>`;
+    text.innerHTML = `<strong>${title}</strong><small>${detail}</small><a href="${url}" target="_blank" rel="noopener">${provider} pricing</a><em>Estimate: $${estimatedCost}/mo - Rs ${formatInr(estimatedCost)}/mo</em>`;
     const output = document.createElement("b");
     output.textContent = `${value}%`;
     const input = document.createElement("input");
@@ -4358,11 +4411,19 @@ function renderServiceScaleCostSummary(presetTotal) {
   const total = typeof presetTotal === "number"
     ? presetTotal
     : inputs.reduce((sum, input) => {
-        const meta = serviceScaleLabels.find(([key]) => key === input.dataset.scaleKey);
-        const baseCost = meta ? Number(meta[3] || 0) : 0;
+        const meta = serviceScaleLabels.find((service) => service.key === input.dataset.scaleKey);
+        const baseCost = meta ? Number(meta.baseUsd || 0) : 0;
         return sum + Math.round((baseCost * Number(input.value || 100)) / 100);
       }, 0);
-  els.serviceScaleCostSummary.textContent = `Estimated app/service add-on cost: about $${total}/month. This is only a planning estimate; your real bill comes from Render, Cloudinary, Resend, TURN, and any other services you connect.`;
+  const rupees = formatInr(total);
+  els.serviceScaleCostSummary.textContent = `Rough monthly bill: about $${total}/month, around Rs ${rupees}/month. Planning rate: $1 = Rs ${usdToInrEstimate}. Real billing comes from Render, Cloudinary, Resend, TURN, domain/DNS, and actual usage.`;
+  if (els.domainBillSummary) {
+    els.domainBillSummary.textContent = `Rough monthly bill for the whole app: about $${total}/month, around Rs ${rupees}/month. Domain alone is estimated around $1/month or Rs ${formatInr(1)}/month, usually billed yearly by your registrar.`;
+  }
+}
+
+function formatInr(usd) {
+  return Math.round(Number(usd || 0) * usdToInrEstimate).toLocaleString("en-IN");
 }
 
 function renderAdminDms() {

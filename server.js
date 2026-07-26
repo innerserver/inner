@@ -4305,6 +4305,7 @@ function defaultServiceScale() {
     notifications: 100,
     moderation: 100,
     realtime: 100,
+    domain: 100,
   };
 }
 

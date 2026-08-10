@@ -24,6 +24,7 @@ const state = {
   files: [],
   innerDocs: [],
   selectedInnerDocId: "",
+  docsListCollapsed: false,
   accountRequests: [],
   uploadQueue: [],
   vpn: {},
@@ -181,6 +182,7 @@ function cacheElements() {
     "storeView",
     "filesView",
     "docsView",
+    "docsToggleListButton",
     "newInnerDocButton",
     "deleteInnerDocButton",
     "innerDocList",
@@ -266,6 +268,8 @@ function cacheElements() {
     "sendDmButton",
     "friendRequestForm",
     "friendSearchInput",
+    "friendGradeSearch",
+    "friendGradeSearchButton",
     "friendUserSelect",
     "sendFriendRequestButton",
     "friendList",
@@ -551,6 +555,7 @@ function bindEvents() {
   els.deleteDmGroupButton.addEventListener("click", deleteCurrentDmGroup);
   if (els.shareLinkForm) els.shareLinkForm.addEventListener("submit", shareLinkToFriends);
   if (els.shareChessButton) els.shareChessButton.addEventListener("click", () => fillShareLink(currentChessUrl(), "ChessVerse", "app"));
+  if (els.docsToggleListButton) els.docsToggleListButton.addEventListener("click", toggleDocsList);
   if (els.newInnerDocButton) els.newInnerDocButton.addEventListener("click", newInnerDoc);
   if (els.deleteInnerDocButton) els.deleteInnerDocButton.addEventListener("click", deleteInnerDoc);
   if (els.innerDocType) els.innerDocType.addEventListener("change", syncInnerDocMode);
@@ -585,6 +590,7 @@ function bindEvents() {
       state.friendSearchTimer = window.setTimeout(loadFriendCandidates, 220);
     });
   }
+  if (els.friendGradeSearchButton) els.friendGradeSearchButton.addEventListener("click", searchFriendsByGrade);
   els.profileForm.addEventListener("submit", saveProfile);
   els.profileTheme.addEventListener("change", () => {
     applyProfileTheme(els.profileTheme.value);
@@ -3891,7 +3897,7 @@ function renderFriends() {
   if (els.friendState) {
     const search = String(state.friendSearch || "").trim();
     els.friendState.textContent = search
-      ? "Exact username/email/phone search can find people outside your grade."
+      ? (search.startsWith("grade:") ? `Showing grade ${search.slice(6)} candidates you are allowed to add.` : "Exact username/email/phone search can find people outside your grade.")
       : "Same-grade people show here. Search exact username, email, or phone for anyone else.";
   }
 
@@ -3967,6 +3973,14 @@ async function loadFriendCandidates() {
   } catch (error) {
     notify(error.message || "Could not search friends");
   }
+}
+
+function searchFriendsByGrade() {
+  const grade = els.friendGradeSearch ? els.friendGradeSearch.value : "";
+  if (!grade) return notify("Choose a grade first");
+  state.friendSearch = `grade:${grade}`;
+  if (els.friendSearchInput) els.friendSearchInput.value = state.friendSearch;
+  loadFriendCandidates();
 }
 
 function gradeOf(person) {
@@ -4097,6 +4111,8 @@ function applyCustomizations() {
 
 function renderDocs() {
   if (!els.innerDocList) return;
+  if (els.docsView) els.docsView.classList.toggle("docs-list-collapsed", Boolean(state.docsListCollapsed));
+  if (els.docsToggleListButton) els.docsToggleListButton.textContent = state.docsListCollapsed ? "Show list" : "Hide list";
   const docs = state.innerDocs || [];
   if (!state.selectedInnerDocId && docs.length) state.selectedInnerDocId = docs[0].id;
   if (state.selectedInnerDocId && !docs.some((doc) => doc.id === state.selectedInnerDocId)) {
@@ -4130,6 +4146,11 @@ function renderDocs() {
   }
   updateInnerDocStats();
   renderShareTargets();
+}
+
+function toggleDocsList() {
+  state.docsListCollapsed = !state.docsListCollapsed;
+  renderDocs();
 }
 
 function selectedInnerDoc() {

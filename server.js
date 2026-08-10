@@ -4113,6 +4113,12 @@ function friendGradeAllowed(user, recipient, query) {
 function friendCandidateAllowed(user, candidate, query, profile = {}) {
   const userGrade = normalizeGrade(user.grade || "");
   const candidateGrade = normalizeGrade(candidate.grade || profile.grade || "");
+  const gradeSearch = String(query || "").trim().toLowerCase().match(/^grade:([\w-]+)$/);
+  if (gradeSearch) {
+    const requestedGrade = normalizeGrade(gradeSearch[1]);
+    if (!requestedGrade || candidateGrade !== requestedGrade) return false;
+    return canOwn(user) || (userGrade && userGrade === candidateGrade);
+  }
   if (userGrade && candidateGrade && userGrade === candidateGrade) {
     if (!query) return true;
     const haystack = [

@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-31-docs-slides-download-final" />
+    <link rel="stylesheet" href="/styles.css?v=inner-32-dms-docs-grade-final" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -195,25 +195,33 @@
               <select id="dmPeerSelect"></select>
             </label>
           </div>
-          <form id="dmGroupForm" class="upload-bar">
-            <input id="dmGroupName" maxlength="80" placeholder="Group name" autocomplete="off" />
-            <div id="dmGroupMembers" class="member-picker" role="group" aria-label="Group members"></div>
-            <button id="createDmGroupButton" class="secondary-button" type="submit">Create group</button>
-            <button id="deleteDmGroupButton" class="danger-button hidden" type="button">Delete group</button>
-          </form>
-          <form id="shareLinkForm" class="upload-bar share-link-form">
-            <input id="shareLinkTitle" maxlength="120" placeholder="Title, doc name, or slide name" autocomplete="off" />
-            <input id="shareLinkUrl" maxlength="700" placeholder="Paste a link to share with friends" autocomplete="off" />
-            <select id="shareLinkType" aria-label="Share type">
-              <option value="link">Link</option>
-              <option value="doc">Doc</option>
-              <option value="slides">Slides</option>
-              <option value="sheet">Sheet</option>
-              <option value="app">App</option>
-            </select>
-            <select id="shareLinkTarget" aria-label="Share target"></select>
-            <button id="shareLinkButton" class="primary-button" type="submit">Share</button>
-          </form>
+          <div class="dm-tools-panel">
+            <details class="dm-tool-card">
+              <summary>Create group DM</summary>
+              <form id="dmGroupForm" class="upload-bar">
+                <input id="dmGroupName" maxlength="80" placeholder="Group name" autocomplete="off" />
+                <div id="dmGroupMembers" class="member-picker" role="group" aria-label="Group members"></div>
+                <button id="createDmGroupButton" class="secondary-button" type="submit">Create group</button>
+                <button id="deleteDmGroupButton" class="danger-button hidden" type="button">Delete group</button>
+              </form>
+            </details>
+            <details class="dm-tool-card">
+              <summary>Share link/doc</summary>
+              <form id="shareLinkForm" class="upload-bar share-link-form">
+                <input id="shareLinkTitle" maxlength="120" placeholder="Title, doc name, or slide name" autocomplete="off" />
+                <input id="shareLinkUrl" maxlength="700" placeholder="Paste a link to share with friends" autocomplete="off" />
+                <select id="shareLinkType" aria-label="Share type">
+                  <option value="link">Link</option>
+                  <option value="doc">Doc</option>
+                  <option value="slides">Slides</option>
+                  <option value="sheet">Sheet</option>
+                  <option value="app">App</option>
+                </select>
+                <select id="shareLinkTarget" aria-label="Share target"></select>
+                <button id="shareLinkButton" class="primary-button" type="submit">Share</button>
+              </form>
+            </details>
+          </div>
           <div id="dmCallPanel" class="dm-call-panel">
             <div class="panel-title-row">
               <div>
@@ -263,6 +271,8 @@
           </div>
           <form id="friendRequestForm" class="upload-bar">
             <input id="friendSearchInput" maxlength="120" placeholder="Search username, email, or phone" autocomplete="off" />
+            <select id="friendGradeSearch" aria-label="Search by grade"><option value="">Grade</option><option value="6">Grade 6</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select>
+            <button id="friendGradeSearchButton" class="secondary-button" type="button">Search grade</button>
             <select id="friendUserSelect" aria-label="User"></select>
             <button id="sendFriendRequestButton" class="primary-button" type="submit">Add friend</button>
           </form>
@@ -415,6 +425,7 @@
             <div class="status-panel docs-list-panel">
               <div class="panel-title-row">
                 <h3>Your docs</h3>
+                <button id="docsToggleListButton" class="secondary-button compact-button" type="button">Hide list</button>
                 <button id="newInnerDocButton" class="primary-button compact-button" type="button">New</button>
               </div>
               <div id="innerDocList" class="account-list docs-card-list"></div>
@@ -811,8 +822,8 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-31-docs-slides-download-final" defer></script>
-    <script src="/app.js?v=inner-31-docs-slides-download-final" defer></script>
-    <script src="/force-logout.js?v=inner-31-docs-slides-download-final" defer></script>
+    <script src="/session-guard.js?v=inner-32-dms-docs-grade-final" defer></script>
+    <script src="/app.js?v=inner-32-dms-docs-grade-final" defer></script>
+    <script src="/force-logout.js?v=inner-32-dms-docs-grade-final" defer></script>
   </body>
 </html>

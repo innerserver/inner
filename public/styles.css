@@ -2628,3 +2628,85 @@ body {
     display: none;
   }
 }
+
+/* Final DM/docs usability pass. */
+#dmsView.view.active {
+  gap: 10px;
+}
+
+#dmsView .section-header {
+  align-items: end;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+#dmsView .compact-label {
+  min-width: min(360px, 100%);
+}
+
+.dm-tools-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dm-tool-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.dm-tool-card summary {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  padding: 9px 12px;
+  color: var(--ink);
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.dm-tool-card .upload-bar {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+#dmsView .dm-call-panel {
+  max-height: 190px;
+  overflow: auto;
+}
+
+#dmsView .dm-call-grid {
+  grid-template-columns: 160px minmax(0, 1fr) 160px;
+}
+
+#dmsView .composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 230px) auto auto;
+  align-items: center;
+}
+
+#docsView.view.active.docs-list-collapsed .docs-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#docsView.view.active.docs-list-collapsed .docs-list-panel {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  #dmsView .section-header {
+    align-items: stretch;
+  }
+
+  .dm-tools-panel,
+  #dmsView .composer,
+  #dmsView .dm-call-grid {
+    grid-template-columns: 1fr;
+  }
+}

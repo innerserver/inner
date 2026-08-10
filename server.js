@@ -1372,10 +1372,14 @@ async function routeApi(req, res, requestUrl) {
     if (featureError) return json(res, 423, { error: featureError });
     const body = await readJsonBody(req);
     const to = String(body.to || "").trim();
+    const searchProof = String(body.search || body.to || "").trim();
     if (!to || to.toLowerCase() === user.username.toLowerCase()) return json(res, 400, { error: "Choose another user" });
     const users = await readJson(FILES.users, []);
     const recipient = users.find((entry) => entry.username.toLowerCase() === to.toLowerCase());
     if (!recipient) return json(res, 404, { error: "Account not found" });
+    if (!canOwn(user) && !friendGradeAllowed(user, recipient, searchProof)) {
+      return json(res, 403, { error: "You can only add people in your grade unless you search their exact username, email, or phone." });
+    }
     const friends = await readJson(FILES.friends, { requests: [], friendships: [] });
     if (areFriends(friends, user.username, recipient.username)) return json(res, 409, { error: "Already friends" });
     const existing = friends.requests.find((request) =>
@@ -1395,6 +1399,27 @@ async function routeApi(req, res, requestUrl) {
     await writeJson(FILES.friends, friends);
     broadcastFriendUpdate(friends, user.username, recipient.username);
     return json(res, 201, { friends: safeFriendState(friends, user) });
+  }
+
+  if (req.method === "GET" && pathname === "/api/friends/candidates") {
+    const settings = await readJson(FILES.settings, {});
+    const featureError = await featureGateError(settings, "friends", user);
+    if (featureError) return json(res, 423, { error: featureError });
+    const query = String(requestUrl.searchParams.get("q") || "").trim();
+    const users = await readJson(FILES.users, []);
+    const profiles = await readJson(FILES.profiles, {});
+    const friends = await readJson(FILES.friends, { requests: [], friendships: [] });
+    const currentFriends = new Set((friends.friendships || [])
+      .filter((entry) => Array.isArray(entry.users) && entry.users.includes(user.username))
+      .flatMap((entry) => entry.users)
+      .map((name) => String(name).toLowerCase()));
+    const people = users
+      .filter((entry) => entry.username.toLowerCase() !== user.username.toLowerCase())
+      .filter((entry) => !currentFriends.has(entry.username.toLowerCase()))
+      .filter((entry) => canOwn(user) || friendCandidateAllowed(user, entry, query, profiles[entry.username]))
+      .slice(0, 25)
+      .map((entry) => publicUser(entry, profiles[entry.username]));
+    return json(res, 200, { people });
   }
 
   if (req.method === "POST" && pathname === "/api/friends/respond") {
@@ -4058,6 +4083,39 @@ function friendRequestPair(entry, first, second) {
   const a = String(first || "").toLowerCase();
   const b = String(second || "").toLowerCase();
   return (from === a && to === b) || (from === b && to === a);
+}
+
+function friendGradeAllowed(user, recipient, query) {
+  const userGrade = normalizeGrade(user.grade || "");
+  const recipientGrade = normalizeGrade(recipient.grade || "");
+  if (userGrade && recipientGrade && userGrade === recipientGrade) return true;
+  return exactFriendIdentityMatch(recipient, query);
+}
+
+function friendCandidateAllowed(user, candidate, query, profile = {}) {
+  const userGrade = normalizeGrade(user.grade || "");
+  const candidateGrade = normalizeGrade(candidate.grade || profile.grade || "");
+  if (userGrade && candidateGrade && userGrade === candidateGrade) {
+    if (!query) return true;
+    const haystack = [
+      candidate.username,
+      profile.displayName,
+      candidate.role,
+      candidateGrade,
+    ].join(" ").toLowerCase();
+    return haystack.includes(String(query).trim().toLowerCase());
+  }
+  return exactFriendIdentityMatch(candidate, query);
+}
+
+function exactFriendIdentityMatch(candidate, query) {
+  const text = String(query || "").trim().toLowerCase();
+  if (!text) return false;
+  const digits = text.replace(/\D/g, "");
+  const username = String(candidate.username || "").trim().toLowerCase();
+  const email = String(candidate.email || "").trim().toLowerCase();
+  const phoneDigits = String(candidate.phone || candidate.contact || "").replace(/\D/g, "");
+  return text === username || (email && text === email) || (digits.length >= 7 && phoneDigits && digits === phoneDigits);
 }
 
 function broadcastFriendUpdate(friends, ...usernames) {

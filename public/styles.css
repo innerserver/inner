@@ -2310,3 +2310,158 @@ select[multiple] {
     grid-template-columns: auto minmax(0, 1fr);
   }
 }
+
+/* Final layout guard: keep navigation, workspace, DMs, and Docs from overlapping. */
+html,
+body {
+  height: 100%;
+}
+
+#appView.app:not(.hidden) {
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+#appView .sidebar {
+  height: 100dvh;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+#appView .workspace {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#appView .workspace > .view.active {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+#messagesView.view.active,
+#dmsView.view.active {
+  height: auto;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+#dmsView.view.active {
+  grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto;
+}
+
+#messagesView .message-list,
+#dmsView .message-list {
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+}
+
+#messagesView .composer,
+#dmsView .composer {
+  position: relative;
+  bottom: auto;
+  margin: 0;
+}
+
+#dmsView .dm-call-panel {
+  min-height: 0;
+}
+
+.docs-grid {
+  grid-template-columns: minmax(220px, 340px) minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.docs-card-list {
+  max-height: min(48dvh, 520px);
+}
+
+.inner-doc-editor {
+  min-width: 0;
+}
+
+.inner-doc-editor textarea {
+  min-height: clamp(260px, 48dvh, 620px);
+  resize: vertical;
+}
+
+.friend-search-note {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+@media (max-width: 920px) {
+  #appView.app:not(.hidden),
+  #appView .workspace {
+    height: 100dvh;
+  }
+
+  #appView .workspace {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  #appView .workspace > .view.active {
+    height: 100%;
+  }
+
+  #messagesView.view.active,
+  #dmsView.view.active {
+    height: 100%;
+  }
+
+  #appView .sidebar {
+    height: 100dvh;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .topbar > div:first-child,
+  .topbar-metrics,
+  .topbar-actions {
+    grid-column: 2;
+  }
+
+  .sidebar-toggle-button {
+    grid-row: 1 / span 3;
+  }
+
+  .topbar-metrics,
+  .topbar-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .upload-bar,
+  .composer,
+  #dmGroupForm {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .docs-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .docs-card-list {
+    max-height: 180px;
+  }
+
+  .inner-doc-editor textarea {
+    min-height: 42dvh;
+  }
+
+  #dmsView .dm-call-panel {
+    display: none;
+  }
+}

@@ -12,6 +12,9 @@ const state = {
   replyToDm: null,
   dmGroups: [],
   people: [],
+  friendCandidates: [],
+  friendSearch: "",
+  friendSearchTimer: 0,
   selectedDmUser: "",
   adminDmFilter: "all",
   accountSearch: "",
@@ -257,6 +260,7 @@ function cacheElements() {
     "dmSelfieButton",
     "sendDmButton",
     "friendRequestForm",
+    "friendSearchInput",
     "friendUserSelect",
     "sendFriendRequestButton",
     "friendList",
@@ -553,6 +557,13 @@ function bindEvents() {
   els.dmAnswerCallButton.addEventListener("click", answerIncomingCall);
   els.dmDeclineCallButton.addEventListener("click", clearIncomingCall);
   els.friendRequestForm.addEventListener("submit", sendFriendRequest);
+  if (els.friendSearchInput) {
+    els.friendSearchInput.addEventListener("input", () => {
+      state.friendSearch = els.friendSearchInput.value;
+      window.clearTimeout(state.friendSearchTimer);
+      state.friendSearchTimer = window.setTimeout(loadFriendCandidates, 220);
+    });
+  }
   els.profileForm.addEventListener("submit", saveProfile);
   els.profileTheme.addEventListener("change", () => {
     applyProfileTheme(els.profileTheme.value);
@@ -850,6 +861,7 @@ async function loadState() {
   state.locations = data.locations || [];
   state.users = data.users || [];
   state.people = data.people || [];
+  state.friendCandidates = [];
   state.backups = data.backups || [];
   state.profiles = data.profiles || {};
   state.friends = data.friends || { friends: [], incoming: [], outgoing: [] };
@@ -3823,16 +3835,23 @@ function updateJumpButton(container, button) {
 function renderFriends() {
   if (!els.friendList) return;
   const friendNames = new Set((state.friends.friends || []).map((entry) => entry.username));
+  const candidates = friendCandidatePeople().filter((person) => !friendNames.has(person.username));
   els.friendUserSelect.replaceChildren(
-    ...state.people
-      .filter((person) => person.username !== state.user.username && !friendNames.has(person.username))
+    optionElement("", candidates.length ? "Choose a person" : "Search exact username/email/phone"),
+    ...candidates
       .map((person) => {
         const option = document.createElement("option");
         option.value = person.username;
-        option.textContent = `${person.displayName || person.username} (${person.status || person.role})`;
+        option.textContent = `${person.displayName || person.username} (${friendGradeLabel(person)})`;
         return option;
       })
   );
+  if (els.friendState) {
+    const search = String(state.friendSearch || "").trim();
+    els.friendState.textContent = search
+      ? "Exact username/email/phone search can find people outside your grade."
+      : "Same-grade people show here. Search exact username, email, or phone for anyone else.";
+  }
 
   els.friendList.replaceChildren();
   if (!(state.friends.friends || []).length) {
@@ -3875,6 +3894,47 @@ function renderFriends() {
   outgoing.forEach((request) => {
     els.friendRequestList.append(adminCard(request.to, "Outgoing", [formatDate(request.createdAt)]));
   });
+}
+
+function friendCandidatePeople() {
+  const search = String(state.friendSearch || "").trim();
+  const currentGrade = gradeOf(state.user);
+  const people = search ? state.friendCandidates : state.people;
+  return (people || [])
+    .filter((person) => {
+      if (!person || !person.username || person.banned) return false;
+      if (person.username === state.user.username) return false;
+      if (isOwner()) return true;
+      if (search) return true;
+      return currentGrade && gradeOf(person) === currentGrade;
+    })
+    .sort((a, b) => String(a.displayName || a.username).localeCompare(String(b.displayName || b.username)));
+}
+
+async function loadFriendCandidates() {
+  const query = String(state.friendSearch || "").trim();
+  if (!query) {
+    state.friendCandidates = [];
+    renderFriends();
+    return;
+  }
+  try {
+    const data = await api(`/api/friends/candidates?q=${encodeURIComponent(query)}`);
+    state.friendCandidates = data.people || [];
+    renderFriends();
+  } catch (error) {
+    notify(error.message || "Could not search friends");
+  }
+}
+
+function gradeOf(person) {
+  const profile = person && state.profiles ? state.profiles[person.username] || {} : {};
+  return String((person && person.grade) || profile.grade || "").trim().toLowerCase();
+}
+
+function friendGradeLabel(person) {
+  const grade = gradeOf(person);
+  return grade ? `grade ${grade}` : person.role || "member";
 }
 
 function renderProfile() {
@@ -6439,8 +6499,11 @@ async function sendFriendRequest(event) {
   const to = els.friendUserSelect.value;
   if (!to) return;
   try {
-    const data = await api("/api/friends/request", { method: "POST", json: { to } });
+    const data = await api("/api/friends/request", { method: "POST", json: { to, search: els.friendSearchInput ? els.friendSearchInput.value : "" } });
     state.friends = data.friends;
+    state.friendSearch = "";
+    state.friendCandidates = [];
+    if (els.friendSearchInput) els.friendSearchInput.value = "";
     renderFriends();
     notify("Friend request sent");
   } catch (error) {

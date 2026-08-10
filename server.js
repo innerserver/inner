@@ -991,8 +991,7 @@ async function routeApi(req, res, requestUrl) {
   if (!user) return;
 
   if (req.method === "GET" && pathname === "/api/browser/frame") {
-    if (!canManage(user)) return text(res, 403, "Admin access required");
-    return serveAdminBrowserFrame(req, res, requestUrl);
+    return serveBrowserFrame(req, res, requestUrl, user);
   }
 
   const shutdownSettings = await readJson(FILES.settings, {});
@@ -2560,6 +2559,7 @@ async function routeApi(req, res, requestUrl) {
       serviceScale: sanitizeServiceScale(body.serviceScale && typeof body.serviceScale === "object" ? body.serviceScale : settings.serviceScale || {}),
       featureVisibility: sanitizeFeatureVisibility(canOwn(user) && body.featureVisibility && typeof body.featureVisibility === "object" ? body.featureVisibility : settings.featureVisibility || {}),
       paywalls: sanitizePaywalls(canOwn(user) && body.paywalls && typeof body.paywalls === "object" ? body.paywalls : settings.paywalls || {}),
+      browserPolicy: sanitizeBrowserPolicy(canOwn(user) && body.browserPolicy && typeof body.browserPolicy === "object" ? body.browserPolicy : settings.browserPolicy || {}),
       shutdownAt: nextServerEnabled ? "" : settings.shutdownAt || new Date().toISOString(),
       shutdownBy: nextServerEnabled ? "" : settings.shutdownBy || user.username,
       shutdownReason: nextServerEnabled ? "" : String(body.shutdownReason || settings.shutdownReason || "Admin shutdown").slice(0, 160),
@@ -4542,14 +4542,32 @@ function safeSettings(settings) {
     ...settings,
     customizations: sanitizeCustomizations(settings.customizations || {}),
     serviceScale: sanitizeServiceScale(settings.serviceScale || {}),
-      featureLocks: activeFeatureLocks(settings.featureLocks || {}),
-      featureVisibility: sanitizeFeatureVisibility(settings.featureVisibility || {}),
-      paywalls: sanitizePaywalls(settings.paywalls || {}),
-      shutdownMode: settings.serverEnabled === false,
+    featureLocks: activeFeatureLocks(settings.featureLocks || {}),
+    featureVisibility: sanitizeFeatureVisibility(settings.featureVisibility || {}),
+    paywalls: sanitizePaywalls(settings.paywalls || {}),
+    browserPolicy: sanitizeBrowserPolicy(settings.browserPolicy || {}),
+    shutdownMode: settings.serverEnabled === false,
     shutdownAt: settings.serverEnabled === false ? String(settings.shutdownAt || "") : "",
     shutdownBy: settings.serverEnabled === false ? String(settings.shutdownBy || "") : "",
     shutdownReason: settings.serverEnabled === false ? String(settings.shutdownReason || "") : "",
   };
+}
+
+function sanitizeBrowserPolicy(policy = {}) {
+  return {
+    allowOnly: Boolean(policy.allowOnly),
+    allowedSites: sanitizeDomainList(policy.allowedSites),
+    blockedSites: sanitizeDomainList(policy.blockedSites),
+  };
+}
+
+function sanitizeDomainList(list) {
+  return Array.from(new Set((Array.isArray(list) ? list : String(list || "").split(/[\n,]+/))
+    .map((entry) => String(entry || "").trim().toLowerCase())
+    .map((entry) => entry.replace(/^https?:\/\//, "").replace(/\/.*$/, ""))
+    .map((entry) => entry.replace(/^\*\./, ""))
+    .filter((entry) => /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(entry))))
+    .slice(0, 200);
 }
 
 function safeUploadConfig(settings) {
@@ -5759,33 +5777,71 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-async function serveAdminBrowserFrame(req, res, requestUrl) {
+async function serveBrowserFrame(req, res, requestUrl, user) {
   const target = sanitizeExternalUrl(requestUrl.searchParams.get("url"));
   if (!target) return text(res, 400, "Enter a valid http or https URL");
+  const settings = await readJson(FILES.settings, {});
+  const policyError = browserPolicyError(target, settings.browserPolicy || {}, user);
+  if (policyError) return browserFrameMessage(res, 403, "Site blocked by Inner", policyError);
   if (typeof fetch !== "function") return text(res, 500, "Server fetch is unavailable");
   try {
     const response = await fetch(target, {
       redirect: "follow",
       headers: {
-        "User-Agent": "Mozilla/5.0 Inner Admin Browser",
+        "User-Agent": "Mozilla/5.0 Inner Browser",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
     });
     const contentType = response.headers.get("content-type") || "text/html; charset=utf-8";
-    const body = await response.text();
+    const arrayBuffer = await response.arrayBuffer();
+    const body = Buffer.from(arrayBuffer);
     res.statusCode = response.ok ? 200 : response.status;
     res.setHeader("Content-Type", contentType.includes("text/html") ? "text/html; charset=utf-8" : contentType);
     res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
     if (!contentType.includes("text/html")) return res.end(body);
     const escapedTarget = escapeHtml(target);
     const baseTag = `<base href="${escapedTarget}">`;
-    const cleaned = body
+    const cleaned = body.toString("utf8")
       .replace(/<meta[^>]+http-equiv=["']?content-security-policy["']?[^>]*>/gi, "")
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/\s(?:integrity|nonce)=("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
       .replace(/<head([^>]*)>/i, `<head$1>${baseTag}`);
     return res.end(cleaned.includes("<head") ? cleaned : `${baseTag}${cleaned}`);
   } catch (error) {
-    return text(res, 502, `Could not open site through admin browser: ${error.message || "fetch failed"}`);
+    return browserFrameMessage(res, 502, "Inner browser could not open this site", `${error.message || "fetch failed"}\n\nIf your network blocks this site, Inner cannot bypass that.`);
   }
+}
+
+function browserPolicyError(target, policy, user) {
+  if (canOwn(user)) return "";
+  const host = hostnameForPolicy(target);
+  const next = sanitizeBrowserPolicy(policy || {});
+  if (!host) return "Invalid site.";
+  if (next.blockedSites.some((domain) => domainMatches(host, domain))) return `${host} is blocked by the Inner browser rules.`;
+  if (next.allowOnly && !next.allowedSites.some((domain) => domainMatches(host, domain))) return `${host} is not on the allowed site list.`;
+  return "";
+}
+
+function hostnameForPolicy(target) {
+  try {
+    return new URL(target).hostname.toLowerCase().replace(/^www\./, "");
+  } catch (error) {
+    return "";
+  }
+}
+
+function domainMatches(host, domain) {
+  const clean = String(domain || "").toLowerCase().replace(/^www\./, "");
+  return host === clean || host.endsWith(`.${clean}`);
+}
+
+function browserFrameMessage(res, status, title, detail) {
+  res.writeHead(status, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:system-ui,sans-serif;margin:0;padding:28px;background:#f7f7f4;color:#151515}.box{max-width:720px;margin:auto;border:1px solid #ddddd6;background:white;border-radius:8px;padding:22px}h1{font-size:1.25rem;margin:0 0 10px}p{white-space:pre-wrap;color:#666}</style></head><body><main class="box"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(detail)}</p></main></body></html>`);
 }
 
 function sanitizeLocation(location) {

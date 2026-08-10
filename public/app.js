@@ -461,6 +461,11 @@ function cacheElements() {
     "adminBrowserShareButton",
     "adminBrowserStatus",
     "adminBrowserFrame",
+    "browserPolicyForm",
+    "browserAllowOnly",
+    "browserAllowedSites",
+    "browserBlockedSites",
+    "saveBrowserPolicyButton",
     "wipeLogsButton",
     "wipeReportsButton",
     "wipeUploadsButton",
@@ -643,6 +648,7 @@ function bindEvents() {
   els.adminBrowserForm.addEventListener("submit", openAdminBrowser);
   els.adminBrowserNewTabButton.addEventListener("click", openAdminBrowserNewTab);
   if (els.adminBrowserShareButton) els.adminBrowserShareButton.addEventListener("click", shareAdminBrowserLink);
+  if (els.browserPolicyForm) els.browserPolicyForm.addEventListener("submit", saveBrowserPolicy);
   els.adminDmFilter.addEventListener("change", () => {
     state.adminDmFilter = els.adminDmFilter.value || "all";
     renderAdminDms();
@@ -1127,8 +1133,8 @@ function openPublicBrowser(event) {
   const url = normalizePublicBrowserUrl(els.publicBrowserUrl ? els.publicBrowserUrl.value : "");
   if (!url) return notify("Enter a search or website link");
   if (els.publicBrowserUrl) els.publicBrowserUrl.value = url;
-  if (els.publicBrowserFrame) els.publicBrowserFrame.src = url;
-  if (els.publicBrowserStatus) els.publicBrowserStatus.textContent = "Opening in the public browser. Use Full tab if this site blocks embedding.";
+  if (els.publicBrowserFrame) els.publicBrowserFrame.src = `/api/browser/frame?public=1&url=${encodeURIComponent(url)}`;
+  if (els.publicBrowserStatus) els.publicBrowserStatus.textContent = "Opening through Inner browser. Network-level blocks still apply.";
 }
 
 function openPublicBrowserFullTab() {
@@ -1149,6 +1155,45 @@ function normalizePublicBrowserUrl(rawUrl) {
   if (/^https?:\/\//i.test(value)) return normalizeExternalUrl(value);
   if (/^[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(value)) return normalizeExternalUrl(`https://${value}`);
   return `https://www.google.com/search?q=${encodeURIComponent(value)}`;
+}
+
+async function saveBrowserPolicy(event) {
+  event.preventDefault();
+  if (!isOwner()) return notify("Admin access required");
+  try {
+    const data = await api("/api/settings", {
+      method: "POST",
+      json: {
+        ...serverSettingsPayload(),
+        browserPolicy: {
+          allowOnly: Boolean(els.browserAllowOnly && els.browserAllowOnly.checked),
+          allowedSites: splitDomainList(els.browserAllowedSites ? els.browserAllowedSites.value : ""),
+          blockedSites: splitDomainList(els.browserBlockedSites ? els.browserBlockedSites.value : ""),
+        },
+      },
+    });
+    state.settings = data.settings || state.settings;
+    renderBrowserPolicy();
+    notify("Browser rules saved");
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+function renderBrowserPolicy() {
+  if (!els.browserPolicyForm) return;
+  const policy = state.settings.browserPolicy || {};
+  if (els.browserAllowOnly) els.browserAllowOnly.checked = Boolean(policy.allowOnly);
+  if (els.browserAllowedSites) els.browserAllowedSites.value = Array.isArray(policy.allowedSites) ? policy.allowedSites.join("\n") : "";
+  if (els.browserBlockedSites) els.browserBlockedSites.value = Array.isArray(policy.blockedSites) ? policy.blockedSites.join("\n") : "";
+}
+
+function splitDomainList(value) {
+  return String(value || "")
+    .split(/[\n,]+/)
+    .map((entry) => entry.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, ""))
+    .filter(Boolean)
+    .slice(0, 200);
 }
 
 async function uploadFile(event) {
@@ -3141,6 +3186,7 @@ function renderAll() {
   renderRoomManager();
   renderAnnouncements();
   renderServiceScale();
+  renderBrowserPolicy();
   renderAdminDms();
   renderAdminReadReceipts();
   renderAdminStore();

@@ -640,6 +640,12 @@ textarea:focus {
   line-height: 1.45;
 }
 
+.message-text a {
+  color: var(--accent);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
 .message-actions,
 .file-actions,
 .peer-actions {
@@ -684,6 +690,10 @@ textarea:focus {
 .upload-bar {
   grid-template-columns: auto minmax(160px, 1fr) minmax(150px, 210px) auto auto;
   align-items: center;
+}
+
+.share-link-form {
+  grid-template-columns: minmax(120px, 1fr) minmax(180px, 2fr) minmax(110px, 150px) minmax(160px, 220px) auto;
 }
 
 .invite-join-bar {

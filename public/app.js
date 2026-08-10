@@ -175,6 +175,7 @@ function cacheElements() {
     "chessFrame",
     "openChessButton",
     "continueChessButton",
+    "shareChessButton",
     "voiceView",
     "screenView",
     "domainView",
@@ -203,6 +204,12 @@ function cacheElements() {
     "dmGroupMembers",
     "createDmGroupButton",
     "deleteDmGroupButton",
+    "shareLinkForm",
+    "shareLinkTitle",
+    "shareLinkUrl",
+    "shareLinkType",
+    "shareLinkTarget",
+    "shareLinkButton",
     "dmCallPanel",
     "dmCallState",
     "dmVoiceCallButton",
@@ -418,6 +425,7 @@ function cacheElements() {
     "adminBrowserUrl",
     "adminBrowserOpenButton",
     "adminBrowserNewTabButton",
+    "adminBrowserShareButton",
     "adminBrowserStatus",
     "adminBrowserFrame",
     "wipeLogsButton",
@@ -500,6 +508,8 @@ function bindEvents() {
   els.dmSelfieInput.addEventListener("change", () => sendSelfie("dm"));
   els.dmGroupForm.addEventListener("submit", createDmGroup);
   els.deleteDmGroupButton.addEventListener("click", deleteCurrentDmGroup);
+  if (els.shareLinkForm) els.shareLinkForm.addEventListener("submit", shareLinkToFriends);
+  if (els.shareChessButton) els.shareChessButton.addEventListener("click", () => fillShareLink(currentChessUrl(), "ChessVerse", "app"));
   els.dmVoiceCallButton.addEventListener("click", () => startDmCall(false));
   els.dmVideoCallButton.addEventListener("click", () => startDmCall(true));
   els.dmShareScreenButton.addEventListener("click", () => startDmScreenShare());
@@ -577,6 +587,7 @@ function bindEvents() {
   els.serviceScaleForm.addEventListener("submit", saveServiceScale);
   els.adminBrowserForm.addEventListener("submit", openAdminBrowser);
   els.adminBrowserNewTabButton.addEventListener("click", openAdminBrowserNewTab);
+  if (els.adminBrowserShareButton) els.adminBrowserShareButton.addEventListener("click", shareAdminBrowserLink);
   els.adminDmFilter.addEventListener("change", () => {
     state.adminDmFilter = els.adminDmFilter.value || "all";
     renderAdminDms();
@@ -998,6 +1009,57 @@ async function deleteCurrentDmGroup() {
   } catch (error) {
     notify(error.message);
   }
+}
+
+async function shareLinkToFriends(event) {
+  if (event) event.preventDefault();
+  const url = normalizeExternalUrl(els.shareLinkUrl ? els.shareLinkUrl.value : "");
+  const target = els.shareLinkTarget ? els.shareLinkTarget.value : "";
+  const title = String(els.shareLinkTitle ? els.shareLinkTitle.value : "").trim().slice(0, 120);
+  const type = String(els.shareLinkType ? els.shareLinkType.value : "link").trim().toLowerCase();
+  if (!url) return notify("Paste a valid http or https link");
+  if (!target) return notify("Choose an accepted friend or friend group");
+  if (!shareTargetPeople().some((person) => person.value === target)) return notify("You can only share to accepted friends or friend groups");
+  const groupId = target.startsWith("group:") ? target.slice(6) : "";
+  const label = shareTypeLabel(type);
+  const text = `${label}: ${title || url}\n${url}`;
+  try {
+    if (els.shareLinkButton) els.shareLinkButton.disabled = true;
+    const dm = await api("/api/dms", {
+      method: "POST",
+      json: {
+        to: groupId ? "" : target,
+        groupId,
+        text,
+      },
+    });
+    state.dms = [...state.dms.filter((entry) => entry.id !== dm.dm.id), dm.dm];
+    state.selectedDmUser = target;
+    if (els.shareLinkUrl) els.shareLinkUrl.value = "";
+    if (els.shareLinkTitle) els.shareLinkTitle.value = "";
+    renderDms();
+    notify("Shared to friends");
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    if (els.shareLinkButton) els.shareLinkButton.disabled = false;
+  }
+}
+
+function fillShareLink(url, title = "", type = "link") {
+  if (els.shareLinkUrl) els.shareLinkUrl.value = normalizeExternalUrl(url);
+  if (els.shareLinkTitle) els.shareLinkTitle.value = title;
+  if (els.shareLinkType) els.shareLinkType.value = type;
+  showView("dms");
+  renderShareTargets();
+  if (els.shareLinkTitle) els.shareLinkTitle.focus();
+  notify("Choose a friend or group to share this");
+}
+
+function shareAdminBrowserLink() {
+  const url = normalizeAdminBrowserUrl((els.adminBrowserUrl && els.adminBrowserUrl.value) || "");
+  if (!url) return notify("Open or enter a browser link first");
+  fillShareLink(url, "Browser link", "link");
 }
 
 async function uploadFile(event) {
@@ -3426,6 +3488,7 @@ function renderDms() {
     })
   );
   els.dmPeerSelect.value = state.selectedDmUser;
+  renderShareTargets();
   const activeGroup = selectedDmGroup();
   const canDeleteGroup = activeGroup && (isOwner() || activeGroup.createdBy === state.user.username);
   els.deleteDmGroupButton.classList.toggle("hidden", !activeGroup);
@@ -5645,6 +5708,52 @@ function dmPeople() {
   return [...groups, ...direct];
 }
 
+function shareTargetPeople() {
+  const current = state.user ? state.user.username.toLowerCase() : "";
+  const accepted = acceptedFriendNames();
+  const direct = (state.people || [])
+    .filter((person) => person && person.username && person.username.toLowerCase() !== current && !person.banned && accepted.has(person.username.toLowerCase()))
+    .map((person) => ({
+      ...person,
+      value: person.username,
+      label: `${person.displayName || person.username} (${person.role})`,
+    }))
+    .sort((a, b) => a.username.localeCompare(b.username));
+  const groups = (state.dmGroups || [])
+    .filter((group) => Array.isArray(group.participants) && group.participants.includes(state.user.username))
+    .map((group) => ({
+      username: group.name,
+      role: "group",
+      value: `group:${group.id}`,
+      label: `${group.name} (friend group, ${group.participantCount || group.participants.length})`,
+    }))
+    .sort((a, b) => a.username.localeCompare(b.username));
+  return [...groups, ...direct];
+}
+
+function renderShareTargets() {
+  if (!els.shareLinkTarget) return;
+  const previous = els.shareLinkTarget.value;
+  const people = shareTargetPeople();
+  els.shareLinkTarget.replaceChildren(
+    optionElement("", people.length ? "Choose friend/group" : "Accept friends first"),
+    ...people.map((person) => optionElement(person.value, person.label))
+  );
+  els.shareLinkTarget.value = people.some((person) => person.value === previous) ? previous : "";
+  if (els.shareLinkButton) els.shareLinkButton.disabled = !people.length;
+}
+
+function shareTypeLabel(type) {
+  const labels = {
+    doc: "Doc",
+    slides: "Slides",
+    sheet: "Sheet",
+    app: "App",
+    link: "Link",
+  };
+  return labels[type] || "Link";
+}
+
 function dmGroupCandidatePeople() {
   const current = state.user ? state.user.username.toLowerCase() : "";
   return (state.people || [])
@@ -5888,7 +5997,7 @@ function renderMessageBubble({ mine, title, text, createdAt, sourceIp, attachmen
 
   const body = document.createElement("div");
   body.className = "message-text";
-  body.textContent = text;
+  appendTextWithLinks(body, text);
   item.append(meta, body);
   appendMessageAttachment(item, attachment);
 
@@ -5905,6 +6014,27 @@ function renderMessageBubble({ mine, title, text, createdAt, sourceIp, attachmen
   }
 
   return item;
+}
+
+function appendTextWithLinks(container, value) {
+  const text = String(value || "");
+  const urlPattern = /(https?:\/\/[^\s<>"']+)/gi;
+  let lastIndex = 0;
+  let match;
+  while ((match = urlPattern.exec(text))) {
+    if (match.index > lastIndex) container.append(document.createTextNode(text.slice(lastIndex, match.index)));
+    const rawUrl = match[0].replace(/[),.;!?]+$/g, "");
+    const trailing = match[0].slice(rawUrl.length);
+    const link = document.createElement("a");
+    link.href = rawUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = rawUrl;
+    container.append(link);
+    if (trailing) container.append(document.createTextNode(trailing));
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) container.append(document.createTextNode(text.slice(lastIndex)));
 }
 
 function showIncomingMessageAlert(message) {

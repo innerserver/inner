@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-26-owner-grade-final" />
+    <link rel="stylesheet" href="/styles.css?v=inner-26-friend-share-final" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -193,6 +193,19 @@
             <button id="createDmGroupButton" class="secondary-button" type="submit">Create group</button>
             <button id="deleteDmGroupButton" class="danger-button hidden" type="button">Delete group</button>
           </form>
+          <form id="shareLinkForm" class="upload-bar share-link-form">
+            <input id="shareLinkTitle" maxlength="120" placeholder="Title, doc name, or slide name" autocomplete="off" />
+            <input id="shareLinkUrl" maxlength="700" placeholder="Paste a link to share with friends" autocomplete="off" />
+            <select id="shareLinkType" aria-label="Share type">
+              <option value="link">Link</option>
+              <option value="doc">Doc</option>
+              <option value="slides">Slides</option>
+              <option value="sheet">Sheet</option>
+              <option value="app">App</option>
+            </select>
+            <select id="shareLinkTarget" aria-label="Share target"></select>
+            <button id="shareLinkButton" class="primary-button" type="submit">Share</button>
+          </form>
           <div id="dmCallPanel" class="dm-call-panel">
             <div class="panel-title-row">
               <div>
@@ -324,6 +337,7 @@
             <div class="button-row">
               <button id="openChessButton" class="primary-button compact-button" type="button">Open Chess Site</button>
               <button id="continueChessButton" class="secondary-button compact-button" type="button">Continue signup</button>
+              <button id="shareChessButton" class="ghost-light-button compact-button" type="button">Share to friends</button>
             </div>
           </div>
           <p class="panel-note">Use Open ChessVerse or Continue signup for accounts. Browser security can block third-party signup cookies inside embedded apps.</p>
@@ -643,7 +657,7 @@
                 <input id="adminBrowserUrl" placeholder="https://example.com" autocomplete="off" />
                 <button id="adminBrowserOpenButton" class="secondary-button" type="submit">Open</button>
               </form>
-              <div class="button-row"><button id="adminBrowserNewTabButton" class="ghost-light-button compact-button" type="button">Open full tab</button></div>
+              <div class="button-row"><button id="adminBrowserNewTabButton" class="ghost-light-button compact-button" type="button">Open full tab</button><button id="adminBrowserShareButton" class="ghost-light-button compact-button" type="button">Share to friends</button></div>
               <p id="adminBrowserStatus" class="inline-status"></p>
               <iframe id="adminBrowserFrame" class="admin-browser-frame" title="Admin browser"></iframe>
             </div>
@@ -711,8 +725,8 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-26-owner-grade-final" defer></script>
-    <script src="/app.js?v=inner-26-owner-grade-final" defer></script>
-    <script src="/force-logout.js?v=inner-26-owner-grade-final" defer></script>
+    <script src="/session-guard.js?v=inner-26-friend-share-final" defer></script>
+    <script src="/app.js?v=inner-26-friend-share-final" defer></script>
+    <script src="/force-logout.js?v=inner-26-friend-share-final" defer></script>
   </body>
 </html>

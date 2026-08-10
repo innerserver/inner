@@ -98,6 +98,8 @@ const viewRoutes = {
   profile: "/profile",
   store: "/store",
   files: "/files",
+  docs: "/docs",
+  browser: "/browser",
   chess: "/chess",
   voice: "/voice",
   screen: "/screen",
@@ -171,6 +173,22 @@ function cacheElements() {
     "profileView",
     "storeView",
     "filesView",
+    "docsView",
+    "docsFrame",
+    "docsShareForm",
+    "docsShareTitle",
+    "docsShareUrl",
+    "docsShareType",
+    "docsShareTarget",
+    "docsShareButton",
+    "browserView",
+    "publicBrowserForm",
+    "publicBrowserUrl",
+    "publicBrowserOpenButton",
+    "publicBrowserFullTabButton",
+    "publicBrowserShareButton",
+    "publicBrowserStatus",
+    "publicBrowserFrame",
     "chessView",
     "chessFrame",
     "openChessButton",
@@ -510,6 +528,11 @@ function bindEvents() {
   els.deleteDmGroupButton.addEventListener("click", deleteCurrentDmGroup);
   if (els.shareLinkForm) els.shareLinkForm.addEventListener("submit", shareLinkToFriends);
   if (els.shareChessButton) els.shareChessButton.addEventListener("click", () => fillShareLink(currentChessUrl(), "ChessVerse", "app"));
+  if (els.docsShareForm) els.docsShareForm.addEventListener("submit", shareDocsLink);
+  document.querySelectorAll(".docs-open-button").forEach((button) => button.addEventListener("click", () => openDocsApp(button.dataset.docUrl, button.dataset.docTitle, button.dataset.docType)));
+  if (els.publicBrowserForm) els.publicBrowserForm.addEventListener("submit", openPublicBrowser);
+  if (els.publicBrowserFullTabButton) els.publicBrowserFullTabButton.addEventListener("click", openPublicBrowserFullTab);
+  if (els.publicBrowserShareButton) els.publicBrowserShareButton.addEventListener("click", sharePublicBrowserLink);
   els.dmVoiceCallButton.addEventListener("click", () => startDmCall(false));
   els.dmVideoCallButton.addEventListener("click", () => startDmCall(true));
   els.dmShareScreenButton.addEventListener("click", () => startDmScreenShare());
@@ -1060,6 +1083,55 @@ function shareAdminBrowserLink() {
   const url = normalizeAdminBrowserUrl((els.adminBrowserUrl && els.adminBrowserUrl.value) || "");
   if (!url) return notify("Open or enter a browser link first");
   fillShareLink(url, "Browser link", "link");
+}
+
+async function shareDocsLink(event) {
+  if (event) event.preventDefault();
+  if (!els.shareLinkUrl || !els.docsShareUrl) return;
+  els.shareLinkTitle.value = els.docsShareTitle ? els.docsShareTitle.value : "";
+  els.shareLinkUrl.value = els.docsShareUrl.value;
+  els.shareLinkType.value = els.docsShareType ? els.docsShareType.value : "doc";
+  if (els.shareLinkTarget && els.docsShareTarget) els.shareLinkTarget.value = els.docsShareTarget.value;
+  await shareLinkToFriends();
+}
+
+function openDocsApp(url, title = "Google Docs", type = "doc") {
+  const normalized = normalizeExternalUrl(url);
+  if (!normalized) return notify("Docs link is not valid");
+  if (els.docsFrame) els.docsFrame.src = normalized;
+  if (els.docsShareTitle) els.docsShareTitle.value = title || "";
+  if (els.docsShareType) els.docsShareType.value = type || "doc";
+  if (els.docsShareUrl) els.docsShareUrl.value = normalized;
+  notify("Opening docs. Use full sign-in tab if Google blocks the frame.");
+}
+
+function openPublicBrowser(event) {
+  if (event) event.preventDefault();
+  const url = normalizePublicBrowserUrl(els.publicBrowserUrl ? els.publicBrowserUrl.value : "");
+  if (!url) return notify("Enter a search or website link");
+  if (els.publicBrowserUrl) els.publicBrowserUrl.value = url;
+  if (els.publicBrowserFrame) els.publicBrowserFrame.src = url;
+  if (els.publicBrowserStatus) els.publicBrowserStatus.textContent = "Opening in the public browser. Use Full tab if this site blocks embedding.";
+}
+
+function openPublicBrowserFullTab() {
+  const url = normalizePublicBrowserUrl((els.publicBrowserUrl && els.publicBrowserUrl.value) || (els.publicBrowserFrame && els.publicBrowserFrame.src) || "");
+  if (!url) return notify("Open or enter a website first");
+  window.open(url, "_blank", "noopener");
+}
+
+function sharePublicBrowserLink() {
+  const url = normalizePublicBrowserUrl((els.publicBrowserUrl && els.publicBrowserUrl.value) || (els.publicBrowserFrame && els.publicBrowserFrame.src) || "");
+  if (!url) return notify("Open or enter a website first");
+  fillShareLink(url, "Browser link", "link");
+}
+
+function normalizePublicBrowserUrl(rawUrl) {
+  const value = String(rawUrl || "").trim();
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value)) return normalizeExternalUrl(value);
+  if (/^[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(value)) return normalizeExternalUrl(`https://${value}`);
+  return `https://www.google.com/search?q=${encodeURIComponent(value)}`;
 }
 
 async function uploadFile(event) {
@@ -5732,15 +5804,21 @@ function shareTargetPeople() {
 }
 
 function renderShareTargets() {
-  if (!els.shareLinkTarget) return;
-  const previous = els.shareLinkTarget.value;
   const people = shareTargetPeople();
-  els.shareLinkTarget.replaceChildren(
+  fillShareTargetSelect(els.shareLinkTarget, people);
+  fillShareTargetSelect(els.docsShareTarget, people);
+  if (els.shareLinkButton) els.shareLinkButton.disabled = !people.length;
+  if (els.docsShareButton) els.docsShareButton.disabled = !people.length;
+}
+
+function fillShareTargetSelect(select, people) {
+  if (!select) return;
+  const previous = select.value;
+  select.replaceChildren(
     optionElement("", people.length ? "Choose friend/group" : "Accept friends first"),
     ...people.map((person) => optionElement(person.value, person.label))
   );
-  els.shareLinkTarget.value = people.some((person) => person.value === previous) ? previous : "";
-  if (els.shareLinkButton) els.shareLinkButton.disabled = !people.length;
+  select.value = people.some((person) => person.value === previous) ? previous : "";
 }
 
 function shareTypeLabel(type) {

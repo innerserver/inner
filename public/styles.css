@@ -1386,6 +1386,79 @@ textarea:focus {
   overflow-wrap: anywhere;
 }
 
+/* Final UI polish layer */
+.app {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255,255,255,0)),
+    var(--bg);
+}
+
+.sidebar {
+  background: color-mix(in srgb, var(--surface) 90%, var(--bg));
+  box-shadow: 10px 0 30px rgba(0, 0, 0, 0.035);
+}
+
+.nav-list {
+  gap: 7px;
+}
+
+.nav-button {
+  border-radius: 8px;
+  padding-inline: 12px;
+  font-size: 0.96rem;
+}
+
+.nav-button:hover,
+.nav-button.active {
+  background: color-mix(in srgb, var(--accent-soft) 54%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.topbar {
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.status-panel,
+.file-card,
+.message,
+.composer,
+.upload-bar,
+.panel-form {
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(20, 20, 18, 0.045);
+}
+
+.section-header {
+  align-items: flex-end;
+}
+
+.section-header h2 {
+  letter-spacing: 0;
+}
+
+.docs-grid {
+  align-items: start;
+}
+
+.docs-open-button {
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+}
+
+.public-browser-bar {
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  margin-bottom: 10px;
+}
+
+.embedded-app-frame,
+.admin-browser-frame {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.06);
+}
+
 @media (max-width: 920px) {
   .login-stack {
     grid-template-columns: 1fr;

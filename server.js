@@ -888,7 +888,7 @@ async function routeApi(req, res, requestUrl) {
       email,
       phone,
       grade,
-      requestedRole: body.requestedRole,
+      requestedRole: normalizePublicRequestedRole(body.requestedRole),
       passwordHash: hashPassword(password),
       passwordSet: true,
       note: body.note,
@@ -4337,6 +4337,11 @@ function sanitizeAccountRequest(request) {
     declinedAt: request.declinedAt || "",
     declinedBy: String(request.declinedBy || "").slice(0, 80),
   };
+}
+
+function normalizePublicRequestedRole(role) {
+  const value = normalizeRole(role || "member");
+  return value === "moderator" ? "moderator" : "member";
 }
 
 function safeAccountRequest(request, viewer = null) {

@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-27-ui-grade-friends-final" />
+    <link rel="stylesheet" href="/styles.css?v=inner-28-docs-signup-final" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -47,7 +47,7 @@
             <label>Phone<input id="requestPhone" type="tel" autocomplete="tel" placeholder="+1 555 000 0000" /></label>
           </div>
           <label>Grade<select id="requestGrade"><option value="">Choose grade</option><option value="6">Grade 6</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
-          <label>Requested account type<select id="requestRole"><option value="member">Member</option><option value="moderator">Moderator</option><option value="admin">Admin</option><option value="hmd">HMD</option><option value="dev">Dev</option></select></label>
+          <label>Requested account type<select id="requestRole"><option value="member">Student / member</option><option value="moderator">Teacher / moderator</option></select></label>
           <label>Password<input id="requestPassword" type="password" autocomplete="new-password" placeholder="used after approval" required /></label>
           <label>Note<textarea id="requestNote" rows="3" maxlength="600" placeholder="why you need access"></textarea></label>
           <button id="submitAccountRequestButton" class="secondary-button" type="submit">Share location and request</button>
@@ -411,29 +411,23 @@
               <p>Create, open, and share docs or slides with accepted friends.</p>
             </div>
           </div>
-          <div class="docs-hero status-panel">
-            <div>
-              <span class="muted-label">Inner Docs</span>
-              <h3>Write notes, slide outlines, and plans inside Inner</h3>
-              <p class="panel-note">Create docs here, save them to the server, and share editable access with accepted friends or friend group DMs.</p>
-            </div>
-            <div class="docs-hero-actions">
-              <button id="newInnerDocButton" class="primary-button" type="button">New doc</button>
-              <button id="deleteInnerDocButton" class="danger-button" type="button">Delete</button>
-            </div>
-          </div>
           <div class="settings-grid docs-grid">
-            <div class="status-panel">
-              <h3>Your docs</h3>
+            <div class="status-panel docs-list-panel">
+              <div class="panel-title-row">
+                <h3>Your docs</h3>
+                <button id="newInnerDocButton" class="primary-button compact-button" type="button">New</button>
+              </div>
               <div id="innerDocList" class="account-list docs-card-list"></div>
             </div>
             <form id="innerDocForm" class="panel-form inner-doc-editor">
-              <h3>Editor</h3>
-              <label>Title<input id="innerDocTitle" maxlength="120" placeholder="Untitled doc" autocomplete="off" /></label>
-              <label>Type<select id="innerDocType"><option value="doc">Doc</option><option value="notes">Notes</option><option value="slides">Slides outline</option><option value="sheet">Table / sheet notes</option></select></label>
-              <label>Content<textarea id="innerDocBody" rows="16" maxlength="120000" placeholder="Start typing..."></textarea></label>
-              <div class="button-row">
+              <div class="doc-editor-toolbar">
+                <input id="innerDocTitle" maxlength="120" placeholder="Untitled doc" autocomplete="off" aria-label="Doc title" />
+                <select id="innerDocType" aria-label="Doc type"><option value="doc">Doc</option><option value="notes">Notes</option><option value="slides">Slides outline</option><option value="sheet">Table / sheet notes</option></select>
                 <button id="saveInnerDocButton" class="primary-button" type="submit">Save doc</button>
+                <button id="deleteInnerDocButton" class="danger-button" type="button">Delete</button>
+              </div>
+              <textarea id="innerDocBody" rows="20" maxlength="120000" placeholder="Start typing..." aria-label="Doc content"></textarea>
+              <div class="doc-share-row">
                 <select id="innerDocShareTarget" aria-label="Share doc target"></select>
                 <button id="shareInnerDocButton" class="secondary-button" type="button">Share access</button>
               </div>
@@ -791,8 +785,8 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-27-ui-grade-friends-final" defer></script>
-    <script src="/app.js?v=inner-27-ui-grade-friends-final" defer></script>
-    <script src="/force-logout.js?v=inner-27-ui-grade-friends-final" defer></script>
+    <script src="/session-guard.js?v=inner-28-docs-signup-final" defer></script>
+    <script src="/app.js?v=inner-28-docs-signup-final" defer></script>
+    <script src="/force-logout.js?v=inner-28-docs-signup-final" defer></script>
   </body>
 </html>

@@ -1444,29 +1444,24 @@ textarea:focus {
 }
 
 .docs-grid {
-  align-items: start;
+  align-items: stretch;
+  grid-template-columns: minmax(210px, 300px) minmax(0, 1fr);
+  min-height: min(720px, calc(100dvh - 180px));
 }
 
-.docs-hero {
-  display: flex;
+.docs-list-panel,
+.inner-doc-editor {
+  min-height: 0;
+}
+
+.docs-list-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.docs-list-panel .panel-title-row {
   align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 16px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--accent-soft) 70%, var(--surface)), var(--surface));
-}
-
-.docs-hero h3 {
-  margin: 4px 0 6px;
-  font-size: clamp(1.25rem, 2.5vw, 2rem);
-}
-
-.docs-hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: flex-end;
 }
 
 .docs-open-button {
@@ -1476,7 +1471,7 @@ textarea:focus {
 }
 
 .docs-card-list {
-  max-height: 520px;
+  max-height: none;
   overflow: auto;
   padding-right: 2px;
 }
@@ -1486,18 +1481,41 @@ textarea:focus {
   background: var(--accent-soft);
 }
 
+.inner-doc-editor {
+  gap: 10px;
+  padding: 12px;
+}
+
+.doc-editor-toolbar {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(120px, 170px) auto auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.doc-editor-toolbar input,
+.doc-editor-toolbar select,
+.doc-share-row select {
+  width: 100%;
+  min-width: 0;
+}
+
 .inner-doc-editor textarea {
-  min-height: 420px;
+  width: 100%;
+  min-height: min(62dvh, 620px);
   font: 0.98rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   resize: vertical;
 }
 
-.inner-doc-editor .button-row {
+.doc-share-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto;
+  gap: 8px;
   align-items: stretch;
 }
 
-.inner-doc-editor .button-row select {
-  min-width: min(220px, 100%);
+.inner-doc-editor .panel-note {
+  margin: 0;
 }
 
 .public-browser-bar {
@@ -1513,22 +1531,8 @@ textarea:focus {
 }
 
 @media (max-width: 920px) {
-  .split-fields,
-  .docs-hero {
+  .split-fields {
     grid-template-columns: 1fr;
-  }
-
-  .docs-hero {
-    display: grid;
-    align-items: stretch;
-  }
-
-  .docs-hero-actions {
-    justify-content: stretch;
-  }
-
-  .docs-hero-actions button {
-    width: 100%;
   }
 
   .inner-doc-editor textarea {
@@ -2374,12 +2378,13 @@ body {
 }
 
 .docs-grid {
-  grid-template-columns: minmax(220px, 340px) minmax(0, 1fr);
+  grid-template-columns: minmax(210px, 300px) minmax(0, 1fr);
   align-items: stretch;
+  min-height: min(720px, calc(100dvh - 180px));
 }
 
 .docs-card-list {
-  max-height: min(48dvh, 520px);
+  max-height: none;
 }
 
 .inner-doc-editor {
@@ -2387,7 +2392,7 @@ body {
 }
 
 .inner-doc-editor textarea {
-  min-height: clamp(260px, 48dvh, 620px);
+  min-height: min(62dvh, 620px);
   resize: vertical;
 }
 
@@ -2451,10 +2456,16 @@ body {
 
   .docs-grid {
     grid-template-columns: 1fr;
+    min-height: 0;
   }
 
   .docs-card-list {
     max-height: 180px;
+  }
+
+  .doc-editor-toolbar,
+  .doc-share-row {
+    grid-template-columns: 1fr;
   }
 
   .inner-doc-editor textarea {

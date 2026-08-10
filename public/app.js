@@ -3173,6 +3173,7 @@ function renderShell() {
   document.querySelectorAll(".dev-only").forEach((element) => {
     element.classList.toggle("hidden", !isDev());
   });
+  syncPrivilegedNav();
   syncHiddenNav();
   closeSidebar();
   updateNotificationButton();
@@ -6062,6 +6063,21 @@ function syncHiddenNav() {
     const blocked = feature && !isOwner() && rule.hidden && !rule.allowedUsers.includes((state.user && state.user.username || "").toLowerCase());
     button.classList.toggle("hidden", Boolean(blocked));
   });
+}
+
+function syncPrivilegedNav() {
+  setNavVisibility(els.domainNavButton, isOwner());
+  setNavVisibility(els.adminNavButton, isOwner());
+  setNavVisibility(els.hmdNavButton, isDev());
+}
+
+function setNavVisibility(button, visible) {
+  if (!button) return;
+  button.hidden = !visible;
+  button.classList.toggle("hidden", !visible);
+  button.style.display = visible ? "" : "none";
+  button.setAttribute("aria-hidden", visible ? "false" : "true");
+  button.tabIndex = visible ? 0 : -1;
 }
 
 function renderMessageBubble({ mine, title, text, createdAt, sourceIp, attachment, onDelete }) {

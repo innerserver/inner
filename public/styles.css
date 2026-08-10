@@ -2710,3 +2710,322 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* v33 stable UI reset: one owner for shell, DMs, Docs, and phone layout. */
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+#appView.app:not(.hidden) {
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(224px, 260px) minmax(0, 1fr);
+  overflow: hidden;
+}
+
+#appView .sidebar {
+  position: relative;
+  width: auto;
+  height: 100dvh;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+#appView .workspace {
+  height: 100dvh;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+#appView .topbar {
+  min-height: 64px;
+  flex-wrap: wrap;
+  align-content: center;
+}
+
+#appView .view.active {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+}
+
+#messagesView.view.active,
+#dmsView.view.active {
+  height: 100%;
+  overflow: hidden;
+  display: grid;
+  gap: 10px;
+}
+
+#messagesView.view.active {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+#dmsView.view.active {
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+}
+
+#messagesView .message-list,
+#dmsView .message-list {
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface) 82%, var(--bg));
+}
+
+#dmsView .section-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 360px);
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+#dmsView .section-header h2,
+#dmsView .section-header p {
+  margin: 0;
+}
+
+#dmsView .compact-label,
+#dmsView .compact-label select {
+  width: 100%;
+}
+
+.dm-tools-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dm-tool-card {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dm-tool-card summary {
+  list-style: none;
+}
+
+.dm-tool-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.dm-tool-card summary::after {
+  content: "+";
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.dm-tool-card[open] summary::after {
+  content: "-";
+}
+
+.dm-tool-card .upload-bar {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#dmsView .dm-call-panel {
+  min-height: 0;
+  max-height: none;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+#dmsView .dm-call-panel:not(.call-expanded) .dm-call-grid {
+  display: none;
+}
+
+#dmsView .dm-call-panel .panel-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+#dmsView .dm-call-panel h3,
+#dmsView .dm-call-panel p {
+  margin: 0;
+}
+
+#dmsView .dm-call-panel .button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+#dmsView .dm-call-panel .button-row button {
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 0.86rem;
+}
+
+#dmsView .dm-call-panel.call-expanded {
+  overflow-y: auto;
+}
+
+#dmsView .dm-call-grid {
+  grid-template-columns: minmax(130px, 180px) minmax(0, 1fr) minmax(130px, 180px);
+  margin-top: 10px;
+}
+
+#dmsView .composer,
+#messagesView .composer {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 220px) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+#dmsView .composer input,
+#messagesView .composer input {
+  min-width: 0;
+}
+
+#docsView.view.active {
+  overflow: hidden;
+}
+
+#docsView .docs-grid {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: 12px;
+}
+
+#docsView.docs-list-collapsed .docs-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#docsView.docs-list-collapsed .docs-list-panel {
+  display: none;
+}
+
+#docsView .docs-list-panel,
+#docsView .inner-doc-editor {
+  min-height: 0;
+  overflow: hidden;
+}
+
+#docsView .docs-card-list {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+#docsView .inner-doc-editor {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto auto;
+}
+
+#docsView .inner-doc-page-wrap {
+  min-height: 0;
+  overflow: auto;
+}
+
+@media (max-width: 920px) {
+  #appView.app:not(.hidden),
+  #appView.app.sidebar-closed {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #appView .sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0;
+    z-index: 90;
+    width: min(84vw, 320px);
+    transform: translateX(-105%);
+    transition: transform 180ms ease;
+    box-shadow: 18px 0 48px rgba(0, 0, 0, 0.18);
+  }
+
+  #appView.sidebar-open .sidebar {
+    transform: translateX(0);
+  }
+
+  #appView .workspace {
+    grid-column: 1;
+  }
+
+  #appView .topbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  #appView .topbar > div:first-child,
+  #appView .topbar-metrics,
+  #appView .topbar-actions {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 720px) {
+  #appView .view.active {
+    padding: 12px;
+  }
+
+  #dmsView.view.active {
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  }
+
+  #dmsView .section-header,
+  .dm-tools-panel,
+  #dmsView .dm-call-panel .panel-title-row,
+  #dmsView .composer,
+  #messagesView .composer,
+  #docsView .docs-grid,
+  #docsView .doc-editor-toolbar,
+  #docsView .doc-share-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #dmsView .dm-call-panel .button-row {
+    justify-content: stretch;
+  }
+
+  #dmsView .dm-call-panel .button-row button {
+    flex: 1 1 130px;
+  }
+
+  #dmsView .dm-call-panel.call-expanded {
+    max-height: 38dvh;
+  }
+
+  #dmsView .dm-call-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #dmsView .message-list {
+    padding: 8px;
+  }
+
+  #docsView .docs-card-list {
+    max-height: 170px;
+  }
+}

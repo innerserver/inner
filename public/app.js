@@ -3745,11 +3745,13 @@ function renderDmCall() {
   const incomingHere = Boolean(state.incomingCall);
   const people = hasSelection ? selectedDmParticipants() : [];
   const online = Array.from(state.peers.values()).filter((peer) => people.includes(peer.username)).length;
+  const callExpanded = Boolean(inThisCall || sharingHere || remoteShareHere || incomingHere);
+  els.dmCallPanel.classList.toggle("call-expanded", callExpanded);
 
   els.dmCallState.textContent = incomingHere
     ? `${state.incomingCall.fromUser} is ringing ${state.incomingCall.roomLabel || callRoomLabel(state.incomingCall.roomId)}`
     : hasSelection
-      ? `${currentDmCallLabel()} · ${online} online · ${inThisCall ? "in call" : "ready"}`
+      ? `${currentDmCallLabel()} - ${online} online - ${inThisCall ? "in call" : "ready"}`
       : "Choose a DM or group to start a call";
 
   els.dmVoiceCallButton.disabled = !hasSelection || inThisCall || !featureAvailable("voice");

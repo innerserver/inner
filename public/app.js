@@ -958,6 +958,7 @@ function showView(viewName, options = {}) {
   document.querySelectorAll(".view").forEach((view) => {
     view.classList.toggle("active", view.id === `${viewName}View`);
   });
+  if (window.matchMedia("(max-width: 920px)").matches) closeSidebar();
 }
 
 async function sendMessage(event) {
@@ -3260,7 +3261,6 @@ function renderShell() {
   });
   syncPrivilegedNav();
   syncHiddenNav();
-  closeSidebar();
   updateNotificationButton();
   if (!isOwner() && state.activeView === "admin") showView("dashboard");
   if (!isOwner() && state.activeView === "domain") showView("dashboard");
@@ -3363,25 +3363,34 @@ function toggleSidebar() {
   if (phoneMode) {
     const open = !els.appView.classList.contains("sidebar-open");
     els.appView.classList.toggle("sidebar-open", open);
+    els.appView.classList.remove("sidebar-closed");
+    if (els.sidebarBackdrop) els.sidebarBackdrop.classList.toggle("hidden", !open);
     setSidebarButtonIcon(open);
-    els.sidebarToggleButton.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
-    els.sidebarToggleButton.setAttribute("aria-expanded", String(open));
+    if (els.sidebarToggleButton) {
+      els.sidebarToggleButton.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+      els.sidebarToggleButton.setAttribute("aria-expanded", String(open));
+    }
     return;
   }
   const closed = !els.appView.classList.contains("sidebar-closed");
   els.appView.classList.toggle("sidebar-closed", closed);
+  els.appView.classList.remove("sidebar-open");
+  if (els.sidebarBackdrop) els.sidebarBackdrop.classList.add("hidden");
   setSidebarButtonIcon(!closed);
-  els.sidebarToggleButton.setAttribute("aria-label", closed ? "Open navigation" : "Close navigation");
-  els.sidebarToggleButton.setAttribute("aria-expanded", String(!closed));
+  if (els.sidebarToggleButton) {
+    els.sidebarToggleButton.setAttribute("aria-label", closed ? "Open navigation" : "Close navigation");
+    els.sidebarToggleButton.setAttribute("aria-expanded", String(!closed));
+  }
 }
 
 function closeSidebar() {
   if (!els.appView) return;
   els.appView.classList.remove("sidebar-open");
+  if (els.sidebarBackdrop) els.sidebarBackdrop.classList.add("hidden");
   setSidebarButtonIcon(false);
   if (els.sidebarToggleButton) {
     els.sidebarToggleButton.setAttribute("aria-label", "Open navigation");
-    els.sidebarToggleButton.setAttribute("aria-expanded", String(!els.appView.classList.contains("sidebar-closed")));
+    els.sidebarToggleButton.setAttribute("aria-expanded", "false");
   }
 }
 

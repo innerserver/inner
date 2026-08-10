@@ -59,6 +59,7 @@ const FILES = {
   store: path.join(DATA_DIR, "store.json"),
   aiRequests: path.join(DATA_DIR, "ai-requests.json"),
   ai: path.join(DATA_DIR, "ai.json"),
+  innerDocs: path.join(DATA_DIR, "inner-docs.json"),
   settings: path.join(DATA_DIR, "settings.json"),
   vpn: path.join(DATA_DIR, "vpn.json"),
   profiles: path.join(DATA_DIR, "profiles.json"),
@@ -347,7 +348,8 @@ async function ensureStorage() {
   await ensureJson(FILES.accountRequests, []);
   await ensureJson(FILES.store, { items: [], orders: [] });
   await ensureJson(FILES.aiRequests, []);
-  await ensureJson(FILES.ai, { apiKey: "", updatedAt: "", updatedBy: "" });
+  await ensureJson(FILES.ai, { apiKey: "", baseUrl: "", model: "", updatedAt: "", updatedBy: "" });
+  await ensureJson(FILES.innerDocs, []);
   await ensureJson(FILES.profiles, {});
   await ensureJson(FILES.friends, { requests: [], friendships: [] });
   await ensureJson(FILES.invites, []);
@@ -925,7 +927,9 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     const username = normalizeUsername(body.username);
     const password = String(body.password || "");
-    const contact = String(body.contact || "").trim().slice(0, 160);
+    const email = String(body.email || "").trim().slice(0, 120);
+    const phone = String(body.phone || "").trim().slice(0, 80);
+    const contact = String(body.contact || [email, phone].filter(Boolean).join(" / ")).trim().slice(0, 160);
     const grade = normalizeGrade(body.grade || "");
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
     if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
@@ -946,6 +950,8 @@ async function routeApi(req, res, requestUrl) {
       passwordHash: hashPassword(password),
       passwordPreset: "",
       contact,
+      email,
+      phone,
       grade,
       sourceIp: getClientIp(req),
       sourceHost: req.headers.host || "",
@@ -1011,6 +1017,7 @@ async function routeApi(req, res, requestUrl) {
       store,
       aiRequests,
       aiConfig,
+      innerDocs,
       vpn,
       users,
       backups,
@@ -1038,6 +1045,7 @@ async function routeApi(req, res, requestUrl) {
       readJson(FILES.store, { items: [], orders: [] }),
       readJson(FILES.aiRequests, []),
       readJson(FILES.ai, {}),
+      readJson(FILES.innerDocs, []),
       readJson(FILES.vpn, {}),
       readJson(FILES.users, []),
       canManage(user) ? listBackups() : [],
@@ -1081,8 +1089,9 @@ async function routeApi(req, res, requestUrl) {
       files: safeFileRecords(files, user),
       accountRequests: canManage(user) ? safeAccountRequests(accountRequests, user) : [],
       store: safeStore(store, user),
+      innerDocs: safeInnerDocs(innerDocs, user),
       aiRequests: canManage(user) ? aiRequests.slice(-100) : [],
-      aiConfigured: canManage(user) ? Boolean(process.env.OPENAI_API_KEY || aiConfig.apiKey) : false,
+      aiConfigured: canManage(user) ? Boolean(resolveAiConfig(aiConfig).apiKey) : false,
       emailStatus: canManage(user) ? emailProviderStatus() : null,
       vpn: safeVpn(vpn),
       locations: vpnLocations,
@@ -1649,6 +1658,105 @@ async function routeApi(req, res, requestUrl) {
     return json(res, 200, { store: safeStore(store, user) });
   }
 
+  if (req.method === "POST" && pathname === "/api/inner-docs") {
+    const body = await readJsonBody(req);
+    const docs = await readJson(FILES.innerDocs, []);
+    const id = String(body.id || "").trim();
+    const now = new Date().toISOString();
+    const existingIndex = id ? docs.findIndex((doc) => doc.id === id) : -1;
+    if (existingIndex !== -1 && !canAccessInnerDoc(docs[existingIndex], user)) return json(res, 403, { error: "Doc access required" });
+    const previous = existingIndex !== -1 ? docs[existingIndex] : {};
+    const next = sanitizeInnerDoc({
+      ...previous,
+      id: previous.id || crypto.randomUUID(),
+      title: body.title,
+      type: body.type,
+      body: body.body,
+      owner: previous.owner || user.username,
+      sharedWith: previous.sharedWith || [],
+      createdAt: previous.createdAt || now,
+      createdBy: previous.createdBy || user.username,
+      updatedAt: now,
+      updatedBy: user.username,
+    });
+    if (!next.title) return json(res, 400, { error: "Doc title is required" });
+    if (existingIndex === -1) docs.unshift(next);
+    else docs[existingIndex] = next;
+    await writeJson(FILES.innerDocs, docs.slice(0, 1000));
+    return json(res, 200, { doc: safeInnerDoc(next, user), innerDocs: safeInnerDocs(docs, user) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/inner-docs/share") {
+    const body = await readJsonBody(req);
+    const id = String(body.id || "").trim();
+    const target = String(body.target || "").trim();
+    const docs = await readJson(FILES.innerDocs, []);
+    const index = docs.findIndex((doc) => doc.id === id);
+    if (index === -1) return json(res, 404, { error: "Doc not found" });
+    if (!canAccessInnerDoc(docs[index], user)) return json(res, 403, { error: "Doc access required" });
+
+    const friends = await readJson(FILES.friends, { requests: [], friendships: [] });
+    const sharedUsers = new Set(Array.isArray(docs[index].sharedWith) ? docs[index].sharedWith : []);
+    let dmTarget = target;
+    let dmGroupId = "";
+    if (target.startsWith("group:")) {
+      dmGroupId = target.slice(6);
+      const groups = await readJson(FILES.dmGroups, []);
+      const group = groups.map(sanitizeDmGroup).find((entry) => entry.id === dmGroupId);
+      if (!group || !group.participants.includes(user.username)) return json(res, 403, { error: "Group access required" });
+      for (const participant of group.participants) {
+        if (participant !== user.username && !areFriends(friends, user.username, participant)) {
+          return json(res, 403, { error: "Docs can only be shared with accepted friends" });
+        }
+        sharedUsers.add(participant);
+      }
+      dmTarget = group.name;
+    } else {
+      if (!areFriends(friends, user.username, target)) return json(res, 403, { error: "Docs can only be shared with accepted friends" });
+      sharedUsers.add(target);
+    }
+    docs[index] = sanitizeInnerDoc({
+      ...docs[index],
+      sharedWith: Array.from(sharedUsers),
+      updatedAt: new Date().toISOString(),
+      updatedBy: user.username,
+    });
+    await writeJson(FILES.innerDocs, docs);
+
+    const dms = await readJson(FILES.dms, []);
+    const dm = {
+      id: crypto.randomUUID(),
+      from: user.username,
+      to: dmGroupId ? dmTarget : target,
+      groupId: dmGroupId,
+      groupName: dmGroupId ? dmTarget : "",
+      participants: dmGroupId ? Array.from(sharedUsers) : [user.username, target],
+      text: `Inner Doc: ${docs[index].title}\nOpen the Docs tab to edit the shared doc.`,
+      attachment: null,
+      mentions: [],
+      sourceIp: getClientIp(req),
+      sourceHost: req.headers.host || "",
+      sourceAgent: String(req.headers["user-agent"] || "").slice(0, 240),
+      sourceDevice: deviceSignature(req),
+      createdAt: new Date().toISOString(),
+    };
+    dms.push(dm);
+    await writeJson(FILES.dms, dms.slice(-3000));
+    broadcastDm({ type: "dm:new", dm }, dm);
+    return json(res, 200, { doc: safeInnerDoc(docs[index], user), innerDocs: safeInnerDocs(docs, user), dm });
+  }
+
+  if (req.method === "DELETE" && pathname.startsWith("/api/inner-docs/")) {
+    const id = decodeURIComponent(pathname.split("/").pop() || "");
+    const docs = await readJson(FILES.innerDocs, []);
+    const doc = docs.find((entry) => entry.id === id);
+    if (!doc) return json(res, 404, { error: "Doc not found" });
+    if (doc.owner !== user.username && !canManage(user)) return json(res, 403, { error: "Only the owner can delete this doc" });
+    const next = docs.filter((entry) => entry.id !== id);
+    await writeJson(FILES.innerDocs, next);
+    return json(res, 200, { innerDocs: safeInnerDocs(next, user) });
+  }
+
   if (req.method === "POST" && pathname === "/api/ai/suggest") {
     if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
     const body = await readJsonBody(req);
@@ -1676,13 +1784,17 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     const mode = String(body.mode || "set").toLowerCase();
     if (mode === "clear") {
-      await writeJson(FILES.ai, { apiKey: "", updatedAt: new Date().toISOString(), updatedBy: user.username });
-      return json(res, 200, { aiConfigured: Boolean(process.env.OPENAI_API_KEY) });
+      await writeJson(FILES.ai, { apiKey: "", baseUrl: "", model: "", updatedAt: new Date().toISOString(), updatedBy: user.username });
+      return json(res, 200, { aiConfigured: Boolean(resolveAiConfig({}).apiKey) });
     }
     const apiKey = String(body.apiKey || "").trim();
-    if (!/^sk-[A-Za-z0-9_-]{20,}$/.test(apiKey)) return json(res, 400, { error: "Paste a valid OpenAI API key" });
+    const baseUrl = sanitizeAiBaseUrl(body.baseUrl || "");
+    const model = String(body.model || "").trim().slice(0, 120);
+    if (apiKey.length < 8) return json(res, 400, { error: "Paste a valid AI API key" });
     await writeJson(FILES.ai, {
       apiKey,
+      baseUrl,
+      model,
       updatedAt: new Date().toISOString(),
       updatedBy: user.username,
     });
@@ -4073,6 +4185,43 @@ function safeFileRecords(files, user) {
     .map((file) => safeFileRecord(file, user));
 }
 
+function sanitizeInnerDoc(doc) {
+  return {
+    id: String(doc.id || crypto.randomUUID()).slice(0, 80),
+    title: String(doc.title || "Untitled doc").trim().slice(0, 120),
+    type: normalizeInnerDocType(doc.type),
+    body: String(doc.body || "").slice(0, 120000),
+    owner: String(doc.owner || "").slice(0, 80),
+    sharedWith: Array.from(new Set((Array.isArray(doc.sharedWith) ? doc.sharedWith : []).map((name) => String(name || "").trim()).filter(Boolean))).slice(0, 200),
+    createdAt: doc.createdAt || new Date().toISOString(),
+    createdBy: String(doc.createdBy || "").slice(0, 80),
+    updatedAt: doc.updatedAt || "",
+    updatedBy: String(doc.updatedBy || "").slice(0, 80),
+  };
+}
+
+function safeInnerDoc(doc, user) {
+  const safe = sanitizeInnerDoc(doc);
+  return {
+    ...safe,
+    editable: canAccessInnerDoc(safe, user),
+    sharedWith: canManage(user) || safe.owner === user.username ? safe.sharedWith : [],
+  };
+}
+
+function safeInnerDocs(docs, user) {
+  return (docs || [])
+    .map(sanitizeInnerDoc)
+    .filter((doc) => canAccessInnerDoc(doc, user))
+    .map((doc) => safeInnerDoc(doc, user));
+}
+
+function canAccessInnerDoc(doc, user) {
+  if (!doc || !user) return false;
+  if (canManage(user)) return true;
+  return doc.owner === user.username || (Array.isArray(doc.sharedWith) && doc.sharedWith.includes(user.username));
+}
+
 function safeFileRecord(file, viewer) {
   const showAdminMeta = viewer && canOwn(viewer);
   return {
@@ -4806,6 +4955,12 @@ function normalizeGrade(grade) {
   const value = String(grade || "").trim().toLowerCase();
   if (["6", "7", "8", "9", "10", "11", "12", "college", "staff", "other"].includes(value)) return value;
   return "";
+}
+
+function normalizeInnerDocType(type) {
+  const value = String(type || "doc").trim().toLowerCase();
+  if (["doc", "notes", "slides", "sheet"].includes(value)) return value;
+  return "doc";
 }
 
 function normalizeOrderStatus(status) {
@@ -5770,7 +5925,7 @@ async function listBackups() {
 
 async function createBackup(username) {
   await fsp.mkdir(BACKUP_DIR, { recursive: true });
-  const [settings, rooms, messages, dms, dmGroups, files, accountRequests, store, aiRequests, users, vpn, profiles, friends, invites, reports, readReceipts, moderationLogs, logs, devConfig, voiceRooms, bots, plugins, automod] = await Promise.all([
+  const [settings, rooms, messages, dms, dmGroups, files, accountRequests, store, aiRequests, innerDocs, users, vpn, profiles, friends, invites, reports, readReceipts, moderationLogs, logs, devConfig, voiceRooms, bots, plugins, automod] = await Promise.all([
     readJson(FILES.settings, {}),
     readJson(FILES.rooms, []),
     readJson(FILES.messages, []),
@@ -5780,6 +5935,7 @@ async function createBackup(username) {
     readJson(FILES.accountRequests, []),
     readJson(FILES.store, { items: [], orders: [] }),
     readJson(FILES.aiRequests, []),
+    readJson(FILES.innerDocs, []),
     readJson(FILES.users, []),
     readJson(FILES.vpn, {}),
     readJson(FILES.profiles, {}),
@@ -5813,6 +5969,7 @@ async function createBackup(username) {
       accountRequests,
       store,
       aiRequests,
+      innerDocs,
       users,
       vpn: safeVpn(vpn),
       profiles,
@@ -5873,6 +6030,7 @@ async function restoreBackup(fileName, username) {
     ["accountRequests", FILES.accountRequests, []],
     ["store", FILES.store, { items: [], orders: [] }],
     ["aiRequests", FILES.aiRequests, []],
+    ["innerDocs", FILES.innerDocs, []],
     ["users", FILES.users, []],
     ["vpn", FILES.vpn, {}],
     ["profiles", FILES.profiles, {}],
@@ -5899,12 +6057,13 @@ async function restoreBackup(fileName, username) {
 
 async function generateAiSuggestion(prompt) {
   const aiConfig = await readJson(FILES.ai, {});
-  const apiKey = process.env.OPENAI_API_KEY || aiConfig.apiKey || "";
+  const config = resolveAiConfig(aiConfig);
+  const apiKey = config.apiKey;
   if (!apiKey) {
     return {
       configured: false,
       text:
-        "AI is not connected yet. Set OPENAI_API_KEY before starting Inner, then ask again. I saved this request in the Admin panel so it is not lost.",
+        "AI is not connected yet. Add any OpenAI-compatible API key/base URL in Admin, then ask again. I saved this request in the Admin panel so it is not lost.",
     };
   }
 
@@ -5916,22 +6075,22 @@ async function generateAiSuggestion(prompt) {
   }
 
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.INNER_AI_MODEL || "gpt-5.2",
-        instructions:
-          "You are the built-in admin helper for Inner, a small private workspace app. Help the admin describe safe, small UI/content/admin-setting changes. Do not ask for passwords, secrets, or unsafe surveillance. Return a concise plan and exact text/settings to change.",
-        input: prompt,
-        max_output_tokens: 700,
-        store: false,
-      }),
-    });
+    let response = await fetchAi(config.responsesUrl, apiKey, aiResponsesBody(config, prompt));
     const data = await response.json().catch(() => ({}));
+    if (!response.ok && [400, 404, 405].includes(response.status)) {
+      response = await fetchAi(config.chatUrl, apiKey, aiChatBody(config, prompt));
+      const chatData = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return {
+          configured: false,
+          text: chatData.error && chatData.error.message ? chatData.error.message : `AI request failed (${response.status})`,
+        };
+      }
+      return {
+        configured: true,
+        text: extractAiText(chatData) || "AI returned no text.",
+      };
+    }
     if (!response.ok) {
       return {
         configured: false,
@@ -5950,8 +6109,71 @@ async function generateAiSuggestion(prompt) {
   }
 }
 
+function resolveAiConfig(aiConfig = {}) {
+  const apiKey = firstEnvValue("INNER_AI_API_KEY", "OPENAI_API_KEY") || aiConfig.apiKey || "";
+  const baseUrl = sanitizeAiBaseUrl(firstEnvValue("INNER_AI_BASE_URL", "OPENAI_BASE_URL") || aiConfig.baseUrl || "https://api.openai.com/v1");
+  return {
+    apiKey,
+    baseUrl,
+    model: String(firstEnvValue("INNER_AI_MODEL", "OPENAI_MODEL") || aiConfig.model || "gpt-5.2").trim() || "gpt-5.2",
+    responsesUrl: `${baseUrl.replace(/\/+$/, "")}/responses`,
+    chatUrl: `${baseUrl.replace(/\/+$/, "")}/chat/completions`,
+  };
+}
+
+function sanitizeAiBaseUrl(value) {
+  const raw = String(value || "").trim() || "https://api.openai.com/v1";
+  try {
+    const parsed = new URL(raw);
+    if (!["http:", "https:"].includes(parsed.protocol)) return "https://api.openai.com/v1";
+    return parsed.toString().replace(/\/+$/, "");
+  } catch (error) {
+    return "https://api.openai.com/v1";
+  }
+}
+
+function fetchAi(url, apiKey, body) {
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+function aiResponsesBody(config, prompt) {
+  return {
+    model: config.model,
+    instructions:
+      "You are the built-in admin helper for Inner, a small private workspace app. Help the admin describe safe, small UI/content/admin-setting changes. Do not ask for passwords, secrets, or unsafe surveillance. Return a concise plan and exact text/settings to change.",
+    input: prompt,
+    max_output_tokens: 700,
+    store: false,
+  };
+}
+
+function aiChatBody(config, prompt) {
+  return {
+    model: config.model,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are the built-in admin helper for Inner, a small private workspace app. Help the admin describe safe, small UI/content/admin-setting changes. Do not ask for passwords, secrets, or unsafe surveillance. Return a concise plan and exact text/settings to change.",
+      },
+      { role: "user", content: prompt },
+    ],
+    max_tokens: 700,
+  };
+}
+
 function extractAiText(data) {
   if (typeof data.output_text === "string") return data.output_text;
+  if (data.choices && data.choices[0] && data.choices[0].message && typeof data.choices[0].message.content === "string") {
+    return data.choices[0].message.content;
+  }
   const chunks = [];
   for (const item of data.output || []) {
     for (const content of item.content || []) {

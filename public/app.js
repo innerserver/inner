@@ -19,6 +19,8 @@ const state = {
   logSearch: "",
   logDate: "",
   files: [],
+  innerDocs: [],
+  selectedInnerDocId: "",
   accountRequests: [],
   uploadQueue: [],
   vpn: {},
@@ -132,7 +134,8 @@ function cacheElements() {
     "accountRequestForm",
     "requestUsername",
     "requestDisplayName",
-    "requestContact",
+    "requestEmail",
+    "requestPhone",
     "requestGrade",
     "requestRole",
     "requestPassword",
@@ -142,7 +145,8 @@ function cacheElements() {
     "signupForm",
     "signupUsername",
     "signupDisplayName",
-    "signupContact",
+    "signupEmail",
+    "signupPhone",
     "signupGrade",
     "signupPassword",
     "signupButton",
@@ -174,13 +178,16 @@ function cacheElements() {
     "storeView",
     "filesView",
     "docsView",
-    "docsFrame",
-    "docsShareForm",
-    "docsShareTitle",
-    "docsShareUrl",
-    "docsShareType",
-    "docsShareTarget",
-    "docsShareButton",
+    "newInnerDocButton",
+    "deleteInnerDocButton",
+    "innerDocList",
+    "innerDocForm",
+    "innerDocTitle",
+    "innerDocType",
+    "innerDocBody",
+    "innerDocShareTarget",
+    "shareInnerDocButton",
+    "innerDocStatus",
     "browserView",
     "publicBrowserForm",
     "publicBrowserUrl",
@@ -410,6 +417,8 @@ function cacheElements() {
     "aiState",
     "aiPrompt",
     "aiApiKey",
+    "aiBaseUrl",
+    "aiModel",
     "askAiButton",
     "saveAiKeyButton",
     "clearAiKeyButton",
@@ -528,7 +537,10 @@ function bindEvents() {
   els.deleteDmGroupButton.addEventListener("click", deleteCurrentDmGroup);
   if (els.shareLinkForm) els.shareLinkForm.addEventListener("submit", shareLinkToFriends);
   if (els.shareChessButton) els.shareChessButton.addEventListener("click", () => fillShareLink(currentChessUrl(), "ChessVerse", "app"));
-  if (els.docsShareForm) els.docsShareForm.addEventListener("submit", shareDocsLink);
+  if (els.newInnerDocButton) els.newInnerDocButton.addEventListener("click", newInnerDoc);
+  if (els.deleteInnerDocButton) els.deleteInnerDocButton.addEventListener("click", deleteInnerDoc);
+  if (els.innerDocForm) els.innerDocForm.addEventListener("submit", saveInnerDoc);
+  if (els.shareInnerDocButton) els.shareInnerDocButton.addEventListener("click", shareInnerDoc);
   document.querySelectorAll(".docs-open-button").forEach((button) => button.addEventListener("click", () => openDocsApp(button.dataset.docUrl, button.dataset.docTitle, button.dataset.docType)));
   if (els.publicBrowserForm) els.publicBrowserForm.addEventListener("submit", openPublicBrowser);
   if (els.publicBrowserFullTabButton) els.publicBrowserFullTabButton.addEventListener("click", openPublicBrowserFullTab);
@@ -706,7 +718,8 @@ async function submitAccountRequest(event) {
       json: {
         username: els.requestUsername.value.trim(),
         displayName: els.requestDisplayName.value.trim(),
-        contact: els.requestContact.value.trim(),
+        email: els.requestEmail ? els.requestEmail.value.trim() : "",
+        phone: els.requestPhone ? els.requestPhone.value.trim() : "",
         grade: els.requestGrade ? els.requestGrade.value : "",
         requestedRole: els.requestRole.value,
         password: els.requestPassword.value,
@@ -736,7 +749,8 @@ async function handleSignup(event) {
       json: {
         username: els.signupUsername.value.trim(),
         displayName: els.signupDisplayName.value.trim(),
-        contact: els.signupContact.value.trim(),
+        email: els.signupEmail ? els.signupEmail.value.trim() : "",
+        phone: els.signupPhone ? els.signupPhone.value.trim() : "",
         grade: els.signupGrade ? els.signupGrade.value : "",
         password: els.signupPassword.value,
         location,
@@ -829,6 +843,8 @@ async function loadState() {
   state.dms = data.dms || [];
   state.dmGroups = data.dmGroups || [];
   state.files = data.files || [];
+  state.innerDocs = data.innerDocs || [];
+  if (!state.selectedInnerDocId && state.innerDocs.length) state.selectedInnerDocId = state.innerDocs[0].id;
   state.accountRequests = data.accountRequests || [];
   state.vpn = data.vpn || {};
   state.locations = data.locations || [];
@@ -1777,10 +1793,16 @@ async function saveAiKey(event) {
   try {
     const data = await api("/api/ai/key", {
       method: "POST",
-      json: { apiKey: els.aiApiKey.value },
+      json: {
+        apiKey: els.aiApiKey.value,
+        baseUrl: els.aiBaseUrl ? els.aiBaseUrl.value : "",
+        model: els.aiModel ? els.aiModel.value : "",
+      },
     });
     state.aiConfigured = Boolean(data.aiConfigured);
     els.aiApiKey.value = "";
+    if (els.aiBaseUrl) els.aiBaseUrl.value = "";
+    if (els.aiModel) els.aiModel.value = "";
     renderAiRequests();
     notify("AI key saved");
   } catch (error) {
@@ -1797,6 +1819,8 @@ async function clearAiKey() {
     });
     state.aiConfigured = Boolean(data.aiConfigured);
     els.aiApiKey.value = "";
+    if (els.aiBaseUrl) els.aiBaseUrl.value = "";
+    if (els.aiModel) els.aiModel.value = "";
     renderAiRequests();
     notify("Saved AI key cleared");
   } catch (error) {
@@ -3102,6 +3126,7 @@ function renderAll() {
   renderProfile();
   renderStore();
   renderFiles();
+  renderDocs();
   renderVoice();
   renderScreen();
   renderVpn();
@@ -3966,6 +3991,110 @@ function applyCustomizations() {
     document.head.append(style);
   }
   style.textContent = custom.customCss || "";
+}
+
+function renderDocs() {
+  if (!els.innerDocList) return;
+  const docs = state.innerDocs || [];
+  if (!state.selectedInnerDocId && docs.length) state.selectedInnerDocId = docs[0].id;
+  if (state.selectedInnerDocId && !docs.some((doc) => doc.id === state.selectedInnerDocId)) {
+    state.selectedInnerDocId = docs[0] ? docs[0].id : "";
+  }
+  els.innerDocList.replaceChildren();
+  if (!docs.length) {
+    els.innerDocList.append(emptyBlock("No docs yet. Create one to start writing."));
+  } else {
+    docs.forEach((doc) => {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = `service-link-card docs-doc-card ${doc.id === state.selectedInnerDocId ? "active" : ""}`;
+      card.append(textNode(doc.title), textNode(`${doc.type} - ${doc.owner === state.user.username ? "owned by you" : `shared by ${doc.owner}`}`));
+      card.addEventListener("click", () => {
+        state.selectedInnerDocId = doc.id;
+        renderDocs();
+      });
+      els.innerDocList.append(card);
+    });
+  }
+  const current = selectedInnerDoc();
+  if (els.innerDocTitle) els.innerDocTitle.value = current ? current.title : "";
+  if (els.innerDocType) els.innerDocType.value = current ? current.type : "doc";
+  if (els.innerDocBody) els.innerDocBody.value = current ? current.body : "";
+  if (els.innerDocStatus) {
+    els.innerDocStatus.textContent = current
+      ? `Last saved ${formatDate(current.updatedAt || current.createdAt)}. ${current.sharedWith && current.sharedWith.length ? `Shared with ${current.sharedWith.length}.` : "Not shared yet."}`
+      : "Create a doc, then press Save.";
+  }
+  renderShareTargets();
+}
+
+function selectedInnerDoc() {
+  return (state.innerDocs || []).find((doc) => doc.id === state.selectedInnerDocId) || null;
+}
+
+function newInnerDoc() {
+  state.selectedInnerDocId = "";
+  if (els.innerDocTitle) els.innerDocTitle.value = "";
+  if (els.innerDocType) els.innerDocType.value = "doc";
+  if (els.innerDocBody) els.innerDocBody.value = "";
+  if (els.innerDocStatus) els.innerDocStatus.textContent = "New unsaved doc.";
+  if (els.innerDocTitle) els.innerDocTitle.focus();
+}
+
+async function saveInnerDoc(event) {
+  if (event) event.preventDefault();
+  try {
+    const data = await api("/api/inner-docs", {
+      method: "POST",
+      json: {
+        id: state.selectedInnerDocId,
+        title: els.innerDocTitle.value.trim() || "Untitled doc",
+        type: els.innerDocType.value,
+        body: els.innerDocBody.value,
+      },
+    });
+    state.innerDocs = data.innerDocs || state.innerDocs;
+    state.selectedInnerDocId = data.doc ? data.doc.id : state.selectedInnerDocId;
+    renderDocs();
+    notify("Doc saved");
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function shareInnerDoc() {
+  const doc = selectedInnerDoc();
+  const target = els.innerDocShareTarget ? els.innerDocShareTarget.value : "";
+  if (!doc) return notify("Save or choose a doc first");
+  if (!target) return notify("Choose an accepted friend or friend group");
+  try {
+    const data = await api("/api/inner-docs/share", {
+      method: "POST",
+      json: { id: doc.id, target },
+    });
+    state.innerDocs = data.innerDocs || state.innerDocs;
+    if (data.dm) state.dms = [...state.dms.filter((entry) => entry.id !== data.dm.id), data.dm];
+    renderDocs();
+    renderDms();
+    notify("Doc shared");
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function deleteInnerDoc() {
+  const doc = selectedInnerDoc();
+  if (!doc) return notify("Choose a doc first");
+  if (!window.confirm(`Delete "${doc.title}"?`)) return;
+  try {
+    const data = await api(`/api/inner-docs/${encodeURIComponent(doc.id)}`, { method: "DELETE" });
+    state.innerDocs = data.innerDocs || [];
+    state.selectedInnerDocId = state.innerDocs[0] ? state.innerDocs[0].id : "";
+    renderDocs();
+    notify("Doc deleted");
+  } catch (error) {
+    notify(error.message);
+  }
 }
 
 function renderFiles() {
@@ -5116,8 +5245,8 @@ function renderAiRequests() {
   if (!els.aiResponseList || !isOwner()) return;
   if (els.aiState) {
     els.aiState.textContent = state.aiConfigured
-      ? "AI key is configured. Ask for small safe changes."
-      : "AI key is not configured. Add a key below or start Inner with OPENAI_API_KEY set.";
+      ? "AI connection is configured. Ask for small safe changes."
+      : "AI is not configured. Add any OpenAI-compatible key, base URL, and model below.";
   }
   els.aiResponseList.replaceChildren();
   if (!state.aiRequests.length) {
@@ -5807,9 +5936,9 @@ function shareTargetPeople() {
 function renderShareTargets() {
   const people = shareTargetPeople();
   fillShareTargetSelect(els.shareLinkTarget, people);
-  fillShareTargetSelect(els.docsShareTarget, people);
+  fillShareTargetSelect(els.innerDocShareTarget, people);
   if (els.shareLinkButton) els.shareLinkButton.disabled = !people.length;
-  if (els.docsShareButton) els.docsShareButton.disabled = !people.length;
+  if (els.shareInnerDocButton) els.shareInnerDocButton.disabled = !people.length;
 }
 
 function fillShareTargetSelect(select, people) {

@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-26-hide-admin-tabs-final" />
+    <link rel="stylesheet" href="/styles.css?v=inner-26-docs-contact-tabs-final" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -42,7 +42,10 @@
           </div>
           <label>Username<input id="requestUsername" autocomplete="username" placeholder="your-name" required /></label>
           <label>Display name<input id="requestDisplayName" autocomplete="name" /></label>
-          <label>Contact<input id="requestContact" autocomplete="email" placeholder="email or phone" /></label>
+          <div class="split-fields">
+            <label>Email<input id="requestEmail" type="email" autocomplete="email" placeholder="you@example.com" /></label>
+            <label>Phone<input id="requestPhone" type="tel" autocomplete="tel" placeholder="+1 555 000 0000" /></label>
+          </div>
           <label>Grade<select id="requestGrade"><option value="">Choose grade</option><option value="6">Grade 6</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
           <label>Requested account type<select id="requestRole"><option value="member">Member</option><option value="moderator">Moderator</option><option value="admin">Admin</option><option value="hmd">HMD</option><option value="dev">Dev</option></select></label>
           <label>Password<input id="requestPassword" type="password" autocomplete="new-password" placeholder="used after approval" required /></label>
@@ -58,7 +61,10 @@
           </div>
           <label>Username<input id="signupUsername" autocomplete="username" placeholder="your-name" /></label>
           <label>Display name<input id="signupDisplayName" autocomplete="name" /></label>
-          <label>Contact<input id="signupContact" autocomplete="email" placeholder="email or phone" /></label>
+          <div class="split-fields">
+            <label>Email<input id="signupEmail" type="email" autocomplete="email" placeholder="you@example.com" /></label>
+            <label>Phone<input id="signupPhone" type="tel" autocomplete="tel" placeholder="+1 555 000 0000" /></label>
+          </div>
           <label>Grade<select id="signupGrade"><option value="">Choose grade</option><option value="6">Grade 6</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
           <label>Password<input id="signupPassword" type="password" autocomplete="new-password" /></label>
           <button id="signupButton" class="secondary-button" type="submit">Create member account</button>
@@ -404,26 +410,35 @@
               <p>Create, open, and share docs or slides with accepted friends.</p>
             </div>
           </div>
+          <div class="docs-hero status-panel">
+            <div>
+              <span class="muted-label">Inner Docs</span>
+              <h3>Write notes, slide outlines, and plans inside Inner</h3>
+              <p class="panel-note">Create docs here, save them to the server, and share editable access with accepted friends or friend group DMs.</p>
+            </div>
+            <div class="docs-hero-actions">
+              <button id="newInnerDocButton" class="primary-button" type="button">New doc</button>
+              <button id="deleteInnerDocButton" class="danger-button" type="button">Delete</button>
+            </div>
+          </div>
           <div class="settings-grid docs-grid">
             <div class="status-panel">
-              <h3>Open a workspace app</h3>
-              <div class="account-list">
-                <button class="service-link-card docs-open-button" type="button" data-doc-url="https://docs.google.com/document/create" data-doc-title="New Google Doc" data-doc-type="doc">Google Docs<span>Start a document</span></button>
-                <button class="service-link-card docs-open-button" type="button" data-doc-url="https://docs.google.com/presentation/create" data-doc-title="New Google Slides" data-doc-type="slides">Google Slides<span>Start a slide deck</span></button>
-                <button class="service-link-card docs-open-button" type="button" data-doc-url="https://docs.google.com/spreadsheets/create" data-doc-title="New Google Sheet" data-doc-type="sheet">Google Sheets<span>Start a spreadsheet</span></button>
-              </div>
-              <p class="panel-note">Google may require sign-in in a full tab. After creating a doc, paste its share link below and send it to accepted friends.</p>
+              <h3>Your docs</h3>
+              <div id="innerDocList" class="account-list docs-card-list"></div>
             </div>
-            <form id="docsShareForm" class="panel-form">
-              <h3>Share a doc link</h3>
-              <label>Title<input id="docsShareTitle" maxlength="120" placeholder="Project notes or slide deck" autocomplete="off" /></label>
-              <label>Link<input id="docsShareUrl" maxlength="700" placeholder="https://docs.google.com/..." autocomplete="off" /></label>
-              <label>Type<select id="docsShareType"><option value="doc">Doc</option><option value="slides">Slides</option><option value="sheet">Sheet</option><option value="link">Link</option></select></label>
-              <label>Friend/group<select id="docsShareTarget"></select></label>
-              <button id="docsShareButton" class="primary-button" type="submit">Share to friends</button>
+            <form id="innerDocForm" class="panel-form inner-doc-editor">
+              <h3>Editor</h3>
+              <label>Title<input id="innerDocTitle" maxlength="120" placeholder="Untitled doc" autocomplete="off" /></label>
+              <label>Type<select id="innerDocType"><option value="doc">Doc</option><option value="notes">Notes</option><option value="slides">Slides outline</option><option value="sheet">Table / sheet notes</option></select></label>
+              <label>Content<textarea id="innerDocBody" rows="16" maxlength="120000" placeholder="Start typing..."></textarea></label>
+              <div class="button-row">
+                <button id="saveInnerDocButton" class="primary-button" type="submit">Save doc</button>
+                <select id="innerDocShareTarget" aria-label="Share doc target"></select>
+                <button id="shareInnerDocButton" class="secondary-button" type="button">Share access</button>
+              </div>
+              <p id="innerDocStatus" class="panel-note">Docs autosave only when you press Save.</p>
             </form>
           </div>
-          <iframe id="docsFrame" class="embedded-app-frame" title="Docs browser" referrerpolicy="strict-origin-when-cross-origin"></iframe>
         </section>
 
         <section id="browserView" class="view embedded-app-view">
@@ -650,14 +665,16 @@
 
             <form id="aiForm" class="panel-form owner-only hidden wide-panel">
               <h3>AI helper</h3>
-              <p id="aiState" class="panel-note">Ask for small safe changes. Add an API key below or start Inner with OPENAI_API_KEY set.</p>
+              <p id="aiState" class="panel-note">Ask for small safe changes. Add any OpenAI-compatible API key below.</p>
               <label>Change request<textarea id="aiPrompt" rows="4" maxlength="2000" placeholder="Make the file cards more compact"></textarea></label>
               <button id="askAiButton" class="primary-button" type="submit">Ask AI</button>
             </form>
 
             <form id="aiKeyForm" class="panel-form owner-only hidden">
-              <h3>AI key</h3>
-              <label>OpenAI API key<input id="aiApiKey" type="password" autocomplete="off" placeholder="sk-..." /></label>
+              <h3>AI connection</h3>
+              <label>API key<input id="aiApiKey" type="password" autocomplete="off" placeholder="any compatible API key" /></label>
+              <label>Base URL<input id="aiBaseUrl" autocomplete="off" placeholder="https://api.openai.com/v1" /></label>
+              <label>Model<input id="aiModel" autocomplete="off" placeholder="gpt-5.2 or provider model name" /></label>
               <button id="saveAiKeyButton" class="primary-button" type="submit">Save key</button>
               <button id="clearAiKeyButton" class="secondary-button" type="button">Clear saved key</button>
               <p class="panel-note">The key is saved only on the server in the data folder and is never shown back in the browser.</p>
@@ -773,8 +790,8 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-26-hide-admin-tabs-final" defer></script>
-    <script src="/app.js?v=inner-26-hide-admin-tabs-final" defer></script>
-    <script src="/force-logout.js?v=inner-26-hide-admin-tabs-final" defer></script>
+    <script src="/session-guard.js?v=inner-26-docs-contact-tabs-final" defer></script>
+    <script src="/app.js?v=inner-26-docs-contact-tabs-final" defer></script>
+    <script src="/force-logout.js?v=inner-26-docs-contact-tabs-final" defer></script>
   </body>
 </html>

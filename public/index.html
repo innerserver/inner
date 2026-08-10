@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-28-docs-signup-final" />
+    <link rel="stylesheet" href="/styles.css?v=inner-29-inner-docs-cloud-final" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -426,12 +426,27 @@
                 <button id="saveInnerDocButton" class="primary-button" type="submit">Save doc</button>
                 <button id="deleteInnerDocButton" class="danger-button" type="button">Delete</button>
               </div>
-              <textarea id="innerDocBody" rows="20" maxlength="120000" placeholder="Start typing..." aria-label="Doc content"></textarea>
+              <div class="doc-format-toolbar" aria-label="Document formatting">
+                <button class="doc-tool-button" type="button" data-doc-command="bold"><b>B</b></button>
+                <button class="doc-tool-button" type="button" data-doc-command="italic"><i>I</i></button>
+                <button class="doc-tool-button" type="button" data-doc-command="underline"><u>U</u></button>
+                <button class="doc-tool-button" type="button" data-doc-block="H1">H1</button>
+                <button class="doc-tool-button" type="button" data-doc-block="H2">H2</button>
+                <button class="doc-tool-button" type="button" data-doc-command="insertUnorderedList">Bullets</button>
+                <button class="doc-tool-button" type="button" data-doc-command="insertOrderedList">Numbers</button>
+                <button class="doc-tool-button" type="button" data-doc-block="BLOCKQUOTE">Quote</button>
+                <button class="doc-tool-button" type="button" data-doc-command="removeFormat">Clear</button>
+              </div>
+              <div class="inner-doc-page-wrap">
+                <div id="innerDocPage" class="inner-doc-page" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Start typing in Inner Docs..."></div>
+              </div>
+              <textarea id="innerDocBody" class="hidden" maxlength="120000" aria-hidden="true"></textarea>
               <div class="doc-share-row">
                 <select id="innerDocShareTarget" aria-label="Share doc target"></select>
                 <button id="shareInnerDocButton" class="secondary-button" type="button">Share access</button>
               </div>
-              <p id="innerDocStatus" class="panel-note">Docs autosave only when you press Save.</p>
+              <p id="innerDocStatus" class="panel-note">Docs save to Inner cloud when you press Save.</p>
+              <p id="innerDocWordCount" class="panel-note doc-word-count">0 words</p>
             </form>
           </div>
         </section>
@@ -785,8 +800,8 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-28-docs-signup-final" defer></script>
-    <script src="/app.js?v=inner-28-docs-signup-final" defer></script>
-    <script src="/force-logout.js?v=inner-28-docs-signup-final" defer></script>
+    <script src="/session-guard.js?v=inner-29-inner-docs-cloud-final" defer></script>
+    <script src="/app.js?v=inner-29-inner-docs-cloud-final" defer></script>
+    <script src="/force-logout.js?v=inner-29-inner-docs-cloud-final" defer></script>
   </body>
 </html>

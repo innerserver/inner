@@ -188,9 +188,11 @@ function cacheElements() {
     "innerDocTitle",
     "innerDocType",
     "innerDocBody",
+    "innerDocPage",
     "innerDocShareTarget",
     "shareInnerDocButton",
     "innerDocStatus",
+    "innerDocWordCount",
     "browserView",
     "publicBrowserForm",
     "publicBrowserUrl",
@@ -545,7 +547,14 @@ function bindEvents() {
   if (els.deleteInnerDocButton) els.deleteInnerDocButton.addEventListener("click", deleteInnerDoc);
   if (els.innerDocForm) els.innerDocForm.addEventListener("submit", saveInnerDoc);
   if (els.shareInnerDocButton) els.shareInnerDocButton.addEventListener("click", shareInnerDoc);
-  document.querySelectorAll(".docs-open-button").forEach((button) => button.addEventListener("click", () => openDocsApp(button.dataset.docUrl, button.dataset.docTitle, button.dataset.docType)));
+  document.querySelectorAll("[data-doc-command],[data-doc-block]").forEach((button) => button.addEventListener("click", handleDocTool));
+  if (els.innerDocPage) {
+    els.innerDocPage.addEventListener("input", () => {
+      updateInnerDocHiddenBody();
+      updateInnerDocStats();
+    });
+    els.innerDocPage.addEventListener("paste", cleanInnerDocPaste);
+  }
   if (els.publicBrowserForm) els.publicBrowserForm.addEventListener("submit", openPublicBrowser);
   if (els.publicBrowserFullTabButton) els.publicBrowserFullTabButton.addEventListener("click", openPublicBrowserFullTab);
   if (els.publicBrowserShareButton) els.publicBrowserShareButton.addEventListener("click", sharePublicBrowserLink);
@@ -1111,26 +1120,6 @@ function shareAdminBrowserLink() {
   const url = normalizeAdminBrowserUrl((els.adminBrowserUrl && els.adminBrowserUrl.value) || "");
   if (!url) return notify("Open or enter a browser link first");
   fillShareLink(url, "Browser link", "link");
-}
-
-async function shareDocsLink(event) {
-  if (event) event.preventDefault();
-  if (!els.shareLinkUrl || !els.docsShareUrl) return;
-  els.shareLinkTitle.value = els.docsShareTitle ? els.docsShareTitle.value : "";
-  els.shareLinkUrl.value = els.docsShareUrl.value;
-  els.shareLinkType.value = els.docsShareType ? els.docsShareType.value : "doc";
-  if (els.shareLinkTarget && els.docsShareTarget) els.shareLinkTarget.value = els.docsShareTarget.value;
-  await shareLinkToFriends();
-}
-
-function openDocsApp(url, title = "Google Docs", type = "doc") {
-  const normalized = normalizeExternalUrl(url);
-  if (!normalized) return notify("Docs link is not valid");
-  if (els.docsFrame) els.docsFrame.src = normalized;
-  if (els.docsShareTitle) els.docsShareTitle.value = title || "";
-  if (els.docsShareType) els.docsShareType.value = type || "doc";
-  if (els.docsShareUrl) els.docsShareUrl.value = normalized;
-  notify("Opening docs. Use full sign-in tab if Google blocks the frame.");
 }
 
 function openPublicBrowser(event) {
@@ -4079,12 +4068,13 @@ function renderDocs() {
   const current = selectedInnerDoc();
   if (els.innerDocTitle) els.innerDocTitle.value = current ? current.title : "";
   if (els.innerDocType) els.innerDocType.value = current ? current.type : "doc";
-  if (els.innerDocBody) els.innerDocBody.value = current ? current.body : "";
+  setInnerDocPageBody(current ? current.body : "");
   if (els.innerDocStatus) {
     els.innerDocStatus.textContent = current
       ? `Last saved ${formatDate(current.updatedAt || current.createdAt)}. ${current.sharedWith && current.sharedWith.length ? `Shared with ${current.sharedWith.length}.` : "Not shared yet."}`
       : "Create a doc, then press Save.";
   }
+  updateInnerDocStats();
   renderShareTargets();
 }
 
@@ -4096,13 +4086,14 @@ function newInnerDoc() {
   state.selectedInnerDocId = "";
   if (els.innerDocTitle) els.innerDocTitle.value = "";
   if (els.innerDocType) els.innerDocType.value = "doc";
-  if (els.innerDocBody) els.innerDocBody.value = "";
+  setInnerDocPageBody("");
   if (els.innerDocStatus) els.innerDocStatus.textContent = "New unsaved doc.";
   if (els.innerDocTitle) els.innerDocTitle.focus();
 }
 
 async function saveInnerDoc(event) {
   if (event) event.preventDefault();
+  updateInnerDocHiddenBody();
   try {
     const data = await api("/api/inner-docs", {
       method: "POST",
@@ -4120,6 +4111,77 @@ async function saveInnerDoc(event) {
   } catch (error) {
     notify(error.message);
   }
+}
+
+function handleDocTool(event) {
+  const button = event.currentTarget;
+  if (!els.innerDocPage) return;
+  els.innerDocPage.focus();
+  if (button.dataset.docBlock) {
+    document.execCommand("formatBlock", false, button.dataset.docBlock);
+  } else if (button.dataset.docCommand) {
+    document.execCommand(button.dataset.docCommand, false, null);
+  }
+  updateInnerDocHiddenBody();
+  updateInnerDocStats();
+}
+
+function setInnerDocPageBody(value) {
+  const html = normalizeInnerDocHtml(value);
+  if (els.innerDocPage) els.innerDocPage.innerHTML = html;
+  if (els.innerDocBody) els.innerDocBody.value = html;
+}
+
+function updateInnerDocHiddenBody() {
+  if (!els.innerDocBody || !els.innerDocPage) return;
+  els.innerDocBody.value = normalizeInnerDocHtml(els.innerDocPage.innerHTML);
+}
+
+function updateInnerDocStats() {
+  if (!els.innerDocWordCount || !els.innerDocPage) return;
+  const text = els.innerDocPage.innerText || "";
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const chars = text.replace(/\s/g, "").length;
+  els.innerDocWordCount.textContent = `${words} words - ${chars} chars`;
+}
+
+function cleanInnerDocPaste(event) {
+  event.preventDefault();
+  const text = (event.clipboardData || window.clipboardData).getData("text/plain");
+  document.execCommand("insertText", false, text);
+  updateInnerDocHiddenBody();
+  updateInnerDocStats();
+}
+
+function normalizeInnerDocHtml(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/<[a-z][\s\S]*>/i.test(raw)) {
+    const template = document.createElement("template");
+    template.innerHTML = raw;
+    template.content.querySelectorAll("script,style,iframe,object,embed,link,meta").forEach((node) => node.remove());
+    template.content.querySelectorAll("*").forEach((node) => {
+      [...node.attributes].forEach((attr) => {
+        const name = attr.name.toLowerCase();
+        const value = String(attr.value || "");
+        if (name.startsWith("on") || value.toLowerCase().includes("javascript:")) node.removeAttribute(attr.name);
+      });
+    });
+    return template.innerHTML;
+  }
+  return raw
+    .split(/\n{2,}/)
+    .map((block) => `<p>${escapeClientHtml(block).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+function escapeClientHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 async function shareInnerDoc() {

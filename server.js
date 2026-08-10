@@ -1696,7 +1696,7 @@ async function routeApi(req, res, requestUrl) {
       id: previous.id || crypto.randomUUID(),
       title: body.title,
       type: body.type,
-      body: body.body,
+      body: sanitizeInnerDocHtml(body.body),
       owner: previous.owner || user.username,
       sharedWith: previous.sharedWith || [],
       createdAt: previous.createdAt || now,
@@ -4248,7 +4248,7 @@ function sanitizeInnerDoc(doc) {
     id: String(doc.id || crypto.randomUUID()).slice(0, 80),
     title: String(doc.title || "Untitled doc").trim().slice(0, 120),
     type: normalizeInnerDocType(doc.type),
-    body: String(doc.body || "").slice(0, 120000),
+    body: sanitizeInnerDocHtml(doc.body),
     owner: String(doc.owner || "").slice(0, 80),
     sharedWith: Array.from(new Set((Array.isArray(doc.sharedWith) ? doc.sharedWith : []).map((name) => String(name || "").trim()).filter(Boolean))).slice(0, 200),
     createdAt: doc.createdAt || new Date().toISOString(),
@@ -4256,6 +4256,15 @@ function sanitizeInnerDoc(doc) {
     updatedAt: doc.updatedAt || "",
     updatedBy: String(doc.updatedBy || "").slice(0, 80),
   };
+}
+
+function sanitizeInnerDocHtml(value) {
+  return String(value || "")
+    .slice(0, 120000)
+    .replace(/<\s*(script|style|iframe|object|embed|link|meta)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "")
+    .replace(/<\s*(script|style|iframe|object|embed|link|meta)[^>]*\/?\s*>/gi, "")
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/\s(href|src)\s*=\s*(['"]?)\s*javascript:[^'"\s>]*/gi, "");
 }
 
 function safeInnerDoc(doc, user) {

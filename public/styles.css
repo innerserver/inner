@@ -447,6 +447,44 @@ textarea:focus {
   border-top: 1px solid var(--line);
 }
 
+.legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  font-size: 0.82rem;
+}
+
+.legal-links a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.legal-links a:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.legal-page {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  padding: 28px;
+}
+
+.legal-document {
+  max-width: 760px;
+  margin: 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 28px;
+  box-shadow: var(--shadow);
+}
+
+.legal-document h1 {
+  margin-top: 0;
+}
+
 .muted-label {
   display: block;
   margin-bottom: 4px;
@@ -1314,6 +1352,28 @@ textarea:focus {
   background: var(--ink);
   font-weight: 750;
   z-index: 30;
+}
+
+.corner-ad {
+  position: fixed;
+  right: 18px;
+  bottom: 78px;
+  z-index: 29;
+  width: min(280px, calc(100vw - 36px));
+  display: grid;
+  gap: 6px;
+  padding: 13px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.corner-ad strong,
+.corner-ad span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 920px) {

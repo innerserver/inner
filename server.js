@@ -84,6 +84,7 @@ const SESSION_PERSISTENT_MS = 180 * 24 * 60 * 60 * 1000;
 const sessions = new Map();
 const wsClients = new Map();
 const messageRateLimits = new Map();
+const banExpiryTimers = new Map();
 const serverStartedAt = new Date().toISOString();
 const persistence = {
   mode: "local",
@@ -259,10 +260,7 @@ async function main() {
         ? `Persistence: MongoDB/GridFS (${MONGODB_DB})`
         : `Persistence: local disk (${DATA_DIR})${persistence.error ? `; cloud storage error: ${persistence.error}` : ""}`
     );
-    console.log("Admin login: admin / Devshah@11");
-    console.log("Secondary admin login: admin2 / Devshah@11");
-    console.log("HMD login: hmd / Devshah@11");
-    console.log("Developer login: dev / Devshah@11");
+    console.log("Default account passwords are loaded from env vars and stored only as password hashes.");
   });
 }
 
@@ -417,13 +415,14 @@ async function ensureUsers() {
   const now = new Date().toISOString();
   const settings = await readJson(FILES.settings, {});
   const deletedDefaults = Array.isArray(settings.deletedDefaultAdmins) ? settings.deletedDefaultAdmins : [];
+  const defaultHash = (username) => defaultAccountPasswordHash(username);
 
   if (!(await jsonExists(FILES.users))) {
     await writeJson(FILES.users, [
       {
         username: "admin",
         role: "admin",
-        passwordHash: hashPassword("Devshah@11"),
+        passwordHash: defaultHash("admin"),
         passwordPreset: "admin-v1",
         allowPersistentLogin: false,
         locked: true,
@@ -432,7 +431,7 @@ async function ensureUsers() {
       {
         username: "admin2",
         role: "admin",
-        passwordHash: hashPassword("Devshah@11"),
+        passwordHash: defaultHash("admin2"),
         passwordPreset: "admin2-v1",
         allowPersistentLogin: false,
         locked: false,
@@ -441,7 +440,7 @@ async function ensureUsers() {
       {
         username: "hmd",
         role: "hmd",
-        passwordHash: hashPassword("Devshah@11"),
+        passwordHash: defaultHash("hmd"),
         passwordPreset: "hmd-v1",
         allowPersistentLogin: false,
         locked: false,
@@ -451,7 +450,7 @@ async function ensureUsers() {
       {
         username: "dev",
         role: "dev",
-        passwordHash: hashPassword("Devshah@11"),
+        passwordHash: defaultHash("dev"),
         passwordPreset: "dev-v1",
         allowPersistentLogin: false,
         locked: false,
@@ -472,7 +471,7 @@ async function ensureUsers() {
       users.push({
         username,
         role,
-        passwordHash: hashPassword("Devshah@11"),
+        passwordHash: defaultHash(username),
         passwordPreset: preset,
         allowPersistentLogin: false,
         locked,
@@ -489,7 +488,7 @@ async function ensureUsers() {
         ...existing,
         username,
         role: normalizeRole(existing.role) === "member" ? role : normalizeRole(existing.role),
-        passwordHash: shouldSetPassword ? hashPassword("Devshah@11") : existing.passwordHash,
+        passwordHash: shouldSetPassword ? defaultHash(username) : existing.passwordHash,
         passwordPreset: shouldSetPassword ? preset : existing.passwordPreset,
         allowPersistentLogin: Boolean(existing.allowPersistentLogin),
         locked: Boolean(existing.locked || locked),
@@ -503,7 +502,7 @@ async function ensureUsers() {
     users.push({
       username: "admin",
       role: "admin",
-      passwordHash: hashPassword("Devshah@11"),
+      passwordHash: defaultHash("admin"),
       passwordPreset: "admin-v1",
       allowPersistentLogin: false,
       locked: true,
@@ -512,12 +511,12 @@ async function ensureUsers() {
     changed = true;
   } else {
     const admin = users[adminIndex];
-    const shouldSetOwnerPassword = verifyPassword("server123", admin.passwordHash) || !admin.passwordHash;
+    const shouldSetOwnerPassword = !admin.passwordHash;
     users[adminIndex] = {
       ...admin,
       username: "admin",
       role: "admin",
-      passwordHash: shouldSetOwnerPassword ? hashPassword("Devshah@11") : admin.passwordHash,
+      passwordHash: shouldSetOwnerPassword ? defaultHash("admin") : admin.passwordHash,
       passwordPreset: shouldSetOwnerPassword ? "admin-v1" : admin.passwordPreset,
       allowPersistentLogin: Boolean(admin.allowPersistentLogin),
       locked: true,
@@ -530,7 +529,7 @@ async function ensureUsers() {
     users.push({
       username: "admin2",
       role: "admin",
-      passwordHash: hashPassword("Devshah@11"),
+      passwordHash: defaultHash("admin2"),
       passwordPreset: "admin2-v1",
       allowPersistentLogin: false,
       locked: false,
@@ -545,7 +544,7 @@ async function ensureUsers() {
       ...admin2,
       username: "admin2",
       role: "admin",
-      passwordHash: shouldSetAdmin2Password ? hashPassword("Devshah@11") : admin2.passwordHash,
+      passwordHash: shouldSetAdmin2Password ? defaultHash("admin2") : admin2.passwordHash,
       passwordPreset: shouldSetAdmin2Password ? "admin2-v1" : admin2.passwordPreset,
       allowPersistentLogin: Boolean(admin2.allowPersistentLogin),
       locked: false,
@@ -567,6 +566,10 @@ async function ensureUsers() {
     changed = true;
   }
 
+  if (clearExpiredUserRestrictions(users)) changed = true;
+  for (const entry of users) {
+    if (isUserBanned(entry)) scheduleBanExpiry(entry.username, entry.bannedUntil);
+  }
   if (changed) await writeJson(FILES.users, users);
 }
 
@@ -731,6 +734,7 @@ async function routeApi(req, res, requestUrl) {
   if (req.method === "POST" && pathname === "/api/login") {
     const body = await readJsonBody(req);
     const users = await readJson(FILES.users, []);
+    if (clearExpiredUserRestrictions(users)) await writeJson(FILES.users, users);
     const user = users.find((entry) => entry.username.toLowerCase() === String(body.username || "").toLowerCase());
 
     if (!user || !verifyPassword(String(body.password || ""), user.passwordHash)) {
@@ -853,6 +857,7 @@ async function routeApi(req, res, requestUrl) {
     const email = String(body.email || "").trim().slice(0, 120);
     const phone = String(body.phone || "").trim().slice(0, 80);
     const password = String(body.password || "");
+    const grade = normalizeGrade(body.grade || "");
     const contact = String(body.contact || [email, phone].filter(Boolean).join(" / ")).trim().slice(0, 160);
     if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
     if (settings.requireContact !== false && !contact) {
@@ -880,6 +885,7 @@ async function routeApi(req, res, requestUrl) {
       contact,
       email,
       phone,
+      grade,
       requestedRole: body.requestedRole,
       passwordHash: hashPassword(password),
       passwordSet: true,
@@ -899,6 +905,7 @@ async function routeApi(req, res, requestUrl) {
     await notifyAdminEmails("Inner account request", [
       `${username} requested access.`,
       `Requested role: ${request.requestedRole}`,
+      `Grade: ${request.grade || "not set"}`,
       `Contact: ${contact || "not provided"}`,
       `IP: ${request.sourceIp || "unknown"}`,
       `Approx location: ${JSON.stringify(request.approximateLocation || {})}`,
@@ -919,6 +926,7 @@ async function routeApi(req, res, requestUrl) {
     const username = normalizeUsername(body.username);
     const password = String(body.password || "");
     const contact = String(body.contact || "").trim().slice(0, 160);
+    const grade = normalizeGrade(body.grade || "");
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
     if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
     if (settings.requireContact !== false && !contact) {
@@ -938,6 +946,7 @@ async function routeApi(req, res, requestUrl) {
       passwordHash: hashPassword(password),
       passwordPreset: "",
       contact,
+      grade,
       sourceIp: getClientIp(req),
       sourceHost: req.headers.host || "",
       sourceAgent: String(req.headers["user-agent"] || "").slice(0, 240),
@@ -951,6 +960,8 @@ async function routeApi(req, res, requestUrl) {
     profiles[username] = sanitizeProfile({
       ...defaultProfile(username),
       displayName: body.displayName || username,
+      grade,
+      gradeUpdatedAt: grade ? now : "",
       updatedAt: now,
     });
     await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles)]);
@@ -958,6 +969,7 @@ async function routeApi(req, res, requestUrl) {
     await notifyAdminEmails("Inner open signup", [
       `${username} created a member account.`,
       `Role: member`,
+      `Grade: ${grade || "not set"}`,
       `Contact: ${contact || "not provided"}`,
       `IP: ${account.sourceIp || "unknown"}`,
       `Approx location: ${JSON.stringify(account.approximateLocation || {})}`,
@@ -984,7 +996,7 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "GET" && pathname === "/api/me") {
-    return json(res, 200, { user });
+    return json(res, 200, { user: safeUser(user, user) });
   }
 
   if (req.method === "GET" && pathname === "/api/state") {
@@ -1043,6 +1055,10 @@ async function routeApi(req, res, requestUrl) {
       canModerate(user) ? readJson(FILES.automod, {}) : {},
       readJson(FILES.announcements, []),
     ]);
+    if (clearExpiredUserRestrictions(users)) {
+      await writeJson(FILES.users, users);
+      broadcastManagers({ type: "users:update", users: users.map(safeUser) });
+    }
     const accessibleRoomIds = new Set(rooms.filter((room) => canAccessRoom(room, user)).map((room) => room.id || "main"));
     const normalizedMessages = messages
       .map((message) => ({
@@ -1054,7 +1070,7 @@ async function routeApi(req, res, requestUrl) {
       ? dms
       : dms.filter((entry) => Array.isArray(entry.participants) && entry.participants.includes(user.username));
     return json(res, 200, {
-      user,
+      user: safeUser(user, user),
       settings: safeSettings(settings),
       rtcConfig: buildRtcConfig(),
       uploadConfig: safeUploadConfig(settings),
@@ -1063,24 +1079,24 @@ async function routeApi(req, res, requestUrl) {
       dms: visibleDms.slice(-500),
       dmGroups: safeDmGroups(dmGroups, user),
       files: safeFileRecords(files, user),
-      accountRequests: canManage(user) ? safeAccountRequests(accountRequests) : [],
+      accountRequests: canManage(user) ? safeAccountRequests(accountRequests, user) : [],
       store: safeStore(store, user),
       aiRequests: canManage(user) ? aiRequests.slice(-100) : [],
       aiConfigured: canManage(user) ? Boolean(process.env.OPENAI_API_KEY || aiConfig.apiKey) : false,
       emailStatus: canManage(user) ? emailProviderStatus() : null,
       vpn: safeVpn(vpn),
       locations: vpnLocations,
-      users: canManage(user) ? users.map(safeUser) : [],
+      users: canManage(user) ? users.map((entry) => safeUser(entry, user)) : [],
       people: users.map((entry) => publicUser(entry, profiles[entry.username])),
       backups,
       profiles: safeProfiles(profiles, users, user),
       friends: safeFriendState(friends, user),
       invites: canManage(user) ? invites.slice(-100) : safeInvitesForUser(invites, user),
       reports,
-      liveIpTracking: canManage(user) ? liveIpTracking(users) : [],
+      liveIpTracking: canOwn(user) ? liveIpTracking(users) : [],
       readReceipts: safeReadReceipts(readReceipts, user, { messages: normalizedMessages, dms: visibleDms, dmGroups }),
       moderationLogs: moderationLogs.slice(-250),
-      logs: canManage(user) ? logs.slice(0, 300) : [],
+      logs: canOwn(user) ? logs.slice(0, 300) : [],
       dev: canDev(user)
         ? await buildDevState({ settings, rooms, messages, dms, dmGroups, files, accountRequests, users, store, reports, moderationLogs, logs, devConfig, bots, plugins, automod })
         : null,
@@ -1314,6 +1330,8 @@ async function routeApi(req, res, requestUrl) {
       bannerUrl: body.bannerUrl,
       badges: body.badges,
       customStatus: body.customStatus,
+      grade: body.grade,
+      gradeUpdatedAt: normalizeGrade(body.grade || "") !== normalizeGrade(previous.grade || "") ? new Date().toISOString() : previous.gradeUpdatedAt,
       status: body.status,
       invisible: Boolean(body.invisible),
       theme: body.theme,
@@ -1321,9 +1339,22 @@ async function routeApi(req, res, requestUrl) {
       updatedAt: new Date().toISOString(),
     });
     profiles[user.username] = next;
+    const users = await readJson(FILES.users, []);
+    const userIndex = users.findIndex((entry) => entry.username.toLowerCase() === user.username.toLowerCase());
+    if (userIndex !== -1 && users[userIndex].grade !== next.grade) {
+      users[userIndex] = {
+        ...users[userIndex],
+        grade: next.grade,
+        gradeUpdatedAt: next.gradeUpdatedAt,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.username,
+      };
+      await writeJson(FILES.users, users);
+      broadcastManagers({ type: "users:update", users: users.map(safeUser) });
+    }
     await writeJson(FILES.profiles, profiles);
-    broadcast({ type: "profiles:update", profiles: safeProfiles(profiles, await readJson(FILES.users, []), user) });
-    return json(res, 200, { profile: next, profiles: safeProfiles(profiles, await readJson(FILES.users, []), user) });
+    broadcast({ type: "profiles:update", profiles: safeProfiles(profiles, users, user) });
+    return json(res, 200, { profile: next, profiles: safeProfiles(profiles, users, user) });
   }
 
   if (req.method === "POST" && pathname === "/api/friends/request") {
@@ -1406,11 +1437,11 @@ async function routeApi(req, res, requestUrl) {
     const report = {
       id: crypto.randomUUID(),
       reporter: user.username,
-      reporterContact: userContactSnapshot(users, user.username),
+      reporterContact: userContactSnapshot(users, user.username, user),
       targetType,
       targetId,
       targetSender: target ? String(target.user || target.from || "").slice(0, 80) : "",
-      targetSenderContact: target ? userContactSnapshot(users, String(target.user || target.from || "")) : null,
+      targetSenderContact: target ? userContactSnapshot(users, String(target.user || target.from || ""), user) : null,
       targetText: target ? String(target.text || "").slice(0, 1000) : "",
       reason: String(body.reason || "").trim().slice(0, 500),
       status: "open",
@@ -2051,7 +2082,7 @@ async function routeApi(req, res, requestUrl) {
     await writeJson(FILES.accountRequests, requests);
     await addSystemLog("account.request.updated", user.username, { requestUsername: requests[index].username, status }, req);
     broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
-    return json(res, 200, { accountRequests: safeAccountRequests(requests), request: safeAccountRequest(requests[index]) });
+    return json(res, 200, { accountRequests: safeAccountRequests(requests, user), request: safeAccountRequest(requests[index], user) });
   }
 
   if (req.method === "POST" && pathname === "/api/account-requests/approve") {
@@ -2088,6 +2119,7 @@ async function routeApi(req, res, requestUrl) {
       contact: request.contact,
       email: request.email,
       phone: request.phone,
+      grade: request.grade,
       sourceIp: request.sourceIp,
       sourceDevice: request.sourceDevice,
       sourceAgent: request.sourceAgent,
@@ -2100,6 +2132,8 @@ async function routeApi(req, res, requestUrl) {
     profiles[request.username] = sanitizeProfile({
       ...defaultProfile(request.username),
       displayName: request.displayName || request.username,
+      grade: request.grade,
+      gradeUpdatedAt: request.grade ? now : "",
       updatedAt: now,
     });
     requests[index] = sanitizeAccountRequest({
@@ -2127,7 +2161,7 @@ async function routeApi(req, res, requestUrl) {
     ].join("\n"));
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
-    return json(res, 201, { users: users.map(safeUser), accountRequests: safeAccountRequests(requests), user: safeUser(account) });
+    return json(res, 201, { users: users.map((entry) => safeUser(entry, user)), accountRequests: safeAccountRequests(requests, user), user: safeUser(account, user) });
   }
 
   if (req.method === "POST" && pathname === "/api/users") {
@@ -2172,7 +2206,7 @@ async function routeApi(req, res, requestUrl) {
       `Time: ${new Date().toISOString()}`,
     ].join("\n"));
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
-    return json(res, 201, { users: users.map(safeUser) });
+    return json(res, 201, { users: users.map((entry) => safeUser(entry, user)) });
   }
 
   if (req.method === "POST" && pathname === "/api/users/update") {
@@ -2202,7 +2236,7 @@ async function routeApi(req, res, requestUrl) {
       expireUserSessions(username);
     }
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
-    return json(res, 200, { users: users.map(safeUser) });
+    return json(res, 200, { users: users.map((entry) => safeUser(entry, user)) });
   }
 
   if (req.method === "DELETE" && pathname.startsWith("/api/users/")) {
@@ -2216,7 +2250,7 @@ async function routeApi(req, res, requestUrl) {
     if (username.toLowerCase() === "admin2") await markDeletedDefault("admin2", user.username);
     expireUserSessions(username);
     broadcastManagers({ type: "users:update", users: next.map(safeUser) });
-    return json(res, 200, { users: next.map(safeUser) });
+    return json(res, 200, { users: next.map((entry) => safeUser(entry, user)) });
   }
 
   if (req.method === "POST" && pathname === "/api/users/ban") {
@@ -2241,9 +2275,14 @@ async function routeApi(req, res, requestUrl) {
     };
     await writeJson(FILES.users, users);
     await addModerationLog(user.username, minutes > 0 ? "user:ban" : "user:unban", username, reason || `${minutes} minutes`);
-    if (minutes > 0) expireUserSessions(username);
+    if (minutes > 0) {
+      expireUserSessions(username);
+      scheduleBanExpiry(username, users[index].bannedUntil);
+    } else {
+      clearBanExpiry(username);
+    }
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
-    return json(res, 200, { users: users.map(safeUser) });
+    return json(res, 200, { users: users.map((entry) => safeUser(entry, user)) });
   }
 
   if (req.method === "POST" && pathname === "/api/users/mute") {
@@ -2265,7 +2304,7 @@ async function routeApi(req, res, requestUrl) {
     await writeJson(FILES.users, users);
     await addModerationLog(user.username, minutes > 0 ? "user:mute" : "user:unmute", username, shadowMuted ? "shadow mute" : "");
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
-    return json(res, 200, { users: users.map(safeUser) });
+    return json(res, 200, { users: users.map((entry) => safeUser(entry, user)) });
   }
 
   if (req.method === "POST" && pathname === "/api/users/kick") {
@@ -2561,7 +2600,7 @@ async function routeApi(req, res, requestUrl) {
     await writeJson(FILES.users, users);
     expireUserSessions(username);
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
-    return json(res, 200, { users: users.map(safeUser) });
+    return json(res, 200, { users: users.map((entry) => safeUser(entry, user)) });
   }
 
   if (req.method === "POST" && pathname === "/api/email/test") {
@@ -3755,8 +3794,9 @@ function firstForwardedValue(value) {
     .trim();
 }
 
-function safeUser(user) {
-  return {
+function safeUser(user, viewer = null) {
+  const ownerView = canOwn(viewer);
+  const safe = {
     username: user.username,
     role: normalizeRole(user.role),
     owner: canOwn(user),
@@ -3769,19 +3809,24 @@ function safeUser(user) {
     banned: isUserBanned(user),
     allowPersistentLogin: Boolean(user.allowPersistentLogin),
     locked: Boolean(user.locked),
-    lastLoginAt: user.lastLoginAt || "",
-    lastLoginIp: user.lastLoginIp || "",
-    lastLoginDevice: user.lastLoginDevice || "",
-    lastLoginApproximateLocation: user.lastLoginApproximateLocation || null,
-    sourceIp: user.sourceIp || "",
-    sourceDevice: user.sourceDevice || "",
     contact: user.contact || "",
     email: user.email || "",
     phone: user.phone || "",
+    grade: normalizeGrade(user.grade || ""),
+    gradeUpdatedAt: user.gradeUpdatedAt || "",
     mutedUntil: user.mutedUntil || "",
     muted: isUserMuted(user),
     shadowMuted: Boolean(user.shadowMuted),
   };
+  if (ownerView) {
+    safe.lastLoginAt = user.lastLoginAt || "";
+    safe.lastLoginIp = user.lastLoginIp || "";
+    safe.lastLoginDevice = user.lastLoginDevice || "";
+    safe.lastLoginApproximateLocation = user.lastLoginApproximateLocation || null;
+    safe.sourceIp = user.sourceIp || "";
+    safe.sourceDevice = user.sourceDevice || "";
+  }
+  return safe;
 }
 
 function publicUser(user, profile = {}) {
@@ -3795,6 +3840,7 @@ function publicUser(user, profile = {}) {
     badges: normalizeBadgeList(profile.badges),
     customStatus: profile.customStatus || "",
     status: profile.invisible ? "offline" : normalizePresenceStatus(profile.status || "offline"),
+    grade: normalizeGrade(user.grade || profile.grade || ""),
   };
 }
 
@@ -3808,6 +3854,8 @@ function defaultProfile(username) {
     customStatus: "",
     status: "offline",
     invisible: false,
+    grade: "",
+    gradeUpdatedAt: "",
     theme: "system",
     customTheme: defaultCustomTheme(),
     createdAt: new Date().toISOString(),
@@ -3823,6 +3871,8 @@ function sanitizeProfile(profile) {
     bannerUrl: normalizeOptionalUrl(profile.bannerUrl),
     badges: normalizeBadgeList(profile.badges),
     customStatus: String(profile.customStatus || "").trim().slice(0, 80),
+    grade: normalizeGrade(profile.grade || ""),
+    gradeUpdatedAt: profile.gradeUpdatedAt || "",
     status: normalizePresenceStatus(profile.status),
     invisible: Boolean(profile.invisible),
     theme: normalizeRoomTheme(profile.theme),
@@ -4024,7 +4074,7 @@ function safeFileRecords(files, user) {
 }
 
 function safeFileRecord(file, viewer) {
-  const showAdminMeta = viewer && canManage(viewer);
+  const showAdminMeta = viewer && canOwn(viewer);
   return {
     id: file.id,
     originalName: file.originalName,
@@ -4059,6 +4109,7 @@ function sanitizeAccountRequest(request) {
     contact: String(request.contact || "").trim().slice(0, 160),
     email: String(request.email || "").trim().slice(0, 120),
     phone: String(request.phone || "").trim().slice(0, 80),
+    grade: normalizeGrade(request.grade || ""),
     requestedRole: normalizeRole(request.requestedRole || "member"),
     passwordHash: String(request.passwordHash || "").slice(0, 240),
     passwordSet: Boolean(request.passwordHash || request.passwordSet),
@@ -4081,12 +4132,13 @@ function sanitizeAccountRequest(request) {
   };
 }
 
-function safeAccountRequest(request) {
+function safeAccountRequest(request, viewer = null) {
   const safe = sanitizeAccountRequest(request);
+  const ownerView = canOwn(viewer);
   delete safe.passwordHash;
-  return {
+  const result = {
     ...safe,
-    location: safe.location
+    location: ownerView && safe.location
       ? {
           latitude: safe.location.latitude,
           longitude: safe.location.longitude,
@@ -4095,11 +4147,18 @@ function safeAccountRequest(request) {
         }
       : null,
   };
+  if (!ownerView) {
+    result.sourceIp = "";
+    result.sourceAgent = "";
+    result.sourceDevice = "";
+    result.approximateLocation = null;
+  }
+  return result;
 }
 
-function safeAccountRequests(requests) {
+function safeAccountRequests(requests, viewer = null) {
   return (requests || [])
-    .map(safeAccountRequest)
+    .map((request) => safeAccountRequest(request, viewer))
     .filter((request) => {
       if (request.status === "declined") return false;
       if (request.status === "approved") {
@@ -4147,16 +4206,17 @@ function safeActiveReports(reports) {
     .slice(0, 250);
 }
 
-function userContactSnapshot(users, username) {
+function userContactSnapshot(users, username, viewer = null) {
   const target = (users || []).find((entry) => entry.username.toLowerCase() === String(username || "").toLowerCase());
   if (!target) return null;
+  const ownerView = canOwn(viewer);
   return {
     username: target.username,
     contact: String(target.contact || "").slice(0, 160),
     email: String(target.email || "").slice(0, 120),
     phone: String(target.phone || "").slice(0, 80),
-    sourceIp: String(target.sourceIp || "").slice(0, 80),
-    lastLoginIp: String(target.lastLoginIp || "").slice(0, 80),
+    sourceIp: ownerView ? String(target.sourceIp || "").slice(0, 80) : "",
+    lastLoginIp: ownerView ? String(target.lastLoginIp || "").slice(0, 80) : "",
   };
 }
 
@@ -4670,6 +4730,60 @@ function isUserBanned(user) {
   return Number.isFinite(until) && until > Date.now();
 }
 
+function clearExpiredUserRestrictions(users) {
+  let changed = false;
+  const now = Date.now();
+  for (const user of users || []) {
+    if (user.bannedUntil) {
+      const until = Date.parse(user.bannedUntil);
+      if (Number.isFinite(until) && until <= now) {
+        user.bannedUntil = "";
+        user.banReason = "";
+        user.updatedAt = new Date().toISOString();
+        user.updatedBy = "system-expiry";
+        changed = true;
+      }
+    }
+    if (user.mutedUntil) {
+      const until = Date.parse(user.mutedUntil);
+      if (Number.isFinite(until) && until <= now) {
+        user.mutedUntil = "";
+        user.shadowMuted = false;
+        user.updatedAt = new Date().toISOString();
+        user.updatedBy = "system-expiry";
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
+function scheduleBanExpiry(username, bannedUntil) {
+  const key = String(username || "").toLowerCase();
+  if (!key) return;
+  clearBanExpiry(key);
+  const until = Date.parse(bannedUntil || "");
+  if (!Number.isFinite(until) || until <= Date.now()) return;
+  const delay = Math.min(until - Date.now() + 500, 2147483647);
+  const timer = setTimeout(async () => {
+    banExpiryTimers.delete(key);
+    const users = await readJson(FILES.users, []);
+    if (clearExpiredUserRestrictions(users)) {
+      await writeJson(FILES.users, users);
+      broadcastManagers({ type: "users:update", users: users.map(safeUser) });
+    }
+  }, delay);
+  if (timer.unref) timer.unref();
+  banExpiryTimers.set(key, timer);
+}
+
+function clearBanExpiry(username) {
+  const key = String(username || "").toLowerCase();
+  if (!key) return;
+  if (banExpiryTimers.has(key)) clearTimeout(banExpiryTimers.get(key));
+  banExpiryTimers.delete(key);
+}
+
 function isUserMuted(user) {
   if (!user || !user.mutedUntil) return false;
   const until = Date.parse(user.mutedUntil);
@@ -4686,6 +4800,12 @@ function normalizeCurrency(currency) {
   const value = String(currency || "USD").trim().toUpperCase();
   if (["USD", "INR", "EUR", "GBP"].includes(value)) return value;
   return "USD";
+}
+
+function normalizeGrade(grade) {
+  const value = String(grade || "").trim().toLowerCase();
+  if (["6", "7", "8", "9", "10", "11", "12", "college", "staff", "other"].includes(value)) return value;
+  return "";
 }
 
 function normalizeOrderStatus(status) {
@@ -5471,6 +5591,15 @@ function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto.scryptSync(password, salt, 64).toString("hex");
   return `${salt}:${hash}`;
+}
+
+function defaultAccountPasswordHash(username) {
+  const keyName = String(username || "").toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  const hash = firstEnvValue(`INNER_${keyName}_PASSWORD_HASH`, `${keyName}_PASSWORD_HASH`);
+  if (hash && String(hash).includes(":")) return String(hash);
+  const password = firstEnvValue(`INNER_${keyName}_PASSWORD`, `${keyName}_PASSWORD`, "INNER_DEFAULT_ADMIN_PASSWORD");
+  if (password) return hashPassword(String(password));
+  return hashPassword(crypto.randomBytes(24).toString("base64url"));
 }
 
 function verifyPassword(password, passwordRecord) {

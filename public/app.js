@@ -15,6 +15,7 @@ const state = {
   selectedDmUser: "",
   adminDmFilter: "all",
   accountSearch: "",
+  accountShowAll: false,
   logSearch: "",
   logDate: "",
   files: [],
@@ -130,6 +131,7 @@ function cacheElements() {
     "requestUsername",
     "requestDisplayName",
     "requestContact",
+    "requestGrade",
     "requestRole",
     "requestPassword",
     "requestNote",
@@ -139,6 +141,7 @@ function cacheElements() {
     "signupUsername",
     "signupDisplayName",
     "signupContact",
+    "signupGrade",
     "signupPassword",
     "signupButton",
     "signupStatus",
@@ -239,6 +242,7 @@ function cacheElements() {
     "profileBadges",
     "profileStatus",
     "profileCustomStatus",
+    "profileGrade",
     "profileTheme",
     "customThemeFields",
     "profileThemeBg",
@@ -304,6 +308,7 @@ function cacheElements() {
     "ownerPasswordForm",
     "createAccountForm",
     "accountManager",
+    "showAllAccountsButton",
     "accountSearchInput",
     "accountList",
     "currentPassword",
@@ -449,6 +454,7 @@ function cacheElements() {
     "automodWords",
     "saveAutomodButton",
     "toast",
+    "cornerAd",
   ].forEach((id) => {
     els[id] = document.getElementById(id);
   });
@@ -541,8 +547,15 @@ function bindEvents() {
   els.createAccountForm.addEventListener("submit", createAccount);
   els.accountSearchInput.addEventListener("input", () => {
     state.accountSearch = els.accountSearchInput.value.trim().toLowerCase();
+    state.accountShowAll = false;
     renderUsers();
   });
+  if (els.showAllAccountsButton) {
+    els.showAllAccountsButton.addEventListener("click", () => {
+      state.accountShowAll = !state.accountShowAll;
+      renderUsers();
+    });
+  }
   els.featureLockForm.addEventListener("submit", saveFeatureLock);
   if (els.featureVisibilityForm) els.featureVisibilityForm.addEventListener("submit", saveFeatureVisibility);
   if (els.visibilityFeatureName) els.visibilityFeatureName.addEventListener("change", renderFeatureVisibility);
@@ -660,6 +673,7 @@ async function submitAccountRequest(event) {
         username: els.requestUsername.value.trim(),
         displayName: els.requestDisplayName.value.trim(),
         contact: els.requestContact.value.trim(),
+        grade: els.requestGrade ? els.requestGrade.value : "",
         requestedRole: els.requestRole.value,
         password: els.requestPassword.value,
         note: els.requestNote.value.trim(),
@@ -689,6 +703,7 @@ async function handleSignup(event) {
         username: els.signupUsername.value.trim(),
         displayName: els.signupDisplayName.value.trim(),
         contact: els.signupContact.value.trim(),
+        grade: els.signupGrade ? els.signupGrade.value : "",
         password: els.signupPassword.value,
         location,
       },
@@ -2977,7 +2992,30 @@ function renderAll() {
   renderReports();
   renderLogs();
   renderHmd();
+  renderCornerAd();
   updateControls();
+}
+
+function renderCornerAd() {
+  if (!els.cornerAd || !state.user) return;
+  const ads = Array.isArray(state.settings.ads) ? state.settings.ads.filter((ad) => ad && ad.enabled !== false && (ad.text || ad.title)) : [];
+  if (!ads.length) {
+    els.cornerAd.classList.add("hidden");
+    return;
+  }
+  const index = Math.floor(Date.now() / 10000) % ads.length;
+  const ad = ads[index];
+  els.cornerAd.replaceChildren();
+  const title = document.createElement("strong");
+  title.textContent = String(ad.title || "Inner").slice(0, 60);
+  const text = document.createElement("span");
+  text.textContent = String(ad.text || "").slice(0, 160);
+  els.cornerAd.append(title, text);
+  els.cornerAd.classList.remove("hidden");
+  clearTimeout(renderCornerAd.timer);
+  renderCornerAd.timer = setTimeout(() => {
+    if (els.cornerAd) els.cornerAd.classList.add("hidden");
+  }, 10000);
 }
 
 function renderShell() {
@@ -3023,6 +3061,10 @@ function renderDashboard() {
     metricCard("Friends", (state.friends.friends || []).length, "Accepted connections"),
     metricCard("Online", state.presence.length || state.peers.size + 1, "Live presence")
   );
+  const gradeReminder = yearlyGradeReminder();
+  if (gradeReminder) {
+    els.dashboardGrid.prepend(adminCard("Grade check", "Update profile", [gradeReminder]));
+  }
 
   els.presenceList.replaceChildren();
   const presence = state.presence.length ? state.presence : [{ username: state.user.username, role: state.user.role, status: "online" }];
@@ -3046,6 +3088,10 @@ function renderDashboard() {
 
 function metricCard(title, value, detail) {
   return adminCard(title, String(value), [detail]);
+}
+
+function sidebarIconMarkup() {
+  return '<span class="hamburger-lines" aria-hidden="true"><span></span><span></span><span></span></span>';
 }
 
 function toggleSidebar() {
@@ -3117,6 +3163,17 @@ function closeSidebar() {
     els.sidebarToggleButton.setAttribute("aria-label", "Open navigation");
     els.sidebarToggleButton.setAttribute("aria-expanded", String(!els.appView.classList.contains("sidebar-closed")));
   }
+}
+
+function yearlyGradeReminder() {
+  if (!state.user) return "";
+  const profile = state.profiles[state.user.username] || {};
+  const now = new Date();
+  const augustFirst = new Date(now.getFullYear(), 7, 1);
+  if (now < augustFirst) return "";
+  const updatedAt = Date.parse(profile.gradeUpdatedAt || state.user.gradeUpdatedAt || "");
+  if (Number.isFinite(updatedAt) && updatedAt >= augustFirst.getTime()) return "";
+  return "Every August 1, confirm your grade in Profile so friends, rooms, and admin filters stay current.";
 }
 
 function renderDashboardAnnouncements() {
@@ -3396,7 +3453,7 @@ function renderDms() {
   const locked = featureLock("dms");
   els.dmState.textContent = locked
     ? `DMs paused until ${formatDate(locked.disabledUntil)}`
-    : "Create DMs and group chats with accepted friends. Admins can review DMs for safety.";
+    : "Create DMs and group chats with accepted friends.";
   const shouldStick = els.dmList.scrollTop + els.dmList.clientHeight >= els.dmList.scrollHeight - 24;
   const scrollOffset = els.dmList.scrollHeight - els.dmList.scrollTop;
   els.dmList.replaceChildren();
@@ -3669,6 +3726,7 @@ function renderProfile() {
   els.profileBadges.value = Array.isArray(profile.badges) ? profile.badges.join(", ") : "";
   els.profileStatus.value = profile.invisible ? "invisible" : profile.status || "online";
   els.profileCustomStatus.value = profile.customStatus || "";
+  if (els.profileGrade) els.profileGrade.value = profile.grade || state.user.grade || "";
   els.profileTheme.value = profile.theme || "system";
   els.profileThemeBg.value = safeColor(customTheme.bg, "#f7f7f4");
   els.profileThemeSurface.value = safeColor(customTheme.surface, "#ffffff");
@@ -4198,8 +4256,11 @@ function renderUsers() {
 
   els.accountList.replaceChildren();
   const visibleUsers = filterUsersForAdmin(state.users);
-  if (!String(state.accountSearch || "").trim()) {
-    els.accountList.append(emptyBlock("Search a username, email, role, IP, or device to show accounts"));
+  if (els.showAllAccountsButton) {
+    els.showAllAccountsButton.textContent = state.accountShowAll ? "Hide all" : "Show all";
+  }
+  if (!String(state.accountSearch || "").trim() && !state.accountShowAll && !visibleUsers.length) {
+    els.accountList.append(emptyBlock("Public admin accounts show here. Search a username, email, role, IP, or device to show more accounts."));
     return;
   }
   if (!state.users.length) {
@@ -4233,8 +4294,11 @@ function renderUsers() {
     meta.append(textNode(`Persistent login ${user.allowPersistentLogin ? "allowed" : "off"}`));
     meta.append(textNode(`Created ${formatDate(user.createdAt) || "-"}`));
     if (user.createdBy) meta.append(textNode(`By ${user.createdBy}`));
+    if (user.grade) meta.append(textNode(`Grade ${user.grade}`));
     if (user.lastLoginAt) meta.append(textNode(`Last login ${formatDate(user.lastLoginAt)}`));
     if (user.lastLoginIp) meta.append(textNode(`From ${user.lastLoginIp}`));
+    if (user.lastLoginDevice) meta.append(textNode(`Device ${user.lastLoginDevice}`));
+    if (user.lastLoginApproximateLocation) meta.append(textNode(`Approx ${formatApproxLocation(user.lastLoginApproximateLocation)}`));
     if (user.bannedUntil) meta.append(textNode(`Ban until ${formatDate(user.bannedUntil)}`));
     if (user.banReason) meta.append(textNode(user.banReason));
 
@@ -4247,17 +4311,19 @@ function renderUsers() {
     const persistentButton = accountButton(user.allowPersistentLogin ? "Disable persistent" : "Allow persistent", () =>
       updateUser(user.username, { allowPersistentLogin: !user.allowPersistentLogin })
     );
+    const banFive = accountButton("Ban 5m", () => banUser(user.username, 5));
     const banShort = accountButton("Ban 15m", () => banUser(user.username, 15));
     const banHour = accountButton("Ban 1h", () => banUser(user.username, 60));
     const banDay = accountButton("Ban 24h", () => banUser(user.username, 1440));
     const unban = accountButton("Unban", () => banUser(user.username, 0));
     const remove = accountButton("Delete", () => deleteUser(user.username));
+    banFive.disabled = isMainAdmin;
     banShort.disabled = isMainAdmin;
     banHour.disabled = isMainAdmin;
     banDay.disabled = isMainAdmin;
     unban.disabled = isMainAdmin;
     remove.disabled = isMainAdmin || isCurrentUser;
-    actions.append(roleButton, persistentButton, banShort, banHour, banDay, unban, remove);
+    actions.append(roleButton, persistentButton, banFive, banShort, banHour, banDay, unban, remove);
 
     item.append(head, meta, actions);
     els.accountList.append(item);
@@ -4617,6 +4683,7 @@ function renderAccountRequests() {
     const card = adminCard(request.username, status, [
       request.displayName ? `Name ${request.displayName}` : "",
       `Requested type ${request.requestedRole || "member"}`,
+      request.grade ? `Grade ${request.grade}` : "",
       request.contact ? `Contact ${request.contact}` : "",
       request.note,
       `Location ${location}`,
@@ -5502,13 +5569,21 @@ async function deleteUser(username) {
 
 function filterUsersForAdmin(users) {
   const term = String(state.accountSearch || "").trim().toLowerCase();
-  if (!term) return [];
+  if (state.accountShowAll) return users || [];
+  if (!term) {
+    return (users || []).filter((user) => {
+      const role = String(user.role || "member").toLowerCase();
+      const username = String(user.username || "").toLowerCase();
+      return username !== "admin" && ["admin", "hmd", "dev"].includes(role);
+    });
+  }
   return (users || []).filter((user) => {
     const profile = state.profiles[user.username] || {};
     return searchableText({
       ...user,
       profile,
       lastLoginDevice: user.lastLoginDevice || "",
+      grade: user.grade || profile.grade || "",
       banReason: user.banReason || "",
     }).includes(term);
   });
@@ -6052,6 +6127,7 @@ async function saveProfile(event) {
         badges: els.profileBadges.value.split(",").map((entry) => entry.trim()).filter(Boolean),
         status: els.profileStatus.value,
         customStatus: els.profileCustomStatus.value,
+        grade: els.profileGrade ? els.profileGrade.value : "",
         theme: els.profileTheme.value,
         customTheme: currentProfileThemeEditor(),
         bio: els.profileBio.value,
@@ -6269,6 +6345,11 @@ function formatDate(value) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function formatApproxLocation(value) {
+  if (!value || typeof value !== "object") return "";
+  return value.note || value.ip || [value.city, value.region, value.country].filter(Boolean).join(", ") || "unknown";
 }
 
 function formatBytes(bytes) {

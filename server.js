@@ -1770,6 +1770,24 @@ async function routeApi(req, res, requestUrl) {
     return json(res, 200, { doc: safeInnerDoc(docs[index], user), innerDocs: safeInnerDocs(docs, user), dm });
   }
 
+  const innerDocDownloadMatch = pathname.match(/^\/api\/inner-docs\/([^/]+)\/download$/);
+  if (req.method === "GET" && innerDocDownloadMatch) {
+    const id = decodeURIComponent(innerDocDownloadMatch[1] || "");
+    const docs = await readJson(FILES.innerDocs, []);
+    const doc = docs.map(sanitizeInnerDoc).find((entry) => entry.id === id);
+    if (!doc) return text(res, 404, "Doc not found");
+    if (!canAccessInnerDoc(doc, user)) return text(res, 403, "Doc access required");
+    const format = String(requestUrl.searchParams.get("format") || "html").toLowerCase() === "txt" ? "txt" : "html";
+    const filename = `${downloadSafeName(doc.title || "inner-doc")}.${format}`;
+    const body = format === "txt" ? innerDocPlainText(doc) : innerDocHtmlExport(doc);
+    res.writeHead(200, {
+      "Content-Type": format === "txt" ? "text/plain; charset=utf-8" : "text/html; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "no-store",
+    });
+    return res.end(body);
+  }
+
   if (req.method === "DELETE" && pathname.startsWith("/api/inner-docs/")) {
     const id = decodeURIComponent(pathname.split("/").pop() || "");
     const docs = await readJson(FILES.innerDocs, []);
@@ -4265,6 +4283,58 @@ function sanitizeInnerDocHtml(value) {
     .replace(/<\s*(script|style|iframe|object|embed|link|meta)[^>]*\/?\s*>/gi, "")
     .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
     .replace(/\s(href|src)\s*=\s*(['"]?)\s*javascript:[^'"\s>]*/gi, "");
+}
+
+function innerDocHtmlExport(doc) {
+  const title = escapeHtml(doc.title || "Inner Doc");
+  const isSlides = doc.type === "slides";
+  const body = sanitizeInnerDocHtml(doc.body || "");
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title}</title>
+  <style>
+    body{margin:0;background:#f3f3ef;color:#151515;font-family:Inter,system-ui,sans-serif}
+    main{max-width:${isSlides ? "1100px" : "860px"};margin:0 auto;padding:32px}
+    .doc{background:white;border:1px solid #ddd;border-radius:6px;box-shadow:0 18px 48px rgba(0,0,0,.08);padding:48px;line-height:1.65}
+    .slide,.inner-slide{aspect-ratio:16/9;background:white;border:1px solid #ddd;border-radius:10px;box-shadow:0 18px 48px rgba(0,0,0,.08);padding:48px;margin:0 0 28px;display:flex;flex-direction:column;justify-content:center}
+    h1{font-size:2.1rem;margin:0 0 16px} h2{font-size:1.5rem} p,li{font-size:1.05rem}
+    @media print{body{background:white}main{padding:0}.doc,.slide,.inner-slide{box-shadow:none;break-after:page;border:0}}
+  </style>
+</head>
+<body><main>${isSlides ? normalizeSlideExport(body) : `<article class="doc">${body}</article>`}</main></body>
+</html>`;
+}
+
+function normalizeSlideExport(html) {
+  if (/<section\b[^>]*class=["'][^"']*inner-slide/i.test(html)) return html;
+  const parts = String(html || "").split(/<hr\s*\/?>/i).map((part) => part.trim()).filter(Boolean);
+  return (parts.length ? parts : [html]).map((part) => `<section class="inner-slide">${part}</section>`).join("\n");
+}
+
+function innerDocPlainText(doc) {
+  return `${doc.title || "Inner Doc"}\n${doc.type || "doc"}\n\n${htmlToPlainText(doc.body || "")}`;
+}
+
+function htmlToPlainText(html) {
+  return String(html || "")
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\s*\/(p|div|h1|h2|h3|li|section|blockquote)\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function downloadSafeName(value) {
+  return String(value || "inner-doc").replace(/[^\w.\- ]+/g, "_").trim().slice(0, 80) || "inner-doc";
 }
 
 function safeInnerDoc(doc, user) {

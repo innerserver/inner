@@ -189,8 +189,11 @@ function cacheElements() {
     "innerDocType",
     "innerDocBody",
     "innerDocPage",
+    "docNewSlideButton",
     "innerDocShareTarget",
     "shareInnerDocButton",
+    "docDownloadHtmlButton",
+    "docDownloadTextButton",
     "innerDocStatus",
     "innerDocWordCount",
     "browserView",
@@ -550,6 +553,10 @@ function bindEvents() {
   if (els.shareChessButton) els.shareChessButton.addEventListener("click", () => fillShareLink(currentChessUrl(), "ChessVerse", "app"));
   if (els.newInnerDocButton) els.newInnerDocButton.addEventListener("click", newInnerDoc);
   if (els.deleteInnerDocButton) els.deleteInnerDocButton.addEventListener("click", deleteInnerDoc);
+  if (els.innerDocType) els.innerDocType.addEventListener("change", syncInnerDocMode);
+  if (els.docNewSlideButton) els.docNewSlideButton.addEventListener("click", insertInnerSlide);
+  if (els.docDownloadHtmlButton) els.docDownloadHtmlButton.addEventListener("click", () => downloadInnerDoc("html"));
+  if (els.docDownloadTextButton) els.docDownloadTextButton.addEventListener("click", () => downloadInnerDoc("txt"));
   if (els.innerDocForm) els.innerDocForm.addEventListener("submit", saveInnerDoc);
   if (els.shareInnerDocButton) els.shareInnerDocButton.addEventListener("click", shareInnerDoc);
   document.querySelectorAll("[data-doc-command],[data-doc-block]").forEach((button) => button.addEventListener("click", handleDocTool));
@@ -4115,6 +4122,7 @@ function renderDocs() {
   if (els.innerDocTitle) els.innerDocTitle.value = current ? current.title : "";
   if (els.innerDocType) els.innerDocType.value = current ? current.type : "doc";
   setInnerDocPageBody(current ? current.body : "");
+  syncInnerDocMode();
   if (els.innerDocStatus) {
     els.innerDocStatus.textContent = current
       ? `Last saved ${formatDate(current.updatedAt || current.createdAt)}. ${current.sharedWith && current.sharedWith.length ? `Shared with ${current.sharedWith.length}.` : "Not shared yet."}`
@@ -4135,6 +4143,17 @@ function newInnerDoc() {
   setInnerDocPageBody("");
   if (els.innerDocStatus) els.innerDocStatus.textContent = "New unsaved doc.";
   if (els.innerDocTitle) els.innerDocTitle.focus();
+}
+
+function syncInnerDocMode() {
+  const slides = els.innerDocType && els.innerDocType.value === "slides";
+  if (els.innerDocForm) els.innerDocForm.classList.toggle("slides-mode", slides);
+  if (els.innerDocPage) els.innerDocPage.classList.toggle("slides-mode", slides);
+  if (slides && els.innerDocPage && !els.innerDocPage.innerText.trim()) {
+    els.innerDocPage.innerHTML = defaultSlideHtml();
+    updateInnerDocHiddenBody();
+    updateInnerDocStats();
+  }
 }
 
 async function saveInnerDoc(event) {
@@ -4170,6 +4189,35 @@ function handleDocTool(event) {
   }
   updateInnerDocHiddenBody();
   updateInnerDocStats();
+}
+
+function insertInnerSlide() {
+  if (!els.innerDocPage) return;
+  if (els.innerDocType) els.innerDocType.value = "slides";
+  syncInnerDocMode();
+  els.innerDocPage.focus();
+  const slide = document.createElement("section");
+  slide.className = "inner-slide";
+  slide.innerHTML = "<h1>New slide</h1><p>Add your points here.</p>";
+  els.innerDocPage.append(slide);
+  updateInnerDocHiddenBody();
+  updateInnerDocStats();
+  slide.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function defaultSlideHtml() {
+  return '<section class="inner-slide"><h1>Untitled slides</h1><p>Add your first point.</p></section>';
+}
+
+function downloadInnerDoc(format) {
+  const doc = selectedInnerDoc();
+  if (!doc) return notify("Save or choose a doc first");
+  const extension = format === "txt" ? "txt" : "html";
+  downloadUrl(`/api/inner-docs/${encodeURIComponent(doc.id)}/download?format=${extension}`, `${safeDownloadName(doc.title)}.${extension}`);
+}
+
+function safeDownloadName(value) {
+  return String(value || "inner-doc").replace(/[^\w.\- ]+/g, "_").trim().slice(0, 80) || "inner-doc";
 }
 
 function setInnerDocPageBody(value) {

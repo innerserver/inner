@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-30-docs-browser-rules-final" />
+    <link rel="stylesheet" href="/styles.css?v=inner-31-docs-slides-download-final" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -422,7 +422,7 @@
             <form id="innerDocForm" class="panel-form inner-doc-editor">
               <div class="doc-editor-toolbar">
                 <input id="innerDocTitle" maxlength="120" placeholder="Untitled doc" autocomplete="off" aria-label="Doc title" />
-                <select id="innerDocType" aria-label="Doc type"><option value="doc">Doc</option><option value="notes">Notes</option><option value="slides">Slides outline</option><option value="sheet">Table / sheet notes</option></select>
+                <select id="innerDocType" aria-label="Doc type"><option value="doc">Document</option><option value="notes">Notes</option><option value="slides">Slides</option><option value="sheet">Table / sheet notes</option></select>
                 <button id="saveInnerDocButton" class="primary-button" type="submit">Save doc</button>
                 <button id="deleteInnerDocButton" class="danger-button" type="button">Delete</button>
               </div>
@@ -436,6 +436,7 @@
                 <button class="doc-tool-button" type="button" data-doc-command="insertOrderedList">Numbers</button>
                 <button class="doc-tool-button" type="button" data-doc-block="BLOCKQUOTE">Quote</button>
                 <button class="doc-tool-button" type="button" data-doc-command="removeFormat">Clear</button>
+                <button id="docNewSlideButton" class="doc-tool-button slides-only-tool" type="button">New slide</button>
               </div>
               <div class="inner-doc-page-wrap">
                 <div id="innerDocPage" class="inner-doc-page" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Start typing in Inner Docs..."></div>
@@ -444,6 +445,8 @@
               <div class="doc-share-row">
                 <select id="innerDocShareTarget" aria-label="Share doc target"></select>
                 <button id="shareInnerDocButton" class="secondary-button" type="button">Share access</button>
+                <button id="docDownloadHtmlButton" class="ghost-light-button" type="button">Download HTML</button>
+                <button id="docDownloadTextButton" class="ghost-light-button" type="button">Download text</button>
               </div>
               <p id="innerDocStatus" class="panel-note">Docs save to Inner cloud when you press Save.</p>
               <p id="innerDocWordCount" class="panel-note doc-word-count">0 words</p>
@@ -808,8 +811,8 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-30-docs-browser-rules-final" defer></script>
-    <script src="/app.js?v=inner-30-docs-browser-rules-final" defer></script>
-    <script src="/force-logout.js?v=inner-30-docs-browser-rules-final" defer></script>
+    <script src="/session-guard.js?v=inner-31-docs-slides-download-final" defer></script>
+    <script src="/app.js?v=inner-31-docs-slides-download-final" defer></script>
+    <script src="/force-logout.js?v=inner-31-docs-slides-download-final" defer></script>
   </body>
 </html>

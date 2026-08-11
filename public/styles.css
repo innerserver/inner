@@ -4174,6 +4174,84 @@ body.standalone-page .tutorial-shell {
   overflow: visible;
 }
 
+/* v56: Games and secret-game admin scrolling. */
+#chessView.view.active {
+  height: auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  display: grid !important;
+  grid-template-rows: auto auto minmax(420px, 1fr) !important;
+  align-content: start;
+}
+
+#chessView .section-header {
+  min-width: 0;
+}
+
+#chessView .game-launcher-list {
+  max-height: 132px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+#chessView .embedded-app-frame {
+  min-height: 520px;
+  height: min(70dvh, 760px);
+  flex: initial;
+}
+
+#serverForm {
+  min-height: 0;
+}
+
+#gameLinksInput {
+  min-height: 150px;
+  max-height: 34dvh;
+  overflow-y: auto;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  line-height: 1.35;
+}
+
+@media (max-width: 920px) {
+  #chessView.view.active {
+    height: calc(100dvh - 58px) !important;
+    grid-template-rows: auto auto minmax(360px, 1fr) !important;
+    overflow-y: auto !important;
+  }
+
+  #chessView .section-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  #chessView .section-header .button-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  #chessView .section-header .button-row button {
+    min-width: 0;
+    white-space: normal;
+  }
+
+  #chessView .game-launcher-list {
+    max-height: 116px;
+  }
+
+  #chessView .embedded-app-frame {
+    min-height: 420px;
+    height: 58dvh;
+  }
+
+  #gameLinksInput {
+    min-height: 130px;
+    max-height: 42dvh;
+  }
+}
+
 .detail-section {
   display: grid;
   gap: 8px;

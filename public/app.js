@@ -21,6 +21,7 @@ const state = {
   accountSearch: "",
   accountGradeFilter: "",
   accountShowAll: false,
+  selectedAccountDetails: "",
   logSearch: "",
   logDate: "",
   files: [],
@@ -382,6 +383,12 @@ function cacheElements() {
     "accountGradeFilter",
     "accountSearchInput",
     "accountList",
+    "accountDetailPanel",
+    "accountDetailTitle",
+    "accountDetailSubtitle",
+    "accountDetailBody",
+    "wipeAccountBrowserHistoryButton",
+    "closeAccountDetailButton",
     "currentPassword",
     "nextPassword",
     "resetUser",
@@ -689,6 +696,13 @@ function bindEvents() {
       renderUsers();
     });
   }
+  if (els.closeAccountDetailButton) {
+    els.closeAccountDetailButton.addEventListener("click", () => {
+      state.selectedAccountDetails = "";
+      renderAccountDetails();
+    });
+  }
+  if (els.wipeAccountBrowserHistoryButton) els.wipeAccountBrowserHistoryButton.addEventListener("click", wipeSelectedAccountBrowserHistory);
   els.featureLockForm.addEventListener("submit", saveFeatureLock);
   if (els.featureVisibilityForm) els.featureVisibilityForm.addEventListener("submit", saveFeatureVisibility);
   if (els.visibilityFeatureName) els.visibilityFeatureName.addEventListener("change", renderFeatureVisibility);
@@ -2600,6 +2614,7 @@ function handleSocketMessage(message) {
   if (message.type === "logs:update" && isOwner()) {
     state.logs = message.logs || [];
     renderLogs();
+    renderAccountDetails();
     return;
   }
 
@@ -5101,6 +5116,8 @@ function renderUsers() {
 
   els.accountList.replaceChildren();
   const visibleUsers = filterUsersForAdmin(state.users);
+  syncSearchedAccountDetails(visibleUsers);
+  renderAccountDetails();
   if (els.showAllAccountsButton) {
     els.showAllAccountsButton.textContent = state.accountShowAll ? "Hide all" : "Show all";
   }
@@ -5166,6 +5183,7 @@ function renderUsers() {
     const persistentButton = accountButton(user.allowPersistentLogin ? "Disable persistent" : "Allow persistent", () =>
       updateUser(user.username, { allowPersistentLogin: !user.allowPersistentLogin })
     );
+    const detailsButton = accountButton("Details", () => openAccountDetails(user.username));
     const banFive = accountButton("Ban 5m", () => banUser(user.username, 5));
     const banShort = accountButton("Ban 15m", () => banUser(user.username, 15));
     const banHour = accountButton("Ban 1h", () => banUser(user.username, 60));
@@ -5178,7 +5196,7 @@ function renderUsers() {
     banDay.disabled = isMainAdmin;
     unban.disabled = isMainAdmin;
     remove.disabled = isMainAdmin || isCurrentUser;
-    actions.append(gradeSelect, gradeButton, roleButton, persistentButton, banFive, banShort, banHour, banDay, unban, remove);
+    actions.append(gradeSelect, gradeButton, roleButton, persistentButton, detailsButton, banFive, banShort, banHour, banDay, unban, remove);
 
     item.append(head, meta, actions);
     els.accountList.append(item);
@@ -5216,6 +5234,110 @@ function renderFeatureLocks() {
     item.append(head, meta, unlock);
     els.featureLockList.append(item);
   });
+}
+
+function syncSearchedAccountDetails(visibleUsers) {
+  const term = String(state.accountSearch || "").trim().toLowerCase();
+  if (!term || state.selectedAccountDetails) return;
+  const exact = visibleUsers.find((user) => {
+    const contact = typeof user.contact === "object" && user.contact ? user.contact : {};
+    const values = [
+      user.username,
+      user.displayName,
+      user.email || contact.email,
+      user.phone || contact.phone,
+      user.contact,
+    ].filter(Boolean).map((value) => String(value).toLowerCase());
+    return values.includes(term);
+  });
+  if (exact) state.selectedAccountDetails = exact.username;
+}
+
+function openAccountDetails(username) {
+  state.selectedAccountDetails = username;
+  renderAccountDetails();
+  if (els.accountDetailPanel) els.accountDetailPanel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function renderAccountDetails() {
+  if (!els.accountDetailPanel || !isOwner()) return;
+  const username = state.selectedAccountDetails || "";
+  const user = state.users.find((entry) => entry.username === username);
+  els.accountDetailPanel.classList.toggle("hidden", !user);
+  if (!user) return;
+  if (els.accountDetailTitle) els.accountDetailTitle.textContent = `${user.username} details`;
+  if (els.accountDetailSubtitle) els.accountDetailSubtitle.textContent = `${user.role || "member"}${user.grade ? ` - Grade ${user.grade}` : ""}`;
+  if (els.wipeAccountBrowserHistoryButton) els.wipeAccountBrowserHistoryButton.disabled = !user;
+  els.accountDetailBody.replaceChildren();
+  const contact = typeof user.contact === "object" && user.contact ? user.contact : {};
+  const identityLines = [
+    user.displayName ? `Name ${user.displayName}` : "",
+    `Username ${user.username}`,
+    `Role ${user.role || "member"}`,
+    user.grade ? `Grade ${user.grade}` : "No grade",
+    user.email || contact.email ? `Email ${user.email || contact.email}` : "No email saved",
+    user.phone || contact.phone ? `Phone ${user.phone || contact.phone}` : "No phone saved",
+    user.contact && typeof user.contact === "string" ? `Contact ${user.contact}` : "",
+    `Created ${formatDate(user.createdAt) || "-"}`,
+    user.createdBy ? `Created by ${user.createdBy}` : "",
+  ];
+  els.accountDetailBody.append(adminCard("Account", user.banned ? "Banned" : "Active", identityLines));
+
+  const accessLines = [
+    `Persistent login ${user.allowPersistentLogin ? "allowed" : "off"}`,
+    user.lastLoginAt ? `Last login ${formatDate(user.lastLoginAt)}` : "No login recorded",
+    user.lastLoginIp ? `Latest IP ${user.lastLoginIp}` : "No IP recorded",
+    user.lastLoginDevice ? `Latest device ${user.lastLoginDevice}` : "No device recorded",
+    user.lastLoginApproximateLocation ? `Approx location ${formatApproxLocation(user.lastLoginApproximateLocation)}` : "",
+    user.bannedUntil ? `Ban until ${formatDate(user.bannedUntil)}` : "",
+    user.banReason ? `Ban reason ${user.banReason}` : "",
+  ];
+  els.accountDetailBody.append(adminCard("Access and device", user.role || "member", accessLines));
+
+  const history = browserHistoryForUser(user.username);
+  if (!history.length) {
+    els.accountDetailBody.append(adminCard("Recent browser/search history", "Empty", ["No Inner Browser opens logged for this account."]));
+    return;
+  }
+  history.forEach((entry) => {
+    const details = entry.details || {};
+    const lines = [
+      details.query ? `Search ${details.query}` : "",
+      details.url ? `URL ${details.url}` : "",
+      details.host ? `Host ${details.host}` : "",
+      entry.ip ? `IP ${entry.ip}` : "",
+      entry.userAgent ? `Device ${entry.userAgent}` : "",
+      `Opened ${formatDate(entry.createdAt)}`,
+    ];
+    els.accountDetailBody.append(adminCard(details.query ? "Browser search" : "Browser open", details.host || "history", lines));
+  });
+}
+
+function browserHistoryForUser(username) {
+  const current = String(username || "").toLowerCase();
+  return (state.logs || [])
+    .filter((log) => String(log.actor || "").toLowerCase() === current && String(log.action || "") === "browser.open")
+    .slice(0, 25);
+}
+
+async function wipeSelectedAccountBrowserHistory() {
+  if (!isOwner()) return notify("Admin access required");
+  const username = state.selectedAccountDetails || "";
+  if (!username) return notify("Choose an account first");
+  if (!window.confirm(`Wipe Inner Browser history for ${username}?`)) return;
+  const confirm = window.prompt("Type WIPE to clear this user's browser history") || "";
+  try {
+    const data = await api("/api/browser/history/wipe", {
+      method: "POST",
+      json: { username, confirm },
+    });
+    state.logs = data.logs || state.logs.filter((log) => !(String(log.actor || "").toLowerCase() === username.toLowerCase() && String(log.action || "") === "browser.open"));
+    renderLogs();
+    renderAccountDetails();
+    notify("Browser history wiped");
+  } catch (error) {
+    notify(error.message);
+  }
 }
 
 function renderFeatureVisibility() {

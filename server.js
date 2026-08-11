@@ -1549,6 +1549,21 @@ async function routeApi(req, res, requestUrl) {
     return json(res, 200, { logs, moderationLogs: [] });
   }
 
+  if (req.method === "POST" && pathname === "/api/browser/history/wipe") {
+    if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
+    const body = await readJsonBody(req);
+    if (String(body.confirm || "").toUpperCase() !== "WIPE") return json(res, 400, { error: "Type WIPE to clear browser history" });
+    const targetUsername = String(body.username || "").trim().toLowerCase();
+    if (!targetUsername) return json(res, 400, { error: "Choose a user" });
+    const logs = await readJson(FILES.logs, []);
+    const next = logs.filter((entry) => !(String(entry.actor || "").toLowerCase() === targetUsername && String(entry.action || "") === "browser.open"));
+    await writeJson(FILES.logs, next);
+    await addSystemLog("browser.history.wiped", user.username, { username: targetUsername }, req);
+    const updated = await readJson(FILES.logs, []);
+    broadcastManagers({ type: "logs:update", logs: updated.slice(0, 300) });
+    return json(res, 200, { logs: updated.slice(0, 300) });
+  }
+
   if (req.method === "POST" && pathname === "/api/wipe/reports") {
     if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
     const body = await readJsonBody(req);
@@ -5878,6 +5893,7 @@ async function serveBrowserFrame(req, res, requestUrl, user) {
   const settings = await readJson(FILES.settings, {});
   const policyError = browserPolicyError(target, settings.browserPolicy || {}, user);
   if (policyError) return browserFrameMessage(res, 403, "Site blocked by Inner", policyError);
+  await addSystemLog("browser.open", user.username, browserOpenDetails(target), req);
   if (typeof fetch !== "function") return text(res, 500, "Server fetch is unavailable");
   try {
     const response = await fetch(target, {
@@ -5916,6 +5932,23 @@ function browserPolicyError(target, policy, user) {
   if (next.blockedSites.some((domain) => domainMatches(host, domain))) return `${host} is blocked by the Inner browser rules.`;
   if (next.allowOnly && !next.allowedSites.some((domain) => domainMatches(host, domain))) return `${host} is not on the allowed site list.`;
   return "";
+}
+
+function browserOpenDetails(target) {
+  try {
+    const parsed = new URL(target);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    const searchParams = parsed.searchParams;
+    const query = searchParams.get("q") || searchParams.get("query") || searchParams.get("search") || "";
+    return {
+      url: target.slice(0, 700),
+      host: host.slice(0, 120),
+      query: String(query || "").trim().slice(0, 240),
+      path: `${parsed.pathname || "/"}${parsed.search || ""}`.slice(0, 500),
+    };
+  } catch (error) {
+    return { url: String(target || "").slice(0, 700), host: "", query: "", path: "" };
+  }
 }
 
 function hostnameForPolicy(target) {

@@ -57,6 +57,10 @@ Admin/HMD/dev accounts show by default. Member accounts show when searched, grad
 
 To change a grade, search the account, choose the grade in that account row, then press Save grade.
 
+Use **Details** on an account row to open the account details panel. It shows contact info, latest IP/device, approximate location, access status, and recent Inner Browser/search history. Use **Wipe browser history** to clear that user's Inner Browser history from system logs.
+
+The public Browser label says it is private from other users and admin-audited, because admin audit is enabled.
+
 ## Friends and Grade Search
 
 Friends are grade-aware.

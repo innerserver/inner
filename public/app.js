@@ -918,12 +918,14 @@ async function refreshSignupStatus() {
   } else if (els.signupStatus) {
     els.signupStatus.textContent = "Open signup is on.";
   }
+  if (isAccountEntryRoute() && els.loginView) els.loginView.classList.add("signup-expanded");
   syncSignupModePanels(data.signupMode || state.settings.signupMode || "request");
 }
 
 function syncSignupModePanels(mode) {
   const open = String(mode || "request") === "open";
   const expanded = Boolean(els.loginView && els.loginView.classList.contains("signup-expanded"));
+  document.body.classList.toggle("account-entry-page", expanded);
   syncSignupEntryLabel(mode);
   if (els.accountRequestForm) els.accountRequestForm.classList.toggle("hidden", !expanded || open);
   if (els.signupForm) els.signupForm.classList.toggle("hidden", !expanded || !open);
@@ -937,6 +939,12 @@ function syncSignupEntryLabel(mode) {
 }
 
 function openSignupChoice() {
+  if (!isAccountEntryRoute()) {
+    const targetUrl = `${location.origin}/?account=1`;
+    const opened = window.open(targetUrl, "_blank", "noopener");
+    if (opened) return;
+    history.pushState({}, "", "/?account=1");
+  }
   if (els.loginView) els.loginView.classList.add("signup-expanded");
   syncSignupModePanels(state.settings.signupMode || "request");
   refreshSignupStatus().catch(() => syncSignupModePanels(state.settings.signupMode || "request"));
@@ -946,7 +954,13 @@ function openSignupChoice() {
 
 function closeSignupChoice() {
   if (els.loginView) els.loginView.classList.remove("signup-expanded");
+  document.body.classList.remove("account-entry-page");
+  if (isAccountEntryRoute()) history.pushState({}, "", "/");
   syncSignupModePanels(state.settings.signupMode || "request");
+}
+
+function isAccountEntryRoute() {
+  return new URLSearchParams(location.search).get("account") === "1";
 }
 
 function getAccountRequestLocation() {
@@ -1048,11 +1062,19 @@ function showLogin(message = "") {
   state.loggedIn = false;
   applyProfileTheme("system");
   els.loginView.classList.remove("hidden");
-  closeSignupChoice();
+  if (isAccountEntryRoute()) {
+    els.loginView.classList.add("signup-expanded");
+    syncSignupModePanels(state.settings.signupMode || "request");
+  } else {
+    closeSignupChoice();
+  }
   els.appView.classList.add("hidden");
   els.loginError.textContent = message;
   setConnection("Offline");
-  setTimeout(() => els.loginPassword.focus(), 0);
+  const focusTarget = isAccountEntryRoute()
+    ? (String(state.settings.signupMode || "request") === "open" ? els.signupUsername : els.requestUsername)
+    : els.loginPassword;
+  setTimeout(() => focusTarget && focusTarget.focus(), 0);
 }
 
 function showApp() {

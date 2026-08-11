@@ -129,11 +129,16 @@ const viewRoutes = {
 const els = {};
 
 document.addEventListener("DOMContentLoaded", () => {
-  state.notificationsEnabled = getStoredFlag("innerNotifications");
-  restoreUiState();
-  cacheElements();
-  hydrateGradeSelects();
-  bindEvents();
+  try {
+    state.notificationsEnabled = getStoredFlag("innerNotifications");
+    restoreUiState();
+    cacheElements();
+    hydrateGradeSelects();
+    bindEvents();
+  } catch (error) {
+    console.error("Inner boot setup failed", error);
+    if (els.toast) notify("Some controls are still loading. Refresh if a button does not respond.");
+  }
   refreshSignupStatus().catch(() => {});
   loadState().catch((error) => showLogin(error.status === 401 ? "" : error.message));
 });
@@ -2699,7 +2704,7 @@ function connectSocket() {
     return;
   }
   closeSocket();
-  if (state.lastHealthOkAt && Date.now() - state.lastHealthOkAt < 30000) setConnection("Live");
+  if (state.lastHealthOkAt && Date.now() - state.lastHealthOkAt < 30000) setConnection("Server live");
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
   state.ws = ws;
@@ -2708,7 +2713,7 @@ function connectSocket() {
     const wasReconnect = state.wsEverConnected;
     state.wsEverConnected = true;
     state.wsReconnectDelay = 1400;
-    setConnection("Live");
+    setConnection("Realtime live");
     sendWs({ type: "client:network", network: browserNetworkInfo() });
     flushWsOutbox();
     recoverRealtimeState(wasReconnect).catch(() => {});
@@ -2723,7 +2728,7 @@ function connectSocket() {
     if (state.ws !== ws) return;
     clearInterval(state.wsPingTimer);
     state.wsPingTimer = null;
-    checkServerHealth({ silent: true, requireLogin: false }).catch(() => setConnection("Not live"));
+    checkServerHealth({ silent: true, requireLogin: false }).catch(() => setConnection("Realtime offline"));
     if (state.loggedIn) {
       clearTimeout(state.reconnectTimer);
       const delay = Math.min(state.wsReconnectDelay || 1400, 12000);
@@ -2732,7 +2737,7 @@ function connectSocket() {
     }
   });
   ws.addEventListener("error", () => {
-    if (!state.lastHealthOkAt || Date.now() - state.lastHealthOkAt > 30000) setConnection("Not live");
+    if (!state.lastHealthOkAt || Date.now() - state.lastHealthOkAt > 30000) setConnection("Realtime offline");
   });
   ws.addEventListener("message", (event) => {
     try {
@@ -2803,7 +2808,7 @@ async function checkServerHealth(options = {}) {
     if (!response.ok) throw new Error(data.error || `Health failed (${response.status})`);
     state.lastHealthOkAt = Date.now();
     state.lastHealthError = "";
-    setConnection("Live");
+    setConnection("Server live");
     return true;
   } catch (error) {
     state.lastHealthError = error.message || "Health check failed";
@@ -3002,7 +3007,7 @@ function handleSocketMessage(message) {
   }
 
   if (message.type === "state:update") {
-    state.settings = message.settings;
+    state.settings = { ...state.settings, ...(message.settings || {}) };
     if (!state.settings.serverEnabled && !isOwner()) {
       leaveVoice();
       stopShare({ silent: true });
@@ -3690,8 +3695,7 @@ function isRealtimeReady() {
 
 async function ensureRealtimeReady(label = "live features") {
   if (isRealtimeReady()) return true;
-  setConnection("Not live");
-  await checkServerHealth({ silent: true, requireLogin: false });
+  const serverOk = await checkServerHealth({ silent: true, requireLogin: false });
   if (!state.ws || state.ws.readyState === WebSocket.CLOSED || state.ws.readyState === WebSocket.CLOSING) {
     connectSocket();
   }
@@ -3700,7 +3704,7 @@ async function ensureRealtimeReady(label = "live features") {
     if (isRealtimeReady()) return true;
     await sleep(120);
   }
-  const serverPart = state.lastHealthOkAt ? "Server API is reachable, but live mode is not connected." : "Server is still waking up or unreachable.";
+  const serverPart = serverOk || state.lastHealthOkAt ? "Server is live, but realtime is still connecting." : "Server is still waking up or unreachable.";
   notify(`${serverPart} ${label} needs live mode.`);
   return false;
 }
@@ -3829,46 +3833,56 @@ function clearRemoteVideo(roomId = "") {
 }
 
 function renderAll() {
-  renderShell();
-  renderDashboard();
-  renderRooms();
-  renderMessages();
-  renderDms();
-  renderDmCall();
-  renderFriends();
-  renderProfile();
-  renderStore();
-  renderFiles();
-  renderGames();
-  renderDocs();
-  renderVoice();
-  renderScreen();
-  renderVpn();
-  renderServer();
-  renderEmailStatus();
-  renderQuickEdit();
-  renderUsers();
-  renderFeatureLocks();
-  renderFeatureVisibility();
-  renderPaywalls();
-  renderRoomManager();
-  renderAnnouncements();
-  renderServiceScale();
-  renderBrowserPolicy();
-  renderAdminDms();
-  renderAdminReadReceipts();
-  renderAdminStore();
-  renderAiRequests();
-  renderBackups();
-  renderAdminAutomod();
-  renderAccountRequests();
-  renderLiveIpTracking();
-  renderReports();
-  renderLogs();
-  renderHmd();
-  renderCornerAd();
-  updateControls();
-  setupAdminCollapsibles();
+  [
+    ["shell", renderShell],
+    ["dashboard", renderDashboard],
+    ["rooms", renderRooms],
+    ["messages", renderMessages],
+    ["dms", renderDms],
+    ["dm call", renderDmCall],
+    ["friends", renderFriends],
+    ["profile", renderProfile],
+    ["store", renderStore],
+    ["files", renderFiles],
+    ["games", renderGames],
+    ["docs", renderDocs],
+    ["voice", renderVoice],
+    ["screen", renderScreen],
+    ["vpn", renderVpn],
+    ["server", renderServer],
+    ["email status", renderEmailStatus],
+    ["quick edit", renderQuickEdit],
+    ["users", renderUsers],
+    ["feature locks", renderFeatureLocks],
+    ["feature visibility", renderFeatureVisibility],
+    ["paywalls", renderPaywalls],
+    ["room manager", renderRoomManager],
+    ["announcements", renderAnnouncements],
+    ["service scale", renderServiceScale],
+    ["browser policy", renderBrowserPolicy],
+    ["admin dms", renderAdminDms],
+    ["admin read receipts", renderAdminReadReceipts],
+    ["admin store", renderAdminStore],
+    ["ai requests", renderAiRequests],
+    ["backups", renderBackups],
+    ["admin automod", renderAdminAutomod],
+    ["account requests", renderAccountRequests],
+    ["live ip", renderLiveIpTracking],
+    ["reports", renderReports],
+    ["logs", renderLogs],
+    ["hmd", renderHmd],
+    ["corner ad", renderCornerAd],
+    ["controls", updateControls],
+    ["collapsibles", setupAdminCollapsibles],
+  ].forEach(([name, render]) => safeRender(name, render));
+}
+
+function safeRender(name, render) {
+  try {
+    render();
+  } catch (error) {
+    console.error(`Inner render failed: ${name}`, error);
+  }
 }
 
 function setupAdminCollapsibles() {
@@ -7672,6 +7686,8 @@ function featureLock(feature) {
 
 function featureAvailable(feature) {
   if (isOwner()) return true;
+  const visibleFeatures = Array.isArray(state.settings.visibleFeatures) ? state.settings.visibleFeatures : null;
+  if (visibleFeatures && !visibleFeatures.includes(feature)) return false;
   const hidden = hiddenRule(feature);
   if (hidden.hidden && !hidden.allowedUsers.includes((state.user && state.user.username || "").toLowerCase())) return false;
   if (featureLock(feature)) return false;
@@ -7681,6 +7697,10 @@ function featureAvailable(feature) {
 }
 
 function lockMessage(feature) {
+  const visibleFeatures = Array.isArray(state.settings.visibleFeatures) ? state.settings.visibleFeatures : null;
+  if (!isOwner() && visibleFeatures && !visibleFeatures.includes(feature)) {
+    return `${featureLabel(feature)} is hidden for your account`;
+  }
   const hidden = hiddenRule(feature);
   if (!isOwner() && hidden.hidden && !hidden.allowedUsers.includes((state.user && state.user.username || "").toLowerCase())) {
     return `${featureLabel(feature)} is hidden for your account`;
@@ -8279,8 +8299,19 @@ function canScheduleRoomFiles() {
 function setConnection(value) {
   if (!els.connectionStatus) return;
   const normalized = String(value || "").toLowerCase();
-  const connected = ["live", "connected", "online"].includes(normalized);
-  els.connectionStatus.textContent = connected ? "Live" : "Not live";
+  if (["live", "connected", "online", "realtime live"].includes(normalized)) {
+    els.connectionStatus.textContent = "Realtime live";
+    return;
+  }
+  if (["server live", "server online", "api live"].includes(normalized)) {
+    els.connectionStatus.textContent = "Server live";
+    return;
+  }
+  if (["offline", "signed out"].includes(normalized)) {
+    els.connectionStatus.textContent = "Offline";
+    return;
+  }
+  els.connectionStatus.textContent = "Realtime offline";
 }
 
 function notify(message) {

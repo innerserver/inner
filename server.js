@@ -1199,7 +1199,7 @@ async function routeApi(req, res, requestUrl) {
       : dms.filter((entry) => Array.isArray(entry.participants) && entry.participants.includes(user.username));
     return json(res, 200, {
       user: safeUser(user, user),
-      settings: safeSettings(settings),
+      settings: safeSettings(settings, user),
       rtcConfig: buildRtcConfig(),
       uploadConfig: safeUploadConfig(settings),
       rooms: safeRoomsForUser(rooms, user),
@@ -2350,7 +2350,7 @@ async function routeApi(req, res, requestUrl) {
     await writeJson(FILES.settings, next);
     await addSystemLog("feature.lock.updated", user.username, { feature, minutes, reason }, req);
     broadcast({ type: "state:update", settings: safeSettings(next) });
-    return json(res, 200, { settings: safeSettings(next) });
+    return json(res, 200, { settings: safeSettings(next, user) });
   }
 
   if (req.method === "GET" && pathname === "/api/backups") {
@@ -2831,7 +2831,7 @@ async function routeApi(req, res, requestUrl) {
     } else {
       await addSystemLog("server.settings.updated", user.username, { roomName: next.roomName }, req);
     }
-    return json(res, 200, { settings: safeSettings(next) });
+    return json(res, 200, { settings: safeSettings(next, user) });
   }
 
   if (req.method === "POST" && pathname === "/api/vpn") {
@@ -5219,8 +5219,8 @@ function sanitizeAccountRequestRetention(source = {}) {
   };
 }
 
-function safeSettings(settings) {
-  return {
+function safeSettings(settings, user = null) {
+  const result = {
     ...settings,
     gameLinks: sanitizeGameLinks(settings.gameLinks || []),
     googleExtensionStoreUrl: sanitizeExternalUrl(settings.googleExtensionStoreUrl || ""),
@@ -5237,6 +5237,22 @@ function safeSettings(settings) {
     shutdownBy: settings.serverEnabled === false ? String(settings.shutdownBy || "") : "",
     shutdownReason: settings.serverEnabled === false ? String(settings.shutdownReason || "") : "",
   };
+  if (user) result.visibleFeatures = visibleFeaturesForUser(settings, user);
+  return result;
+}
+
+function visibleFeaturesForUser(settings, user) {
+  const visibility = sanitizeFeatureVisibility(settings.featureVisibility || {});
+  return Array.from(allowedFeatureLocks).filter((feature) => {
+    if (feature === "all") return true;
+    if ((feature === "admin" || feature === "domain") && !canOwn(user)) return false;
+    if (feature === "hmd" && !canDev(user)) return false;
+    const rule = visibility[feature];
+    if (rule && rule.hidden && !canOwn(user) && !rule.allowedUsers.includes(String(user.username || "").toLowerCase())) {
+      return false;
+    }
+    return true;
+  });
 }
 
 function sanitizePersistentLogin(source = {}) {
@@ -7153,9 +7169,14 @@ async function serveStatic(res, filePath) {
     const stat = await fsp.stat(safePath);
     if (!stat.isFile()) return text(res, 404, "Not found");
     const extension = path.extname(safePath).toLowerCase();
+    const name = path.basename(safePath).toLowerCase();
+    const noStoreAssets = new Set([".html", ".js", ".css", ".json", ".webmanifest"]);
+    const cacheControl = noStoreAssets.has(extension) || name === "service-worker.js"
+      ? "no-store, max-age=0"
+      : "no-cache";
     res.writeHead(200, {
       "Content-Type": mimeTypes[extension] || "application/octet-stream",
-      "Cache-Control": "no-cache",
+      "Cache-Control": cacheControl,
     });
     fs.createReadStream(safePath).pipe(res);
   } catch (error) {

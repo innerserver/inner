@@ -1,0 +1,13 @@
+data/
+.persistence-test-data/
+.codex/
+node_modules/
+bin/
+obj/
+dist/
+server.log
+server.err
+*.tmp
+serviceAccountKey.json
+*.env
+.env*

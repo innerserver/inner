@@ -1200,27 +1200,36 @@ async function shareLinkToFriends(event) {
   const title = String(els.shareLinkTitle ? els.shareLinkTitle.value : "").trim().slice(0, 120);
   const type = String(els.shareLinkType ? els.shareLinkType.value : "link").trim().toLowerCase();
   if (!url) return notify("Paste a valid http or https link");
-  if (!target) return notify("Choose an accepted friend or friend group");
-  if (!shareTargetPeople().some((person) => person.value === target)) return notify("You can only share to accepted friends or friend groups");
+  if (!target) return notify("Choose an accepted friend, friend group, or room");
+  if (!shareTargetPeople().some((person) => person.value === target)) return notify("You can only share to accepted friends, friend groups, or rooms you can access");
   const groupId = target.startsWith("group:") ? target.slice(6) : "";
+  const roomId = target.startsWith("room:") ? target.slice(5) : "";
   const label = shareTypeLabel(type);
   const text = `${label}: ${title || url}\n${url}`;
   try {
     if (els.shareLinkButton) els.shareLinkButton.disabled = true;
-    const dm = await api("/api/dms", {
-      method: "POST",
-      json: {
-        to: groupId ? "" : target,
-        groupId,
-        text,
-      },
-    });
-    state.dms = [...state.dms.filter((entry) => entry.id !== dm.dm.id), dm.dm];
-    state.selectedDmUser = target;
+    if (roomId) {
+      const data = await api("/api/messages", { method: "POST", json: { roomId, text } });
+      state.messages = [...state.messages.filter((entry) => entry.id !== data.message.id), data.message];
+      state.selectedRoomId = roomId;
+      renderRooms();
+      renderMessages();
+    } else {
+      const dm = await api("/api/dms", {
+        method: "POST",
+        json: {
+          to: groupId ? "" : target,
+          groupId,
+          text,
+        },
+      });
+      state.dms = [...state.dms.filter((entry) => entry.id !== dm.dm.id), dm.dm];
+      state.selectedDmUser = target;
+    }
     if (els.shareLinkUrl) els.shareLinkUrl.value = "";
     if (els.shareLinkTitle) els.shareLinkTitle.value = "";
     renderDms();
-    notify("Shared to friends");
+    notify(roomId ? "Shared to room" : "Shared to friends");
   } catch (error) {
     notify(error.message);
   } finally {
@@ -1271,7 +1280,7 @@ async function sendPublicBrowserLink() {
   const title = String((els.publicBrowserShareTitle && els.publicBrowserShareTitle.value) || "Browser link").trim().slice(0, 120);
   const type = String((els.publicBrowserShareType && els.publicBrowserShareType.value) || "link").trim().toLowerCase();
   if (!url) return notify("Open or enter a website first");
-  if (!target) return notify("Choose an accepted friend or group");
+  if (!target) return notify("Choose an accepted friend, group, or room");
   if (els.shareLinkUrl) els.shareLinkUrl.value = url;
   if (els.shareLinkTitle) els.shareLinkTitle.value = title;
   if (els.shareLinkType) els.shareLinkType.value = type;
@@ -1949,6 +1958,10 @@ async function createRoomInvite(roomId, roomName) {
   if (expires === null) return;
   const maxUses = window.prompt("Max uses? Use 0 for unlimited.", "0");
   if (maxUses === null) return;
+  const customCode = arguments[2] && arguments[2].custom
+    ? window.prompt("Custom invite code? Use letters, numbers, dash, or underscore. Leave blank for random.", "")
+    : "";
+  if (customCode === null) return;
   try {
     const data = await api("/api/rooms/invites", {
       method: "POST",
@@ -1956,6 +1969,7 @@ async function createRoomInvite(roomId, roomName) {
         roomId,
         expiresMinutes: Math.max(0, Number(expires || 0)),
         maxUses: Math.max(0, Number(maxUses || 0)),
+        code: customCode || "",
       },
     });
     const invite = data.invite;
@@ -2465,6 +2479,13 @@ function handleSocketMessage(message) {
     state.messages = state.messages.filter((entry) => (entry.roomId || "main") !== message.id);
     if (state.selectedRoomId === message.id) state.selectedRoomId = "main";
     renderRooms();
+    renderMessages();
+    return;
+  }
+
+  if (message.type === "room:wipe") {
+    state.messages = state.messages.filter((entry) => (entry.roomId || "main") !== message.id);
+    renderShell();
     renderMessages();
     return;
   }
@@ -3421,6 +3442,43 @@ function renderAll() {
   renderHmd();
   renderCornerAd();
   updateControls();
+  setupAdminCollapsibles();
+}
+
+function setupAdminCollapsibles() {
+  if (!els.adminView || !isOwner()) return;
+  els.adminView.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => {
+    if (panel.dataset.collapsibleReady === "1") return;
+    const title = panel.querySelector(":scope > h3, :scope > .panel-title-row h3");
+    if (!title) return;
+    const button = document.createElement("button");
+    button.className = "collapse-toggle";
+    button.type = "button";
+    button.textContent = "Collapse";
+    button.addEventListener("click", () => {
+      const collapsed = !panel.classList.contains("admin-collapsed");
+      panel.classList.toggle("admin-collapsed", collapsed);
+      button.textContent = collapsed ? "Expand" : "Collapse";
+      try {
+        localStorage.setItem(`innerAdminPanelCollapsed:${index}:${title.textContent}`, collapsed ? "1" : "0");
+      } catch (error) {}
+    });
+    const saved = (() => {
+      try {
+        return localStorage.getItem(`innerAdminPanelCollapsed:${index}:${title.textContent}`) === "1";
+      } catch (error) {
+        return false;
+      }
+    })();
+    if (saved) {
+      panel.classList.add("admin-collapsed");
+      button.textContent = "Expand";
+    }
+    const row = title.closest(".panel-title-row");
+    if (row) row.append(button);
+    else title.insertAdjacentElement("afterend", button);
+    panel.dataset.collapsibleReady = "1";
+  });
 }
 
 function renderCornerAd() {
@@ -3817,17 +3875,26 @@ function renderRooms() {
   if (!state.rooms.some((room) => room.id === "main")) {
     state.rooms.unshift({ id: "main", name: "Main" });
   }
-  if (!state.rooms.some((room) => room.id === state.selectedRoomId)) state.selectedRoomId = "main";
+  const visibleRooms = state.rooms.filter((room) => canAccessVisibleRoom(room));
+  if (!visibleRooms.some((room) => room.id === state.selectedRoomId)) state.selectedRoomId = "main";
 
   els.roomSelect.replaceChildren(
-    ...state.rooms.map((room) => {
+    ...visibleRooms.map((room) => {
       const option = document.createElement("option");
       option.value = room.id;
-      option.textContent = room.name;
+      const icon = room.icon ? `${room.icon} ` : "";
+      option.textContent = `${icon}${room.name}${room.inviteOnly ? " (invite)" : ""}`;
       return option;
     })
   );
   els.roomSelect.value = state.selectedRoomId;
+}
+
+function canAccessVisibleRoom(room) {
+  if (!room || !state.user) return false;
+  if (room.id === "main" || isOwner()) return true;
+  if (!room.private && !room.inviteOnly && !room.requiresPassword) return true;
+  return Array.isArray(room.allowedUsers) && room.allowedUsers.includes(state.user.username);
 }
 
 function renderMessages() {
@@ -5411,6 +5478,7 @@ function renderRoomManager() {
 
     const meta = document.createElement("div");
     meta.className = "account-meta";
+    meta.append(textNode(`${room.icon || "#"} ${room.category || "General"} - ${room.theme || "system"}`));
     meta.append(textNode(`Created ${formatDate(room.createdAt) || "-"}`));
     if (room.createdBy) meta.append(textNode(`By ${room.createdBy}`));
     meta.append(textNode(room.private ? "Private room" : "Public room"));
@@ -5426,11 +5494,16 @@ function renderRoomManager() {
       showView("messages");
       renderMessages();
     });
+    const edit = accountButton("Edit", () => editRoom(room));
     const invite = accountButton("Invite", () => createRoomInvite(room.id, room.name));
+    const inviteCode = accountButton("Set invite code", () => createRoomInvite(room.id, room.name, { custom: true }));
+    const wipe = accountButton("Wipe messages", () => wipeRoomMessages(room.id, room.name));
     const remove = accountButton("Delete", () => deleteRoom(room.id));
     invite.disabled = room.id === "main";
+    inviteCode.disabled = room.id === "main";
+    wipe.disabled = false;
     remove.disabled = room.id === "main";
-    actions.append(open, invite, remove);
+    actions.append(open, edit, invite, inviteCode, wipe, remove);
 
     item.append(head, meta, actions);
     els.roomManagerList.append(item);
@@ -6366,6 +6439,68 @@ async function deleteRoom(id) {
   }
 }
 
+async function wipeRoomMessages(id, name) {
+  if (!isOwner()) return notify("Admin access required");
+  const confirmText = window.prompt(`Type WIPE to clear all messages in ${name || "this room"}. The room itself stays.`);
+  if (confirmText === null) return;
+  try {
+    const data = await api(`/api/rooms/${encodeURIComponent(id)}/wipe`, {
+      method: "POST",
+      json: { confirm: confirmText },
+    });
+    state.messages = data.messages || state.messages.filter((entry) => (entry.roomId || "main") !== id);
+    renderMessages();
+    renderRoomManager();
+    notify("Room messages wiped");
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function editRoom(room) {
+  if (!isOwner()) return notify("Admin access required");
+  const name = window.prompt("Room name", room.name || "Room");
+  if (name === null) return;
+  const icon = window.prompt("Room icon or short label", room.icon || "");
+  if (icon === null) return;
+  const category = window.prompt("Room category", room.category || "General");
+  if (category === null) return;
+  const theme = window.prompt("Room theme: system, midnight, ocean, forest, rose, slate", room.theme || "system");
+  if (theme === null) return;
+  const privateAnswer = window.confirm("Make this room private?");
+  const inviteAnswer = window.confirm("Make this room invite-only?");
+  const password = window.prompt("New room password. Leave blank to keep the current password/no password.", "");
+  if (password === null) return;
+  const allowedUsers = window.prompt("Allowed users, comma separated", Array.isArray(room.allowedUsers) ? room.allowedUsers.join(", ") : "");
+  if (allowedUsers === null) return;
+  const moderators = window.prompt("Room moderators, comma separated", Array.isArray(room.moderators) ? room.moderators.join(", ") : "");
+  if (moderators === null) return;
+  try {
+    const data = await api("/api/rooms/update", {
+      method: "POST",
+      json: {
+        id: room.id,
+        name,
+        icon,
+        category,
+        theme,
+        private: privateAnswer,
+        inviteOnly: inviteAnswer,
+        password,
+        allowedUsers: splitUserList(allowedUsers),
+        moderators: splitUserList(moderators),
+      },
+    });
+    state.rooms = data.rooms || state.rooms;
+    renderRooms();
+    renderMessages();
+    renderRoomManager();
+    notify("Room updated");
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
 async function quickFeatureUnlock(feature) {
   if (!isOwner()) return notify("Admin access required");
   try {
@@ -6678,6 +6813,15 @@ function dmPeople() {
 function shareTargetPeople() {
   const current = state.user ? state.user.username.toLowerCase() : "";
   const accepted = acceptedFriendNames();
+  const rooms = (state.rooms || [])
+    .filter((room) => canAccessRoomForShare(room))
+    .map((room) => ({
+      username: room.name,
+      role: "room",
+      value: `room:${room.id}`,
+      label: `# ${room.icon ? `${room.icon} ` : ""}${room.name} (room)`,
+    }))
+    .sort((a, b) => a.username.localeCompare(b.username));
   const direct = (state.people || [])
     .filter((person) => person && person.username && person.username.toLowerCase() !== current && !person.banned && accepted.has(person.username.toLowerCase()))
     .map((person) => ({
@@ -6695,7 +6839,14 @@ function shareTargetPeople() {
       label: `${group.name} (friend group, ${group.participantCount || group.participants.length})`,
     }))
     .sort((a, b) => a.username.localeCompare(b.username));
-  return [...groups, ...direct];
+  return [...rooms, ...groups, ...direct];
+}
+
+function canAccessRoomForShare(room) {
+  if (!room || !state.user) return false;
+  if (isOwner()) return true;
+  if (!room.private && !room.inviteOnly && !room.requiresPassword) return true;
+  return Array.isArray(room.allowedUsers) && room.allowedUsers.includes(state.user.username);
 }
 
 function renderShareTargets() {
@@ -6712,7 +6863,7 @@ function fillShareTargetSelect(select, people) {
   if (!select) return;
   const previous = select.value;
   select.replaceChildren(
-    optionElement("", people.length ? "Choose friend/group" : "Accept friends first"),
+    optionElement("", people.length ? "Choose room/friend/group" : "Join rooms or accept friends first"),
     ...people.map((person) => optionElement(person.value, person.label))
   );
   select.value = people.some((person) => person.value === previous) ? previous : "";
@@ -6873,6 +7024,9 @@ function lockMessage(feature) {
 function featureLabel(feature) {
   const labels = {
     all: "All / whole app",
+    admin: "Admin",
+    hmd: "HMD",
+    browser: "Browser",
     dms: "DMs",
     files: "Files",
     messages: "Messages",
@@ -6887,8 +7041,8 @@ function featureLabel(feature) {
     bots: "Bots",
     plugins: "Plugins",
     store: "Store",
-    chess: "Chess",
-    docs: "Docs",
+    chess: "Games",
+    docs: "Google Workspace",
     domain: "Domain",
   };
   return labels[feature] || feature;
@@ -6902,6 +7056,7 @@ function viewFeature(viewName) {
     profile: "profiles",
     store: "store",
     files: "files",
+    browser: "browser",
     docs: "docs",
     googleWorkspace: "docs",
     googleDocs: "docs",
@@ -6911,6 +7066,8 @@ function viewFeature(viewName) {
     voice: "voice",
     screen: "screen",
     domain: "domain",
+    admin: "admin",
+    hmd: "hmd",
   };
   return map[viewName] || "";
 }

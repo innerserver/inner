@@ -4066,3 +4066,32 @@ textarea {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 }
+
+/* v48 admin room/workspace cleanup. */
+.collapse-toggle {
+  justify-self: end;
+  width: fit-content;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.panel-form > .collapse-toggle,
+.status-panel > .collapse-toggle {
+  margin-top: -4px;
+  margin-bottom: 4px;
+}
+
+.admin-collapsed > :not(h3):not(.panel-title-row):not(.collapse-toggle) {
+  display: none !important;
+}
+
+.admin-collapsed {
+  gap: 6px !important;
+  min-height: 0 !important;
+}

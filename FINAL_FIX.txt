@@ -1,0 +1,22 @@
+FINAL FIX
+
+REMOVE:
+INNER_DATA_DIR
+
+SET:
+INNER_REQUIRE_CLOUD_STORAGE=true
+
+REQUIRED:
+MONGODB_URI
+CLOUDINARY_CLOUD_NAME
+CLOUDINARY_API_KEY
+CLOUDINARY_API_SECRET
+
+Mongo Atlas:
+Allow IP 0.0.0.0/0
+
+This build:
+- disables local storage fallback
+- disables upload folder serving
+- forces Mongo presence
+- forces cloud-only mode

@@ -100,6 +100,10 @@ const persistence = {
 };
 const allowedFeatureLocks = new Set([
   "all",
+  "admin",
+  "hmd",
+  "docs",
+  "browser",
   "messages",
   "files",
   "screen",
@@ -1081,7 +1085,7 @@ async function routeApi(req, res, requestUrl) {
       settings: safeSettings(settings),
       rtcConfig: buildRtcConfig(),
       uploadConfig: safeUploadConfig(settings),
-      rooms: safeRooms(rooms),
+      rooms: safeRoomsForUser(rooms, user),
       messages: normalizedMessages.slice(-500),
       dms: visibleDms.slice(-500),
       dmGroups: safeDmGroups(dmGroups, user),
@@ -1602,7 +1606,7 @@ async function routeApi(req, res, requestUrl) {
       writeJson(FILES.invites, []),
     ]);
     await addSystemLog("rooms.wiped", user.username, {}, req);
-    broadcast({ type: "rooms:update", rooms: safeRooms([mainRoom]) });
+    broadcastRoomsUpdate([mainRoom]);
     return json(res, 200, { rooms: safeRooms([mainRoom]) });
   }
 
@@ -1887,8 +1891,8 @@ async function routeApi(req, res, requestUrl) {
     rooms.push(room);
     await writeJson(FILES.rooms, rooms);
     await addSystemLog("room.created", user.username, { roomId: room.id, name: room.name, private: room.private, inviteOnly: room.inviteOnly }, req);
-    broadcast({ type: "room:new", room: safeRoom(room) });
-    return json(res, 201, { room: safeRoom(room), rooms: safeRooms(rooms) });
+    broadcastManagers({ type: "room:new", room: safeRoom(room) });
+    return json(res, 201, { room: safeRoom(room), rooms: safeRoomsForUser(rooms, user) });
   }
 
   if (req.method === "POST" && pathname === "/api/rooms/update") {
@@ -1915,8 +1919,8 @@ async function routeApi(req, res, requestUrl) {
       updatedBy: user.username,
     });
     await writeJson(FILES.rooms, rooms);
-    broadcast({ type: "rooms:update", rooms: safeRooms(rooms) });
-    return json(res, 200, { rooms: safeRooms(rooms), room: safeRoom(rooms[index]) });
+    broadcastRoomsUpdate(rooms);
+    return json(res, 200, { rooms: safeRoomsForUser(rooms, user), room: safeRoom(rooms[index]) });
   }
 
   if (req.method === "POST" && pathname === "/api/rooms/invites") {
@@ -1930,9 +1934,14 @@ async function routeApi(req, res, requestUrl) {
     const room = rooms.find((entry) => entry.id === roomId);
     if (!room) return json(res, 404, { error: "Room not found" });
     const invites = await readJson(FILES.invites, []);
+    const requestedCode = String(body.code || "").trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40);
+    if (requestedCode && requestedCode.length < 4) return json(res, 400, { error: "Invite code must be at least 4 characters" });
+    if (requestedCode && invites.some((entry) => String(entry.code || "").toLowerCase() === requestedCode.toLowerCase())) {
+      return json(res, 409, { error: "Invite code already exists" });
+    }
     const invite = {
       id: crypto.randomUUID(),
-      code: crypto.randomBytes(8).toString("hex"),
+      code: uniqueInviteCode(invites, requestedCode),
       roomId,
       roomName: room.name,
       createdAt: new Date().toISOString(),
@@ -1963,8 +1972,8 @@ async function routeApi(req, res, requestUrl) {
     if (!Array.isArray(invite.uses)) invite.uses = [];
     invite.uses.push({ username: user.username, usedAt: new Date().toISOString() });
     await Promise.all([writeJson(FILES.rooms, rooms), writeJson(FILES.invites, invites)]);
-    broadcast({ type: "rooms:update", rooms: safeRooms(rooms) });
-    return json(res, 200, { room: safeRoom(room), rooms: safeRooms(rooms) });
+    broadcastRoomsUpdate(rooms);
+    return json(res, 200, { room: safeRoom(room), rooms: safeRoomsForUser(rooms, user) });
   }
 
   if (req.method === "POST" && pathname === "/api/rooms/unlock") {
@@ -1980,8 +1989,8 @@ async function routeApi(req, res, requestUrl) {
     if (!room.allowedUsers.includes(user.username)) room.allowedUsers.push(user.username);
     await writeJson(FILES.rooms, rooms);
     await addSystemLog("room.password.unlocked", user.username, { roomId, roomName: room.name }, req);
-    broadcast({ type: "rooms:update", rooms: safeRooms(rooms) });
-    return json(res, 200, { room: safeRoom(room), rooms: safeRooms(rooms) });
+    broadcastRoomsUpdate(rooms);
+    return json(res, 200, { room: safeRoom(room), rooms: safeRoomsForUser(rooms, user) });
   }
 
   if (req.method === "DELETE" && pathname.startsWith("/api/rooms/")) {
@@ -2000,6 +2009,24 @@ async function routeApi(req, res, requestUrl) {
     await addSystemLog("room.deleted", user.username, { roomId: id, name: room.name }, req);
     broadcast({ type: "room:delete", id });
     return json(res, 200, { rooms: safeRooms(nextRooms) });
+  }
+
+  const wipeRoomMatch = pathname.match(/^\/api\/rooms\/([^/]+)\/wipe$/);
+  if (req.method === "POST" && wipeRoomMatch) {
+    if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
+    const id = decodeURIComponent(wipeRoomMatch[1] || "");
+    if (!id) return json(res, 400, { error: "Room id required" });
+    const body = await readJsonBody(req);
+    if (String(body.confirm || "").toUpperCase() !== "WIPE") return json(res, 400, { error: "Type WIPE to clear room messages" });
+    const rooms = await readJson(FILES.rooms, []);
+    const room = rooms.find((entry) => entry.id === id);
+    if (!room) return json(res, 404, { error: "Room not found" });
+    const messages = await readJson(FILES.messages, []);
+    const nextMessages = messages.filter((entry) => (entry.roomId || "main") !== id);
+    await writeJson(FILES.messages, nextMessages);
+    await addSystemLog("room.messages.wiped", user.username, { roomId: id, name: room.name }, req);
+    broadcast({ type: "room:wipe", id });
+    return json(res, 200, { messages: nextMessages.filter((entry) => canManage(user) || canAccessRoom(rooms.find((roomEntry) => roomEntry.id === (entry.roomId || "main")), user)) });
   }
 
   if (req.method === "POST" && pathname === "/api/dm-groups") {
@@ -3779,6 +3806,15 @@ function broadcast(payload, exceptId) {
   }
 }
 
+function broadcastRoomsUpdate(rooms) {
+  for (const client of wsClients.values()) {
+    sendWs(client, {
+      type: "rooms:update",
+      rooms: safeRoomsForUser(rooms, client),
+    });
+  }
+}
+
 function broadcastAnnouncements(announcements, rooms) {
   for (const client of wsClients.values()) {
     sendWs(client, {
@@ -4204,6 +4240,20 @@ function inviteActive(invite) {
   return true;
 }
 
+function uniqueInviteCode(invites, requestedCode) {
+  const requested = String(requestedCode || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 40);
+  const existing = new Set((invites || []).map((invite) => String(invite.code || "").toLowerCase()));
+  if (requested.length >= 4 && !existing.has(requested.toLowerCase())) return requested;
+  let code = "";
+  do {
+    code = crypto.randomBytes(8).toString("hex");
+  } while (existing.has(code.toLowerCase()));
+  return code;
+}
+
 function sanitizeRoom(room) {
   return {
     ...room,
@@ -4230,6 +4280,10 @@ function safeRoom(room) {
 
 function safeRooms(rooms) {
   return (rooms || []).map(safeRoom);
+}
+
+function safeRoomsForUser(rooms, user) {
+  return (rooms || []).filter((room) => canAccessRoom(room, user)).map(safeRoom);
 }
 
 function canAccessRoom(room, user) {
@@ -4981,6 +5035,10 @@ function featureLabel(feature) {
   const labels = {
     messages: "Messages",
     all: "All / whole app",
+    admin: "Admin",
+    hmd: "HMD",
+    browser: "Browser",
+    docs: "Google Workspace",
     files: "Files",
     screen: "Screen",
     dms: "DMs",

@@ -78,6 +78,8 @@
         line("Contact note", typeof user.contact === "string" ? user.contact : contact.contact),
         line("Created", formatDate(user.createdAt)),
         line("Created by", user.createdBy),
+        line("Password", user.passwordStatus || (user.passwordSet ? "hashed" : "missing")),
+        line("Last password reset", formatDate(user.lastPasswordResetAt)),
       ]),
       section("Latest login and device", [
         line("Persistent login", user.allowPersistentLogin ? "Allowed" : "Off"),

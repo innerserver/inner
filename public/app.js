@@ -125,6 +125,7 @@ document.addEventListener("DOMContentLoaded", () => {
   state.notificationsEnabled = getStoredFlag("innerNotifications");
   restoreUiState();
   cacheElements();
+  hydrateGradeSelects();
   bindEvents();
   refreshSignupStatus().catch(() => {});
   loadState().catch((error) => showLogin(error.status === 401 ? "" : error.message));
@@ -405,6 +406,9 @@ function cacheElements() {
     "newAccountUsername",
     "newAccountPassword",
     "newAccountRole",
+    "newAccountEmail",
+    "newAccountPhone",
+    "newAccountGrade",
     "newAccountPersistent",
     "createAccountButton",
     "featureLockForm",
@@ -694,6 +698,12 @@ function bindEvents() {
     state.accountShowAll = false;
     state.selectedAccountDetails = "";
     renderUsers();
+  });
+  els.accountSearchInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (!state.selectedAccountDetails) renderUsers();
+    openSelectedAccountDetailTab();
   });
   if (els.accountGradeFilter) {
     els.accountGradeFilter.addEventListener("change", () => {
@@ -1882,15 +1892,23 @@ async function createAccount(event) {
         username: els.newAccountUsername.value,
         password: els.newAccountPassword.value,
         role: els.newAccountRole.value,
+        email: els.newAccountEmail ? els.newAccountEmail.value : "",
+        phone: els.newAccountPhone ? els.newAccountPhone.value : "",
+        grade: els.newAccountGrade ? els.newAccountGrade.value : "",
         allowPersistentLogin: els.newAccountPersistent.checked || effectivePersistentDefaultForNewAccount(),
       },
     });
     state.users = data.users || state.users;
+    if (data.rooms) state.rooms = data.rooms;
     els.newAccountUsername.value = "";
     els.newAccountPassword.value = "";
+    if (els.newAccountEmail) els.newAccountEmail.value = "";
+    if (els.newAccountPhone) els.newAccountPhone.value = "";
+    if (els.newAccountGrade) els.newAccountGrade.value = "";
     els.newAccountRole.value = "member";
     els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
     renderUsers();
+    renderRooms();
     notify("Account created");
   } catch (error) {
     notify(error.message);
@@ -5384,8 +5402,8 @@ function renderUsers() {
     const persistentButton = accountButton(user.allowPersistentLogin ? "Disable persistent" : "Allow persistent", () =>
       updateUser(user.username, { allowPersistentLogin: !user.allowPersistentLogin })
     );
-    const detailsButton = accountButton("Details", () => openAccountDetails(user.username));
-    const detailTabButton = accountButton("Open tab", () => openAccountDetailTab(user.username));
+    const detailsButton = accountButton("Info", () => openAccountDetails(user.username));
+    const detailTabButton = accountButton("Info tab", () => openAccountDetailTab(user.username));
     const banFive = accountButton("Ban 5m", () => banUser(user.username, 5));
     const banShort = accountButton("Ban 15m", () => banUser(user.username, 15));
     const banHour = accountButton("Ban 1h", () => banUser(user.username, 60));
@@ -5495,6 +5513,8 @@ function renderAccountDetails() {
     user.contact && typeof user.contact === "string" ? `Contact ${user.contact}` : "",
     `Created ${formatDate(user.createdAt) || "-"}`,
     user.createdBy ? `Created by ${user.createdBy}` : "",
+    user.passwordStatus ? `Password ${user.passwordStatus}` : user.passwordSet ? "Password hash saved" : "Password missing",
+    user.lastPasswordResetAt ? `Password reset ${formatDate(user.lastPasswordResetAt)}` : "",
   ];
   els.accountDetailBody.append(adminCard("Account", user.banned ? "Banned" : "Active", identityLines));
 
@@ -6724,8 +6744,10 @@ async function approveAccountRequest(id, username, requestedRole = "member") {
     });
     state.users = data.users || state.users;
     state.accountRequests = data.accountRequests || state.accountRequests;
+    if (data.rooms) state.rooms = data.rooms;
     renderUsers();
     renderAccountRequests();
+    renderRooms();
     renderDms();
     notify("Account created");
   } catch (error) {
@@ -6747,21 +6769,27 @@ function accountButton(label, onClick) {
   return button;
 }
 
-function gradeOptions() {
-  const grades = [
-    ["", "No grade"],
-    ["6", "Grade 6"],
-    ["7", "Grade 7"],
-    ["8", "Grade 8"],
-    ["9", "Grade 9"],
-    ["10", "Grade 10"],
-    ["11", "Grade 11"],
-    ["12", "Grade 12"],
-    ["college", "College"],
-    ["staff", "Staff"],
-    ["other", "Other"],
+function hydrateGradeSelects() {
+  const configs = [
+    [els.requestGrade, "Choose grade and section"],
+    [els.signupGrade, "Choose grade and section"],
+    [els.profileGrade, "Choose grade and section"],
+    [els.newAccountGrade, "Choose grade and section"],
+    [els.friendGradeSearch, "Grade/section"],
+    [els.accountGradeFilter, "All grades/sections"],
   ];
-  return grades.map(([value, label]) => {
+  configs.forEach(([select, firstLabel]) => {
+    if (!select) return;
+    const current = select.value || "";
+    const includeNone = select === els.accountGradeFilter;
+    select.replaceChildren(...gradeOptions({ firstLabel, includeNone }));
+    if (current && Array.from(select.options).some((option) => option.value === current)) select.value = current;
+  });
+}
+
+function gradeOptions() {
+  const options = gradeOptionData();
+  return options.map(([value, label]) => {
     const option = document.createElement("option");
     option.value = value;
     option.textContent = label;
@@ -6769,8 +6797,26 @@ function gradeOptions() {
   });
 }
 
+function gradeOptionData({ firstLabel = "No grade", includeNone = false } = {}) {
+  const grades = [
+    ["", firstLabel],
+    ...["6", "7", "8", "9", "10", "11", "12"].flatMap((grade) => [
+      [`${grade}a`, `Grade ${grade}A`],
+      [`${grade}b`, `Grade ${grade}B`],
+      [`${grade}c`, `Grade ${grade}C`],
+      [grade, `Grade ${grade} (no section)`],
+    ]),
+    ["college", "College"],
+    ["staff", "Staff"],
+    ["other", "Other"],
+  ];
+  if (includeNone) grades.push(["none", "No grade"]);
+  return grades;
+}
+
 function normalizeClientGrade(grade) {
   const value = String(grade || "").trim().toLowerCase();
+  if (/^(6|7|8|9|10|11|12)[abc]$/.test(value)) return value;
   return ["6", "7", "8", "9", "10", "11", "12", "college", "staff", "other"].includes(value) ? value : "";
 }
 
@@ -6823,7 +6869,9 @@ async function updateUser(username, changes) {
     });
     state.users = data.users || state.users;
     state.profiles = data.profiles || state.profiles;
+    if (data.rooms) state.rooms = data.rooms;
     renderUsers();
+    renderRooms();
     renderFriends();
     notify("Account updated");
   } catch (error) {

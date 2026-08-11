@@ -614,6 +614,39 @@ async function ensureRooms() {
   if (changed) await writeJson(FILES.rooms, rooms);
 }
 
+async function ensureGradeRoomMembership(username, gradeValue) {
+  const grade = normalizeGrade(gradeValue);
+  if (!username || !isSectionGrade(grade)) return [];
+  const rooms = await readJson(FILES.rooms, []);
+  const roomName = grade.toUpperCase();
+  let room = rooms.find((entry) => String(entry.name || "").toLowerCase() === grade);
+  let changed = false;
+  if (!room) {
+    room = sanitizeRoom({
+      id: `grade-${grade}`,
+      name: roomName,
+      icon: roomName,
+      category: "Grade rooms",
+      private: true,
+      inviteOnly: true,
+      allowedUsers: [],
+      moderators: [],
+      createdAt: new Date().toISOString(),
+      createdBy: "system",
+    });
+    rooms.push(room);
+    changed = true;
+  }
+  if (!Array.isArray(room.allowedUsers)) room.allowedUsers = [];
+  if (!room.allowedUsers.includes(username)) {
+    room.allowedUsers.push(username);
+    changed = true;
+  }
+  if (changed) await writeJson(FILES.rooms, rooms);
+  if (changed) broadcastRoomsUpdate(rooms);
+  return rooms;
+}
+
 async function ensureProfiles() {
   const users = await readJson(FILES.users, []);
   const profiles = await readJson(FILES.profiles, {});
@@ -782,7 +815,8 @@ async function routeApi(req, res, requestUrl) {
       return json(res, 423, { error: "Server is shut down. Only admin, HMD, and dev access is open right now." });
     }
 
-    const rooms = await readJson(FILES.rooms, []);
+    const gradeRooms = await ensureGradeRoomMembership(user.username, user.grade || "");
+    const rooms = gradeRooms.length ? gradeRooms : await readJson(FILES.rooms, []);
     const persistent = effectivePersistentLogin(user, settings, rooms);
     const token = crypto.randomBytes(32).toString("hex");
     sessions.set(token, {
@@ -989,6 +1023,7 @@ async function routeApi(req, res, requestUrl) {
       updatedAt: now,
     });
     await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles)]);
+    await ensureGradeRoomMembership(username, grade);
     await addSystemLog("account.signup.created", username, { sourceIp: account.sourceIp, contact }, req);
     await notifyAdminEmails("Inner open signup", [
       `${username} created a member account.`,
@@ -2359,6 +2394,7 @@ async function routeApi(req, res, requestUrl) {
       writeJson(FILES.profiles, profiles),
       writeJson(FILES.accountRequests, requests),
     ]);
+    const updatedRooms = await ensureGradeRoomMembership(request.username, request.grade);
     await addSystemLog("account.request.approved", user.username, { requestUsername: request.username, requestedRole: request.requestedRole, role: grantedRole }, req);
     await notifyAdminEmails("Inner account approved", [
       `${request.username} was approved by ${user.username}.`,
@@ -2371,7 +2407,12 @@ async function routeApi(req, res, requestUrl) {
     ].join("\n"));
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
-    return json(res, 201, { users: users.map((entry) => safeUser(entry, user)), accountRequests: safeAccountRequests(requests, user), user: safeUser(account, user) });
+    return json(res, 201, {
+      users: users.map((entry) => safeUser(entry, user)),
+      accountRequests: safeAccountRequests(requests, user),
+      user: safeUser(account, user),
+      rooms: updatedRooms.length ? safeRoomsForUser(updatedRooms, user) : undefined,
+    });
   }
 
   if (req.method === "POST" && pathname === "/api/users") {
@@ -2390,20 +2431,34 @@ async function routeApi(req, res, requestUrl) {
       return json(res, 409, { error: "Username already exists" });
     }
 
+    const grade = normalizeGrade(body.grade || "");
+    const email = String(body.email || "").trim().slice(0, 120);
+    const phone = String(body.phone || "").trim().slice(0, 80);
+    const contact = String(body.contact || [email, phone].filter(Boolean).join(" / ")).trim().slice(0, 160);
     users.push({
       username,
       role,
       passwordHash: hashPassword(password),
       createdAt: new Date().toISOString(),
       createdBy: user.username,
-      allowPersistentLogin: Boolean(body.allowPersistentLogin) || effectivePersistentLogin({ username, role, grade: body.grade }, await readJson(FILES.settings, {}), await readJson(FILES.rooms, [])),
+      allowPersistentLogin: Boolean(body.allowPersistentLogin) || effectivePersistentLogin({ username, role, grade }, await readJson(FILES.settings, {}), await readJson(FILES.rooms, [])),
+      contact,
+      email,
+      phone,
+      grade,
+      gradeUpdatedAt: grade ? new Date().toISOString() : "",
       bannedUntil: "",
       banReason: "",
     });
     await writeJson(FILES.users, users);
     const profiles = await readJson(FILES.profiles, {});
-    profiles[username] = defaultProfile(username);
+    profiles[username] = sanitizeProfile({
+      ...defaultProfile(username),
+      grade,
+      gradeUpdatedAt: grade ? new Date().toISOString() : "",
+    });
     await writeJson(FILES.profiles, profiles);
+    const updatedRooms = await ensureGradeRoomMembership(username, grade);
     if (username.toLowerCase() === "admin2") await unmarkDeletedDefault("admin2", user.username);
     await addSystemLog("account.created", user.username, { username, role }, req);
     await notifyAdminEmails("Inner account created", [
@@ -2416,7 +2471,10 @@ async function routeApi(req, res, requestUrl) {
       `Time: ${new Date().toISOString()}`,
     ].join("\n"));
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
-    return json(res, 201, { users: users.map((entry) => safeUser(entry, user)) });
+    return json(res, 201, {
+      users: users.map((entry) => safeUser(entry, user)),
+      rooms: updatedRooms.length ? safeRoomsForUser(updatedRooms, user) : undefined,
+    });
   }
 
   if (req.method === "POST" && pathname === "/api/users/update") {
@@ -2456,12 +2514,17 @@ async function routeApi(req, res, requestUrl) {
       updatedAt: new Date().toISOString(),
     });
     await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles)]);
+    const updatedRooms = gradeChanged ? await ensureGradeRoomMembership(previous.username, nextGrade) : [];
     if (previous.role !== nextRole || previous.allowPersistentLogin !== users[index].allowPersistentLogin) {
       expireUserSessions(username);
     }
     broadcast({ type: "profiles:update", profiles: safeProfiles(profiles, users, user) });
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
-    return json(res, 200, { users: users.map((entry) => safeUser(entry, user)), profiles: safeProfiles(profiles, users, user) });
+    return json(res, 200, {
+      users: users.map((entry) => safeUser(entry, user)),
+      profiles: safeProfiles(profiles, users, user),
+      rooms: updatedRooms.length ? safeRoomsForUser(updatedRooms, user) : undefined,
+    });
   }
 
   if (req.method === "DELETE" && pathname.startsWith("/api/users/")) {
@@ -2800,6 +2863,7 @@ async function routeApi(req, res, requestUrl) {
     users[index] = {
       ...users[index],
       passwordHash: hashPassword(nextPassword),
+      lastPasswordResetAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     await writeJson(FILES.users, users);
@@ -2822,6 +2886,7 @@ async function routeApi(req, res, requestUrl) {
       ...users[index],
       passwordHash: hashPassword(nextPassword),
       passwordPreset: "",
+      lastPasswordResetAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       updatedBy: user.username,
     };
@@ -4054,6 +4119,9 @@ function safeUser(user, viewer = null) {
     mutedUntil: user.mutedUntil || "",
     muted: isUserMuted(user),
     shadowMuted: Boolean(user.shadowMuted),
+    passwordSet: Boolean(user.passwordHash),
+    passwordStatus: user.passwordHash ? "hashed" : "missing",
+    lastPasswordResetAt: user.lastPasswordResetAt || "",
   };
   if (ownerView) {
     safe.lastLoginAt = user.lastLoginAt || "";
@@ -4786,12 +4854,13 @@ function sanitizeGameLinks(source = []) {
       return {
         name: String(raw.name || host || "Game").trim().slice(0, 80),
         url,
+        allowedUsers: normalizeUsernameList(raw.allowedUsers || raw.users || raw.access || []),
       };
     })
     .filter((entry) => entry.name && entry.url);
   const withDefault = [
-    { name: "ChessVerse", url: "https://chessverse.co.in/" },
     ...cleaned,
+    { name: "ChessVerse", url: "https://chessverse.co.in/", allowedUsers: [] },
   ];
   const seen = new Set();
   return withDefault.filter((entry) => {
@@ -5300,8 +5369,13 @@ function normalizeCurrency(currency) {
 
 function normalizeGrade(grade) {
   const value = String(grade || "").trim().toLowerCase();
+  if (/^(6|7|8|9|10|11|12)[abc]$/.test(value)) return value;
   if (["6", "7", "8", "9", "10", "11", "12", "college", "staff", "other"].includes(value)) return value;
   return "";
+}
+
+function isSectionGrade(grade) {
+  return /^(6|7|8|9|10|11|12)[abc]$/.test(String(grade || "").trim().toLowerCase());
 }
 
 function normalizeInnerDocType(type) {

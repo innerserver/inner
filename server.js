@@ -4366,7 +4366,7 @@ function applySecurityHeaders(req, res) {
     "img-src 'self' data: blob: https:",
     "media-src 'self' blob: data: https:",
     "font-src 'self' data:",
-    "connect-src 'self' https://*.backblazeb2.com https://*.cloudinary.com https://api.cloudinary.com",
+    "connect-src 'self' ws: wss: https://*.backblazeb2.com https://*.cloudinary.com https://api.cloudinary.com",
     "frame-src 'self' https:",
     "form-action 'self'",
     "upgrade-insecure-requests",

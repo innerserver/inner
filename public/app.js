@@ -71,6 +71,8 @@ const state = {
   ws: null,
   reconnectTimer: null,
   healthTimer: null,
+  pollTimer: null,
+  pollInFlight: false,
   wsReconnectDelay: 1400,
   lastHealthOkAt: 0,
   lastHealthError: "",
@@ -1017,6 +1019,7 @@ async function handleLogout() {
   state.loggedIn = false;
   leaveVoice();
   stopHealthMonitor();
+  stopStatePoller();
   closeSocket();
   stopShare({ silent: true });
   await api("/api/logout", { method: "POST" }).catch(() => {});
@@ -1074,6 +1077,7 @@ async function loadState() {
   showView(state.activeView, { updateHistory: false });
   renderAll();
   startHealthMonitor();
+  startStatePoller();
   connectSocket();
   flushPendingSends();
   joinInviteFromUrl();
@@ -1093,6 +1097,7 @@ function showLogin(message = "") {
   els.appView.classList.add("hidden");
   els.loginError.textContent = message;
   stopHealthMonitor();
+  stopStatePoller();
   setConnection("Offline");
   const focusTarget = isAccountEntryRoute()
     ? (String(state.settings.signupMode || "request") === "open" ? els.signupUsername : els.requestUsername)
@@ -2757,6 +2762,27 @@ function stopHealthMonitor() {
   state.healthTimer = null;
 }
 
+function startStatePoller() {
+  stopStatePoller();
+  state.pollTimer = window.setInterval(() => {
+    if (!state.loggedIn || isRealtimeReady() || state.pollInFlight) return;
+    state.pollInFlight = true;
+    refreshStateFromServer({ quiet: true })
+      .catch((error) => {
+        state.lastHealthError = error.message || "State refresh failed";
+      })
+      .finally(() => {
+        state.pollInFlight = false;
+      });
+  }, 5500);
+}
+
+function stopStatePoller() {
+  clearInterval(state.pollTimer);
+  state.pollTimer = null;
+  state.pollInFlight = false;
+}
+
 async function checkServerHealth(options = {}) {
   if (!state.loggedIn && options.requireLogin !== false) return false;
   try {
@@ -3725,7 +3751,7 @@ async function recoverRealtimeState(wasReconnect) {
   }
 }
 
-async function refreshStateFromServer() {
+async function refreshStateFromServer(options = {}) {
   const data = await api("/api/state");
   state.settings = data.settings || state.settings;
   state.rooms = data.rooms || state.rooms;
@@ -3733,11 +3759,25 @@ async function refreshStateFromServer() {
   state.dms = data.dms || state.dms;
   state.dmGroups = data.dmGroups || state.dmGroups;
   state.files = data.files || state.files;
+  state.innerDocs = data.innerDocs || state.innerDocs;
+  state.accountRequests = data.accountRequests || state.accountRequests;
+  state.users = data.users || state.users;
   state.people = data.people || state.people;
+  state.friends = data.friends || state.friends;
+  state.invites = data.invites || state.invites;
+  state.reports = data.reports || state.reports;
+  state.logs = data.logs || state.logs;
+  state.liveIpTracking = data.liveIpTracking || state.liveIpTracking;
   state.presence = data.presence || state.presence;
   state.voiceRooms = data.voiceRooms || state.voiceRooms;
   state.readReceipts = data.readReceipts || state.readReceipts;
+  state.announcements = data.announcements || state.announcements;
+  state.store = data.store || state.store;
+  state.uploadConfig = data.uploadConfig || state.uploadConfig;
+  if (data.rtcConfig && Array.isArray(data.rtcConfig.iceServers)) rtcConfig = data.rtcConfig;
+  applyCustomizations();
   renderAll();
+  if (!options.quiet && !isRealtimeReady()) notify("Updated from server fallback");
 }
 
 let typingTimer = null;

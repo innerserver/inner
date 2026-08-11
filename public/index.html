@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-43-google-docs-only-final" />
+    <link rel="stylesheet" href="/styles.css?v=inner-45-one-google-workspace-final" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -32,7 +32,7 @@
             <input id="loginPassword" name="password" type="password" autocomplete="current-password" required />
           </label>
           <button class="primary-button" type="submit">Sign in</button>
-          <button id="signupEntryButton" class="secondary-button" type="button">Create or request account</button>
+          <button id="signupEntryButton" class="secondary-button" type="button">Request account</button>
           <p id="loginError" class="form-error" role="alert"></p>
         </form>
 
@@ -95,9 +95,7 @@
           <button class="nav-button" type="button" data-view="profile">Profile</button>
           <button class="nav-button" type="button" data-view="store">Store</button>
           <button class="nav-button" type="button" data-view="files">Files</button>
-          <button class="nav-button" type="button" data-view="googleDocs">Google Docs</button>
-          <button class="nav-button" type="button" data-view="googleSlides">Slides</button>
-          <button class="nav-button" type="button" data-view="googleSheets">Sheets</button>
+          <button class="nav-button" type="button" data-view="googleWorkspace">Google Workspace</button>
           <button class="nav-button" type="button" data-view="browser">Browser</button>
           <button class="nav-button" type="button" data-view="chess">Chess</button>
           <button class="nav-button" type="button" data-view="voice">Voice</button>
@@ -433,70 +431,29 @@
           </div>
         </section>
 
-        <section id="googleDocsView" class="view embedded-app-view google-workspace-view">
+        <section id="googleWorkspaceView" class="view embedded-app-view google-workspace-view">
           <div class="section-header">
             <div>
-              <h2>Google Docs</h2>
-              <p>Create and edit Google documents inside Inner when Google allows embedded access.</p>
+              <h2>Google Workspace</h2>
+              <p>Docs, Slides, and Sheets in one app tab. Google may require full-tab sign-in before the frame works.</p>
             </div>
             <div class="button-row">
-              <button id="openGoogleDocsButton" class="primary-button compact-button" type="button">Open full tab</button>
-              <button id="newGoogleDocButton" class="secondary-button compact-button" type="button">New doc in app</button>
-              <button id="shareGoogleDocsButton" class="ghost-light-button compact-button" type="button">Share link</button>
+              <button id="openGoogleWorkspaceButton" class="primary-button compact-button" type="button">Open full tab</button>
+              <button id="newGoogleWorkspaceButton" class="secondary-button compact-button" type="button">New in app</button>
+              <button id="shareGoogleWorkspaceButton" class="ghost-light-button compact-button" type="button">Share link</button>
             </div>
           </div>
-          <p class="panel-note google-embed-note">If Google sign-in or editing is blocked in the frame, use Open full tab. Your Google files still save in your Google account.</p>
+          <div class="google-workspace-switcher" role="tablist" aria-label="Google Workspace app">
+            <button id="googleDocsModeButton" class="secondary-button compact-button active" type="button" data-google-kind="docs">Docs</button>
+            <button id="googleSlidesModeButton" class="secondary-button compact-button" type="button" data-google-kind="slides">Slides</button>
+            <button id="googleSheetsModeButton" class="secondary-button compact-button" type="button" data-google-kind="sheets">Sheets</button>
+          </div>
+          <p id="googleWorkspaceNote" class="panel-note google-embed-note">Docs is selected. If Google blocks sign-in or editing inside the frame, use Open full tab once, then return here.</p>
           <iframe
-            id="googleDocsFrame"
+            id="googleWorkspaceFrame"
             class="embedded-app-frame google-app-frame"
             src="https://docs.google.com/document/u/0/"
-            title="Google Docs"
-            allow="clipboard-read; clipboard-write; fullscreen"
-            referrerpolicy="strict-origin-when-cross-origin"
-          ></iframe>
-        </section>
-
-        <section id="googleSlidesView" class="view embedded-app-view google-workspace-view">
-          <div class="section-header">
-            <div>
-              <h2>Slides</h2>
-              <p>Create and edit Google Slides presentations inside Inner when Google allows embedded access.</p>
-            </div>
-            <div class="button-row">
-              <button id="openGoogleSlidesButton" class="primary-button compact-button" type="button">Open full tab</button>
-              <button id="newGoogleSlidesButton" class="secondary-button compact-button" type="button">New slides in app</button>
-              <button id="shareGoogleSlidesButton" class="ghost-light-button compact-button" type="button">Share link</button>
-            </div>
-          </div>
-          <p class="panel-note google-embed-note">If Google sign-in or editing is blocked in the frame, use Open full tab. Your presentations still save in your Google account.</p>
-          <iframe
-            id="googleSlidesFrame"
-            class="embedded-app-frame google-app-frame"
-            src="https://docs.google.com/presentation/u/0/"
-            title="Google Slides"
-            allow="clipboard-read; clipboard-write; fullscreen"
-            referrerpolicy="strict-origin-when-cross-origin"
-          ></iframe>
-        </section>
-
-        <section id="googleSheetsView" class="view embedded-app-view google-workspace-view">
-          <div class="section-header">
-            <div>
-              <h2>Sheets</h2>
-              <p>Create and edit Google Sheets inside Inner when Google allows embedded access.</p>
-            </div>
-            <div class="button-row">
-              <button id="openGoogleSheetsButton" class="primary-button compact-button" type="button">Open full tab</button>
-              <button id="newGoogleSheetsButton" class="secondary-button compact-button" type="button">New sheet in app</button>
-              <button id="shareGoogleSheetsButton" class="ghost-light-button compact-button" type="button">Share link</button>
-            </div>
-          </div>
-          <p class="panel-note google-embed-note">Sheets stays inside Inner when Google permits framing. If Google blocks sign-in inside the frame, use Open full tab once, then return here.</p>
-          <iframe
-            id="googleSheetsFrame"
-            class="embedded-app-frame google-app-frame"
-            src="https://docs.google.com/spreadsheets/u/0/"
-            title="Google Sheets"
+            title="Google Workspace"
             allow="clipboard-read; clipboard-write; fullscreen"
             referrerpolicy="strict-origin-when-cross-origin"
           ></iframe>
@@ -873,8 +830,8 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-43-google-docs-only-final" defer></script>
-    <script src="/app.js?v=inner-43-google-docs-only-final" defer></script>
-    <script src="/force-logout.js?v=inner-43-google-docs-only-final" defer></script>
+    <script src="/session-guard.js?v=inner-45-one-google-workspace-final" defer></script>
+    <script src="/app.js?v=inner-45-one-google-workspace-final" defer></script>
+    <script src="/force-logout.js?v=inner-45-one-google-workspace-final" defer></script>
   </body>
 </html>

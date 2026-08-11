@@ -89,17 +89,17 @@ def build():
     subtitle_run.font.color.rgb = RGBColor(98, 100, 95)
 
     add_heading(doc, "Start Here", 1)
-    add_body(doc, "Inner is a private workspace app with accounts, rooms, DMs, files, browser tools, Google Docs, Google Slides, Google Sheets, Admin controls, and HMD/dev tools.")
+    add_body(doc, "Inner is a private workspace app with accounts, rooms, DMs, files, browser tools, one Google Workspace tab for Docs, Slides, and Sheets, Admin controls, and HMD/dev tools.")
     add_bullets(doc, [
         "The Dashboard has a role-based guide after login.",
         "The HTML manual is available in the app at /tutorials.html.",
         "Normal users should not see Admin, HMD, or Domain tabs.",
-        "Google Docs, Slides, and Sheets are the main document tools inside Inner.",
+        "Google Workspace is the one document tab inside Inner for Docs, Slides, and Sheets.",
     ])
 
     add_heading(doc, "Creating or Requesting an Account", 1)
     add_numbers(doc, [
-        "Open Inner and press Create or request account.",
+        "Open Inner and press Request account in request mode or Create account in open signup mode.",
         "When the browser asks for location, choose Always allow.",
         "Fill in real display name, email, phone, grade, username, and password.",
         "Open signup creates a normal member account.",
@@ -115,7 +115,7 @@ def build():
         shade_cell(cell, "EDF7F4")
         set_cell_text(cell, text, True)
     rows = [
-        ("Member / Student", "Set profile, find friends, use messages/DMs, upload files, use Google Docs/Slides/Sheets, share links.", "Can friend same-grade users normally or search exact username/email/phone."),
+        ("Member / Student", "Set profile, find friends, use messages/DMs, upload files, use Google Workspace, share links.", "Can friend same-grade users normally or search exact username/email/phone."),
         ("Moderator / Teacher", "Use Messages, DMs, docs, and reports/mod tools when granted.", "Moderator accounts should be assigned manually by admins."),
         ("Admin", "Manage signup, accounts, announcements, hidden tabs, locks, paywalls, browser rules, logs, reports, and backups.", "Search accounts first; use Show all only when needed."),
         ("HMD / Dev", "Review health, storage, database, logs, localhost tools, bots, plugins, AI, and emergency controls.", "Use shutdown/recovery tools carefully."),
@@ -134,9 +134,7 @@ def build():
         shade_cell(cell, "EDF7F4")
         set_cell_text(cell, text, True)
     rows = [
-        ("Google Docs", "Create and edit documents inside Inner.", "If Google blocks sign-in in the frame, open full tab once, then return."),
-        ("Google Slides", "Create and edit presentations inside Inner.", "Files save in the user's Google account."),
-        ("Google Sheets", "Create and edit spreadsheets inside Inner.", "Works like the Chess embedded app tab."),
+        ("Google Workspace", "Use one Inner tab to switch between Docs, Slides, and Sheets.", "If Google blocks sign-in in the frame, open full tab once, then return."),
         ("Browser", "Open allowed sites inside Inner and send links to friends/groups.", "Admin block/allow rules apply through Inner's browser route."),
     ]
     for row in rows:

@@ -2,7 +2,7 @@
 
 ## Start Here
 
-Inner is a private workspace app with accounts, rooms, DMs, uploads, voice/screen tools, admin controls, HMD tools, and Google Docs/Slides/Sheets tabs.
+Inner is a private workspace app with accounts, rooms, DMs, uploads, voice/screen tools, admin controls, HMD tools, and one Google Workspace tab for Docs/Slides/Sheets.
 
 Use the hardcoded owner admin account for full controls. Normal users should not see Admin, HMD, or Domain tabs.
 
@@ -18,7 +18,7 @@ The full standalone handout is `TUTORIALS_BY_ACCOUNT_TYPE.md`.
 
 Every account type gets a role-specific guide on the Dashboard:
 
-- Member: profile, friends, messages, uploads, Google Docs/Slides/Sheets.
+- Member: profile, friends, messages, uploads, Google Workspace.
 - Moderator: profile, rooms/messages, DMs, moderation expectations, docs.
 - Admin: server settings, account requests, announcements, feature controls, backups.
 - HMD/dev: metrics, storage, localhost tools, bots/plugins, automod, recovery work.
@@ -32,7 +32,10 @@ Admin > Server controls signup mode:
 - Request mode: users request an account and wait for admin review.
 - Open signup: users can create a normal member account directly.
 
-The login screen only shows the request/open-signup form after the user presses **Create or request account**.
+The login screen only shows the request/open-signup form after the user presses the signup button.
+
+- In request mode, the button says **Request account**.
+- In open signup mode, the button says **Create account**.
 
 When users create or request an account, tell them to choose **Always allow** if the browser asks for location. Inner uses this for server allocation and admin request review.
 
@@ -64,7 +67,7 @@ Use Friends > Grade dropdown > Search grade to list allowed candidates for that 
 
 ## Docs
 
-Inner now uses Google Workspace inside the app:
+Inner now uses one Google Workspace tab inside the app:
 
 - Google Docs: embedded Google Docs launcher/editor.
 - Slides: embedded Google Slides launcher/editor.
@@ -147,18 +150,18 @@ Admin > Active locks temporarily disables a feature.
 
 Admin > Paywall rules can require a paid Store item before access.
 
-## Google Docs, Slides, and Sheets
+## Google Workspace
 
-Tabs:
+One tab:
 
-- Google Docs: `/google-docs`
-- Slides: `/slides`
-- Sheets: `/sheets`
+- Google Workspace: `/google-workspace`
+- Old links `/google-docs`, `/slides`, `/sheets`, and `/docs` open the same tab and select the matching mode.
 
 Buttons:
 
 - Open full tab: opens Google in a browser tab.
-- New doc/slides/sheet in app: starts a new Google file inside the Inner panel when Google permits it.
+- Docs / Slides / Sheets buttons: switch modes inside the same tab.
+- New in app: starts a new Google file inside the Inner panel when Google permits it.
 - Share link: sends the Google app link through Inner share tools.
 
 ## Browser Rules and Sharing

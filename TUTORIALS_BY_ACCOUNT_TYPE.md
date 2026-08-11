@@ -5,7 +5,7 @@ Use this file as the quick onboarding guide for new users. The app also shows a 
 ## Before Creating an Account
 
 1. Open Inner.
-2. Press **Create or request account**.
+2. Press **Request account** in request mode or **Create account** in open signup mode.
 3. If the browser asks for location, choose **Always allow**.
 4. Fill in username, real display name, email, phone, grade, and password.
 5. If open signup is enabled, the account is created as a normal member.
@@ -21,7 +21,7 @@ Location permission is used for server allocation and admin review. If a browser
 4. DMs: create direct messages or group chats with accepted friends only.
 5. Messages: chat in rooms, reply/react without losing your typing area, and use the jump-to-bottom button when needed.
 6. Files: upload public or private files. Private files are visible to the uploader and admins.
-7. Google Docs / Slides / Sheets: open the embedded Google tools inside Inner, create work, and share links with friends.
+7. Google Workspace: use the one Workspace tab to switch between Docs, Slides, and Sheets, create work, and share links with friends.
 8. Browser: open allowed sites inside Inner and send the current link to accepted friends or groups.
 
 ## Moderator / Teacher
@@ -30,7 +30,7 @@ Location permission is used for server allocation and admin review. If a browser
 2. Messages and DMs: help keep chats clean.
 3. Reports: review reported content if the owner/admin gives access.
 4. Users: teacher/moderator accounts should not be created through open signup. Admins assign moderator role manually.
-5. Docs, Slides, and Sheets: use Google Workspace for class work and shared materials.
+5. Google Workspace: use the one tab for class docs, slides, sheets, and shared materials.
 
 ## Admin
 

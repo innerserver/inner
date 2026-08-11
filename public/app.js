@@ -27,6 +27,7 @@ const state = {
   innerDocs: [],
   selectedInnerDocId: "",
   docsListCollapsed: false,
+  googleWorkspaceKind: "docs",
   accountRequests: [],
   uploadQueue: [],
   vpn: {},
@@ -106,9 +107,7 @@ const viewRoutes = {
   profile: "/profile",
   store: "/store",
   files: "/files",
-  googleDocs: "/google-docs",
-  googleSlides: "/slides",
-  googleSheets: "/sheets",
+  googleWorkspace: "/google-workspace",
   browser: "/browser",
   chess: "/chess",
   voice: "/voice",
@@ -195,21 +194,15 @@ function cacheElements() {
     "storeView",
     "filesView",
     "docsView",
-    "googleDocsView",
-    "googleSlidesView",
-    "googleSheetsView",
-    "googleDocsFrame",
-    "googleSlidesFrame",
-    "googleSheetsFrame",
-    "openGoogleDocsButton",
-    "newGoogleDocButton",
-    "shareGoogleDocsButton",
-    "openGoogleSlidesButton",
-    "newGoogleSlidesButton",
-    "shareGoogleSlidesButton",
-    "openGoogleSheetsButton",
-    "newGoogleSheetsButton",
-    "shareGoogleSheetsButton",
+    "googleWorkspaceView",
+    "googleWorkspaceFrame",
+    "googleWorkspaceNote",
+    "openGoogleWorkspaceButton",
+    "newGoogleWorkspaceButton",
+    "shareGoogleWorkspaceButton",
+    "googleDocsModeButton",
+    "googleSlidesModeButton",
+    "googleSheetsModeButton",
     "docsToggleListButton",
     "newInnerDocButton",
     "deleteInnerDocButton",
@@ -593,15 +586,12 @@ function bindEvents() {
   els.deleteDmGroupButton.addEventListener("click", deleteCurrentDmGroup);
   if (els.shareLinkForm) els.shareLinkForm.addEventListener("submit", shareLinkToFriends);
   if (els.shareChessButton) els.shareChessButton.addEventListener("click", () => fillShareLink(currentChessUrl(), "ChessVerse", "app"));
-  if (els.openGoogleDocsButton) els.openGoogleDocsButton.addEventListener("click", () => openGoogleWorkspaceFullTab("docs"));
-  if (els.newGoogleDocButton) els.newGoogleDocButton.addEventListener("click", () => openGoogleWorkspaceInApp("docs", true));
-  if (els.shareGoogleDocsButton) els.shareGoogleDocsButton.addEventListener("click", () => shareGoogleWorkspace("docs"));
-  if (els.openGoogleSlidesButton) els.openGoogleSlidesButton.addEventListener("click", () => openGoogleWorkspaceFullTab("slides"));
-  if (els.newGoogleSlidesButton) els.newGoogleSlidesButton.addEventListener("click", () => openGoogleWorkspaceInApp("slides", true));
-  if (els.shareGoogleSlidesButton) els.shareGoogleSlidesButton.addEventListener("click", () => shareGoogleWorkspace("slides"));
-  if (els.openGoogleSheetsButton) els.openGoogleSheetsButton.addEventListener("click", () => openGoogleWorkspaceFullTab("sheets"));
-  if (els.newGoogleSheetsButton) els.newGoogleSheetsButton.addEventListener("click", () => openGoogleWorkspaceInApp("sheets", true));
-  if (els.shareGoogleSheetsButton) els.shareGoogleSheetsButton.addEventListener("click", () => shareGoogleWorkspace("sheets"));
+  if (els.openGoogleWorkspaceButton) els.openGoogleWorkspaceButton.addEventListener("click", () => openGoogleWorkspaceFullTab());
+  if (els.newGoogleWorkspaceButton) els.newGoogleWorkspaceButton.addEventListener("click", () => openGoogleWorkspaceInApp(state.googleWorkspaceKind, true));
+  if (els.shareGoogleWorkspaceButton) els.shareGoogleWorkspaceButton.addEventListener("click", () => shareGoogleWorkspace());
+  document.querySelectorAll("[data-google-kind]").forEach((button) => {
+    button.addEventListener("click", () => openGoogleWorkspaceInApp(button.dataset.googleKind || "docs"));
+  });
   if (els.docsToggleListButton) els.docsToggleListButton.addEventListener("click", toggleDocsList);
   if (els.newInnerDocButton) els.newInnerDocButton.addEventListener("click", newInnerDoc);
   if (els.deleteInnerDocButton) els.deleteInnerDocButton.addEventListener("click", deleteInnerDoc);
@@ -889,8 +879,16 @@ async function refreshSignupStatus() {
 function syncSignupModePanels(mode) {
   const open = String(mode || "request") === "open";
   const expanded = Boolean(els.loginView && els.loginView.classList.contains("signup-expanded"));
+  syncSignupEntryLabel(mode);
   if (els.accountRequestForm) els.accountRequestForm.classList.toggle("hidden", !expanded || open);
   if (els.signupForm) els.signupForm.classList.toggle("hidden", !expanded || !open);
+}
+
+function syncSignupEntryLabel(mode) {
+  if (!els.signupEntryButton) return;
+  const open = String(mode || "request") === "open";
+  els.signupEntryButton.textContent = open ? "Create account" : "Request account";
+  els.signupEntryButton.setAttribute("aria-label", open ? "Create account" : "Request account");
 }
 
 function openSignupChoice() {
@@ -1017,7 +1015,13 @@ function showApp() {
 }
 
 function showView(viewName, options = {}) {
-  if (viewName === "docs") viewName = "googleDocs";
+  if (["docs", "googleDocs", "googleSlides", "googleSheets"].includes(viewName)) {
+    if (viewName === "googleSlides") state.googleWorkspaceKind = "slides";
+    else if (viewName === "googleSheets") state.googleWorkspaceKind = "sheets";
+    else state.googleWorkspaceKind = "docs";
+    viewName = "googleWorkspace";
+    syncGoogleWorkspaceControls();
+  }
   if (!viewRoutes[viewName]) viewName = "dashboard";
   if (viewName === "domain" && !isOwner()) viewName = "dashboard";
   if (viewName === "admin" && !isOwner()) viewName = "dashboard";
@@ -1028,6 +1032,7 @@ function showView(viewName, options = {}) {
     viewName = "dashboard";
   }
   state.activeView = viewName;
+  if (viewName === "googleWorkspace") syncGoogleWorkspaceFrame();
   saveUiState();
   if (options.updateHistory !== false) updateRoute(viewName);
   document.querySelectorAll(".nav-button").forEach((button) => {
@@ -1276,24 +1281,21 @@ function googleWorkspaceConfig(kind) {
       create: "https://docs.google.com/document/create",
       title: "Google Docs",
       type: "doc",
-      frame: els.googleDocsFrame,
-      view: "googleDocs",
+      label: "Docs",
     },
     slides: {
       home: "https://docs.google.com/presentation/u/0/",
       create: "https://docs.google.com/presentation/create",
       title: "Google Slides",
       type: "slides",
-      frame: els.googleSlidesFrame,
-      view: "googleSlides",
+      label: "Slides",
     },
     sheets: {
       home: "https://docs.google.com/spreadsheets/u/0/",
       create: "https://docs.google.com/spreadsheets/create",
       title: "Google Sheets",
       type: "sheet",
-      frame: els.googleSheetsFrame,
-      view: "googleSheets",
+      label: "Sheets",
     },
   };
   return configs[kind] || configs.docs;
@@ -1301,21 +1303,62 @@ function googleWorkspaceConfig(kind) {
 
 function openGoogleWorkspaceInApp(kind, create = false) {
   const config = googleWorkspaceConfig(kind);
-  if (config.frame) config.frame.src = create ? config.create : config.home;
-  showView(config.view);
-  notify(`${config.title} opened inside Inner`);
+  state.googleWorkspaceKind = ["docs", "slides", "sheets"].includes(kind) ? kind : "docs";
+  const url = create ? config.create : config.home;
+  if (els.googleWorkspaceFrame) {
+    els.googleWorkspaceFrame.src = url;
+    els.googleWorkspaceFrame.title = config.title;
+  }
+  syncGoogleWorkspaceControls();
+  showView("googleWorkspace");
+  notify(`${config.title} opened in the Workspace tab`);
 }
 
-function openGoogleWorkspaceFullTab(kind) {
+function openGoogleWorkspaceFullTab(kind = state.googleWorkspaceKind) {
   const config = googleWorkspaceConfig(kind);
-  const current = config.frame && config.frame.src ? config.frame.src : config.home;
+  const current = els.googleWorkspaceFrame && els.googleWorkspaceFrame.src ? els.googleWorkspaceFrame.src : config.home;
   window.open(current || config.home, "_blank", "noopener");
 }
 
-function shareGoogleWorkspace(kind) {
+function shareGoogleWorkspace(kind = state.googleWorkspaceKind) {
   const config = googleWorkspaceConfig(kind);
-  const url = normalizeExternalUrl((config.frame && config.frame.src) || config.home);
+  const url = normalizeExternalUrl((els.googleWorkspaceFrame && els.googleWorkspaceFrame.src) || config.home);
   fillShareLink(url || config.home, config.title, config.type);
+}
+
+function syncGoogleWorkspaceControls() {
+  const kind = state.googleWorkspaceKind || "docs";
+  const config = googleWorkspaceConfig(kind);
+  [
+    ["docs", els.googleDocsModeButton],
+    ["slides", els.googleSlidesModeButton],
+    ["sheets", els.googleSheetsModeButton],
+  ].forEach(([entry, button]) => {
+    if (!button) return;
+    const active = entry === kind;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  if (els.googleWorkspaceNote) {
+    els.googleWorkspaceNote.textContent = `${config.label} is selected. If Google blocks sign-in or editing inside the frame, use Open full tab once, then return here.`;
+  }
+}
+
+function syncGoogleWorkspaceFrame() {
+  if (!els.googleWorkspaceFrame) return;
+  const kind = state.googleWorkspaceKind || "docs";
+  const config = googleWorkspaceConfig(kind);
+  const current = String(els.googleWorkspaceFrame.src || "");
+  const expectedPieces = {
+    docs: "/document/",
+    slides: "/presentation/",
+    sheets: "/spreadsheets/",
+  };
+  if (!current || !current.includes(expectedPieces[kind])) {
+    els.googleWorkspaceFrame.src = config.home;
+    els.googleWorkspaceFrame.title = config.title;
+  }
+  syncGoogleWorkspaceControls();
 }
 
 async function saveBrowserPolicy(event) {
@@ -3529,7 +3572,7 @@ function onboardingGuideForRole(role) {
         { title: "Use rooms and messages", detail: "Switch rooms, read announcements, and keep public chats on topic.", view: "messages", action: "Open messages" },
         { title: "Use DMs carefully", detail: "Create DMs or group chats with accepted friends, send files, links, and call when available.", view: "dms", action: "Open DMs" },
         { title: "Review reports if enabled", detail: "If the owner admin gives moderation tools, use the available reports/logs area to mark issues reviewed." },
-        { title: "Share docs", detail: "Use Google Docs/Slides/Sheets for your documents, decks, and spreadsheets inside Inner.", view: "googleDocs", action: "Google Docs" },
+        { title: "Share docs", detail: "Use the Google Workspace tab for Docs, Slides, and Sheets inside Inner.", view: "googleWorkspace", action: "Google Workspace" },
       ],
     };
   }
@@ -3541,7 +3584,7 @@ function onboardingGuideForRole(role) {
       { title: "Add friends", detail: "Same-grade users show by default. Search exact username, email, or phone to find someone outside your grade.", view: "friends", action: "Find friends" },
       { title: "Use messages and DMs", detail: "Use Messages for rooms and DMs for private or group conversations with accepted friends.", view: "messages", action: "Open messages" },
       { title: "Upload and share files", detail: "Use Files for photos, videos, audio, and documents. Turn on Private if only you and admins should see it.", view: "files", action: "Open files" },
-      { title: "Use Docs, Slides, and Sheets", detail: "Use Google Docs/Slides/Sheets for school work directly inside Inner.", view: "googleDocs", action: "Open Docs" },
+      { title: "Use Docs, Slides, and Sheets", detail: "Use the Google Workspace tab for school work directly inside Inner.", view: "googleWorkspace", action: "Open Workspace" },
     ],
   };
 }
@@ -6738,6 +6781,7 @@ function viewFeature(viewName) {
     store: "store",
     files: "files",
     docs: "docs",
+    googleWorkspace: "docs",
     googleDocs: "docs",
     googleSlides: "docs",
     googleSheets: "docs",
@@ -7028,7 +7072,18 @@ function previewText(value) {
 
 function viewFromPath() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
-  if (path === "/docs") return "googleDocs";
+  if (path === "/docs" || path === "/google-docs") {
+    state.googleWorkspaceKind = "docs";
+    return "googleWorkspace";
+  }
+  if (path === "/slides") {
+    state.googleWorkspaceKind = "slides";
+    return "googleWorkspace";
+  }
+  if (path === "/sheets") {
+    state.googleWorkspaceKind = "sheets";
+    return "googleWorkspace";
+  }
   return Object.entries(viewRoutes).find(([, route]) => route === path)?.[0] || "";
 }
 

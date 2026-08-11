@@ -885,9 +885,12 @@ async function routeApi(req, res, requestUrl) {
       Boolean(previousLoginIp && previousLoginIp !== currentLoginIp) ||
       Boolean(previousLoginDevice && previousLoginDevice !== currentLoginDevice);
     const userIndex = users.findIndex((entry) => entry.username.toLowerCase() === user.username.toLowerCase());
+    let loginCount = Number(user.loginCount || 0) + 1;
     if (userIndex !== -1) {
+      loginCount = Number(users[userIndex].loginCount || 0) + 1;
       users[userIndex] = {
         ...users[userIndex],
+        loginCount,
         lastLoginAt: new Date().toISOString(),
         lastLoginIp: currentLoginIp,
         lastLoginDevice: currentLoginDevice,
@@ -896,7 +899,8 @@ async function routeApi(req, res, requestUrl) {
       await writeJson(FILES.users, users);
     }
 
-    await addSystemLog("login.success", user.username, { role: normalizeRole(user.role), persistent, persistentReason: persistentLoginReason(user, settings, rooms) }, req);
+    user.loginCount = loginCount;
+    await addSystemLog("login.success", user.username, { role: normalizeRole(user.role), persistent, loginCount, persistentReason: persistentLoginReason(user, settings, rooms) }, req);
     await notifyAdminEmails(differentLogin ? "Inner different login alert" : "Inner login alert", [
       `${user.username} signed in.`,
       `Role: ${normalizeRole(user.role)}`,
@@ -4447,6 +4451,7 @@ function safeUser(user, viewer = null) {
     displayName: user.displayName || "",
     grade: normalizeGrade(user.grade || ""),
     gradeUpdatedAt: user.gradeUpdatedAt || "",
+    loginCount: Number(user.loginCount || 0),
     mutedUntil: user.mutedUntil || "",
     muted: isUserMuted(user),
     shadowMuted: Boolean(user.shadowMuted),

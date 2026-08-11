@@ -3944,10 +3944,16 @@ function onboardingStorageKey() {
 
 function onboardingDismissed() {
   try {
-    return localStorage.getItem(onboardingStorageKey()) === "dismissed";
+    const value = localStorage.getItem(onboardingStorageKey());
+    if (value === "manual") return false;
+    return value === "dismissed" || onboardingAutoLimitReached();
   } catch (error) {
-    return false;
+    return onboardingAutoLimitReached();
   }
+}
+
+function onboardingAutoLimitReached() {
+  return Number(state.user && state.user.loginCount ? state.user.loginCount : 0) > 5;
 }
 
 function dismissOnboarding() {
@@ -3961,7 +3967,7 @@ function dismissOnboarding() {
 
 function showOnboarding() {
   try {
-    localStorage.removeItem(onboardingStorageKey());
+    localStorage.setItem(onboardingStorageKey(), "manual");
   } catch (error) {
     // Onboarding still works without local storage.
   }

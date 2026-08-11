@@ -139,6 +139,7 @@ function cacheElements() {
     "loginUsername",
     "loginPassword",
     "loginError",
+    "signupEntryButton",
     "accountRequestForm",
     "requestUsername",
     "requestDisplayName",
@@ -149,6 +150,7 @@ function cacheElements() {
     "requestPassword",
     "requestNote",
     "submitAccountRequestButton",
+    "requestBackButton",
     "accountRequestStatus",
     "signupForm",
     "signupUsername",
@@ -158,6 +160,7 @@ function cacheElements() {
     "signupGrade",
     "signupPassword",
     "signupButton",
+    "signupBackButton",
     "signupStatus",
     "logoutButton",
     "roomName",
@@ -175,6 +178,12 @@ function cacheElements() {
     "dashboardState",
     "dashboardGrid",
     "dashboardAnnouncementList",
+    "onboardingPanel",
+    "onboardingTitle",
+    "onboardingSubtitle",
+    "onboardingSteps",
+    "dismissOnboardingButton",
+    "showOnboardingButton",
     "phoneInstallGuide",
     "phoneInstallGuideButton",
     "presenceList",
@@ -534,6 +543,9 @@ function bindEvents() {
   if (els.sidebarToggleButton) els.sidebarToggleButton.addEventListener("click", toggleSidebar);
   if (els.sidebarBackdrop) els.sidebarBackdrop.addEventListener("click", closeSidebar);
   els.loginForm.addEventListener("submit", handleLogin);
+  if (els.signupEntryButton) els.signupEntryButton.addEventListener("click", openSignupChoice);
+  if (els.requestBackButton) els.requestBackButton.addEventListener("click", closeSignupChoice);
+  if (els.signupBackButton) els.signupBackButton.addEventListener("click", closeSignupChoice);
   els.accountRequestForm.addEventListener("submit", submitAccountRequest);
   els.signupForm.addEventListener("submit", handleSignup);
   els.logoutButton.addEventListener("click", handleLogout);
@@ -721,6 +733,8 @@ function bindEvents() {
   els.notificationsButton.addEventListener("click", handleNotifications);
   els.installButton.addEventListener("click", installApp);
   if (els.phoneInstallGuideButton) els.phoneInstallGuideButton.addEventListener("click", installApp);
+  if (els.dismissOnboardingButton) els.dismissOnboardingButton.addEventListener("click", dismissOnboarding);
+  if (els.showOnboardingButton) els.showOnboardingButton.addEventListener("click", showOnboarding);
 
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.addEventListener("click", () => {
@@ -861,8 +875,22 @@ async function refreshSignupStatus() {
 
 function syncSignupModePanels(mode) {
   const open = String(mode || "request") === "open";
-  if (els.accountRequestForm) els.accountRequestForm.classList.toggle("hidden", open);
-  if (els.signupForm) els.signupForm.classList.toggle("hidden", !open);
+  const expanded = Boolean(els.loginView && els.loginView.classList.contains("signup-expanded"));
+  if (els.accountRequestForm) els.accountRequestForm.classList.toggle("hidden", !expanded || open);
+  if (els.signupForm) els.signupForm.classList.toggle("hidden", !expanded || !open);
+}
+
+function openSignupChoice() {
+  if (els.loginView) els.loginView.classList.add("signup-expanded");
+  syncSignupModePanels(state.settings.signupMode || "request");
+  refreshSignupStatus().catch(() => syncSignupModePanels(state.settings.signupMode || "request"));
+  const target = String(state.settings.signupMode || "request") === "open" ? els.signupUsername : els.requestUsername;
+  setTimeout(() => target && target.focus(), 0);
+}
+
+function closeSignupChoice() {
+  if (els.loginView) els.loginView.classList.remove("signup-expanded");
+  syncSignupModePanels(state.settings.signupMode || "request");
 }
 
 function getAccountRequestLocation() {
@@ -963,6 +991,7 @@ function showLogin(message = "") {
   state.loggedIn = false;
   applyProfileTheme("system");
   els.loginView.classList.remove("hidden");
+  closeSignupChoice();
   els.appView.classList.add("hidden");
   els.loginError.textContent = message;
   setConnection("Offline");
@@ -3317,6 +3346,7 @@ function renderDashboard() {
     ? (wholeAppPaywall.message || "Access is paywalled. Open Store to request the access pass.")
     : state.settings.serverEnabled ? "Workspace live" : "Workspace paused";
   renderDashboardAnnouncements();
+  renderOnboarding();
   els.dashboardGrid.replaceChildren(
     metricCard("Messages", state.messages.length, "Persistent room history"),
     metricCard("Files", state.files.length, "Uploads and attachments"),
@@ -3350,6 +3380,124 @@ function renderDashboard() {
 
 function metricCard(title, value, detail) {
   return adminCard(title, String(value), [detail]);
+}
+
+function renderOnboarding() {
+  if (!els.onboardingPanel || !state.user) return;
+  const dismissed = onboardingDismissed();
+  els.onboardingPanel.classList.toggle("hidden", dismissed);
+  if (els.showOnboardingButton) els.showOnboardingButton.classList.toggle("hidden", !dismissed);
+  if (dismissed) return;
+
+  const guide = onboardingGuideForRole(state.user.role);
+  els.onboardingTitle.textContent = guide.title;
+  els.onboardingSubtitle.textContent = guide.subtitle;
+  els.onboardingSteps.replaceChildren();
+  guide.steps.forEach((step, index) => {
+    const card = document.createElement("article");
+    card.className = "onboarding-step";
+    const number = document.createElement("span");
+    number.className = "onboarding-step-number";
+    number.textContent = String(index + 1);
+    const body = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = step.title;
+    const detail = document.createElement("p");
+    detail.textContent = step.detail;
+    body.append(title, detail);
+    if (step.view) {
+      const action = accountButton(step.action || "Open", () => showView(step.view));
+      action.classList.add("onboarding-action");
+      body.append(action);
+    }
+    card.append(number, body);
+    els.onboardingSteps.append(card);
+  });
+}
+
+function onboardingGuideForRole(role) {
+  const normalized = String(role || "member").toLowerCase();
+  if (normalized === "admin") {
+    return {
+      title: "Admin setup guide",
+      subtitle: "Use this path to keep the server clean, searchable, and ready for users.",
+      steps: [
+        { title: "Check server settings", detail: "Set signup mode, report emails, version text, announcements, and the public app labels.", view: "admin", action: "Open Admin" },
+        { title: "Review account requests", detail: "Approve, decline, or search accounts. Use the grade filter to find students by grade fast.", view: "admin", action: "Manage accounts" },
+        { title: "Post announcements", detail: "Send dashboard announcements to everyone or a specific room from the Admin panel.", view: "admin", action: "Announcements" },
+        { title: "Control features", detail: "Hide tabs, lock tools, apply paywalls, and allow specific users access when needed.", view: "admin", action: "Feature controls" },
+        { title: "Back up before big changes", detail: "Use Backups before resetting rooms, wiping logs, or changing major settings.", view: "admin", action: "Backups" },
+      ],
+    };
+  }
+  if (normalized === "hmd" || normalized === "dev") {
+    return {
+      title: "HMD/dev guide",
+      subtitle: "System tools, metrics, bots, plugins, storage, and recovery controls.",
+      steps: [
+        { title: "Open HMD", detail: "Use HMD for metrics, database counts, storage status, localhost tools, bots, plugins, and emergency controls.", view: "hmd", action: "Open HMD" },
+        { title: "Check storage and backups", detail: "Confirm uploads and data are using the intended storage folder before deploys.", view: "hmd", action: "Storage tools" },
+        { title: "Review automod", detail: "Tune spam windows and muted words from HMD/Admin moderation controls.", view: "hmd", action: "Automod" },
+        { title: "Use owner Admin for people", detail: "Account grade, role, bans, feature visibility, and announcements are managed from the owner Admin account." },
+      ],
+    };
+  }
+  if (normalized === "moderator") {
+    return {
+      title: "Moderator guide",
+      subtitle: "Help keep chats organized and safe.",
+      steps: [
+        { title: "Complete your profile", detail: "Add name, grade/staff status, profile picture, and status so people know who you are.", view: "profile", action: "Edit profile" },
+        { title: "Use rooms and messages", detail: "Switch rooms, read announcements, and keep public chats on topic.", view: "messages", action: "Open messages" },
+        { title: "Use DMs carefully", detail: "Create DMs or group chats with accepted friends, send files, links, and call when available.", view: "dms", action: "Open DMs" },
+        { title: "Review reports if enabled", detail: "If the owner admin gives moderation tools, use the available reports/logs area to mark issues reviewed." },
+        { title: "Share docs", detail: "Use Google Docs/Slides for main work and Inner Docs as experimental shared notes.", view: "googleDocs", action: "Google Docs" },
+      ],
+    };
+  }
+  return {
+    title: "Member guide",
+    subtitle: "Start here if you are using Inner for chats, files, friends, and docs.",
+    steps: [
+      { title: "Set up your profile", detail: "Add display name, grade, status, profile picture, and theme.", view: "profile", action: "Edit profile" },
+      { title: "Add friends", detail: "Same-grade users show by default. Search exact username, email, or phone to find someone outside your grade.", view: "friends", action: "Find friends" },
+      { title: "Use messages and DMs", detail: "Use Messages for rooms and DMs for private or group conversations with accepted friends.", view: "messages", action: "Open messages" },
+      { title: "Upload and share files", detail: "Use Files for photos, videos, audio, and documents. Turn on Private if only you and admins should see it.", view: "files", action: "Open files" },
+      { title: "Use Docs and Slides", detail: "Use Google Docs/Slides for school work. Inner Docs is experimental and saved inside Inner.", view: "googleDocs", action: "Open Docs" },
+    ],
+  };
+}
+
+function onboardingStorageKey() {
+  const username = state.user ? state.user.username : "guest";
+  const role = state.user ? state.user.role : "member";
+  return `inner:onboarding:v1:${username}:${role}`;
+}
+
+function onboardingDismissed() {
+  try {
+    return localStorage.getItem(onboardingStorageKey()) === "dismissed";
+  } catch (error) {
+    return false;
+  }
+}
+
+function dismissOnboarding() {
+  try {
+    localStorage.setItem(onboardingStorageKey(), "dismissed");
+  } catch (error) {
+    // Onboarding still works without local storage.
+  }
+  renderOnboarding();
+}
+
+function showOnboarding() {
+  try {
+    localStorage.removeItem(onboardingStorageKey());
+  } catch (error) {
+    // Onboarding still works without local storage.
+  }
+  renderOnboarding();
 }
 
 function sidebarIconMarkup() {

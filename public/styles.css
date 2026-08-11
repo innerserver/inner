@@ -3969,6 +3969,75 @@ textarea {
   }
 }
 
+/* v40 onboarding: role-specific tutorials on the dashboard. */
+.onboarding-panel {
+  display: grid;
+  gap: 12px;
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line)) !important;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 55%, var(--surface)) 0%, var(--surface) 100%);
+}
+
+.onboarding-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 10px;
+}
+
+.onboarding-step {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.onboarding-step-number {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  color: var(--surface);
+  background: var(--accent);
+  font-weight: 950;
+}
+
+.onboarding-step strong {
+  display: block;
+  margin-bottom: 3px;
+  line-height: 1.15;
+}
+
+.onboarding-step p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.onboarding-action {
+  margin-top: 10px;
+}
+
+@media (max-width: 720px) {
+  .onboarding-panel .panel-title-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 8px;
+  }
+
+  .onboarding-steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .onboarding-step {
+    padding: 10px;
+  }
+}
+
 @media (max-width: 480px) {
   .google-workspace-view .section-header .button-row {
     grid-template-columns: minmax(0, 1fr) !important;

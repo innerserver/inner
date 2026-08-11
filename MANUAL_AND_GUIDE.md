@@ -12,12 +12,29 @@ On phone, tap the three-line menu button in the top-left to open the sidebar. Ta
 
 If the phone still shows an old layout after deploy, hard refresh or remove/reinstall the home-screen app shortcut.
 
+## Onboarding Tutorials
+
+The full standalone handout is `TUTORIALS_BY_ACCOUNT_TYPE.md`.
+
+Every account type gets a role-specific guide on the Dashboard:
+
+- Member: profile, friends, messages, uploads, Google Docs/Slides.
+- Moderator: profile, rooms/messages, DMs, moderation expectations, docs.
+- Admin: server settings, account requests, announcements, feature controls, backups.
+- HMD/dev: metrics, storage, localhost tools, bots/plugins, automod, recovery work.
+
+Users can press Dismiss to hide the guide. They can press Show guide on the Dashboard to bring it back.
+
 ## Accounts and Signup
 
 Admin > Server controls signup mode:
 
 - Request mode: users request an account and wait for admin review.
 - Open signup: users can create a normal member account directly.
+
+The login screen only shows the request/open-signup form after the user presses **Create or request account**.
+
+When users create or request an account, tell them to choose **Always allow** if the browser asks for location. Inner uses this for server allocation and admin request review.
 
 Members are normal students/users. Moderator is intended for teacher/mod tools. Admin/HMD/dev should only be assigned by the owner admin.
 

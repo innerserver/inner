@@ -373,6 +373,7 @@ function cacheElements() {
     "vpnPasswordStatus",
     "serverStateText",
     "serverForm",
+    "secretGamesForm",
     "roomNameInput",
     "signupMode",
     "requireContact",
@@ -382,6 +383,7 @@ function cacheElements() {
     "requestDeclinedLoginHours",
     "chessUrlInput",
     "gameLinksInput",
+    "saveSecretGamesButton",
     "persistentDefaultEnabled",
     "persistentGrades",
     "persistentRoles",
@@ -697,6 +699,7 @@ function bindEvents() {
   els.stopShareButton.addEventListener("click", stopShare);
   els.vpnForm.addEventListener("submit", saveVpn);
   els.serverForm.addEventListener("submit", saveServer);
+  if (els.secretGamesForm) els.secretGamesForm.addEventListener("submit", saveSecretGames);
   els.testEmailButton.addEventListener("click", sendTestEmail);
   els.shutdownServerButton.addEventListener("click", () => setServerPower(false));
   els.restartServerButton.addEventListener("click", () => setServerPower(true));
@@ -1661,6 +1664,26 @@ async function saveServer(event) {
     notify(error.message);
   } finally {
     els.saveServerButton.disabled = false;
+  }
+}
+
+async function saveSecretGames(event) {
+  event.preventDefault();
+  if (!isOwner()) return notify("Hardcoded admin owner access required");
+  try {
+    els.saveSecretGamesButton.disabled = true;
+    const data = await api("/api/settings", {
+      method: "POST",
+      json: serverSettingsPayload(),
+    });
+    state.settings = data.settings || state.settings;
+    renderServer();
+    renderGames();
+    notify("Secret games saved");
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    els.saveSecretGamesButton.disabled = false;
   }
 }
 
@@ -5326,7 +5349,11 @@ function renderServer() {
   if (els.newAccountPersistent) els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
 
   const admin = isOwner();
-  [els.roomNameInput, els.signupMode, els.requireContact, els.reportEmails, els.requestPendingDays, els.requestApprovedHours, els.requestDeclinedLoginHours, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+  [els.roomNameInput, els.signupMode, els.requireContact, els.reportEmails, els.requestPendingDays, els.requestApprovedHours, els.requestDeclinedLoginHours, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+    if (!input) return;
+    input.disabled = !admin;
+  });
+  [els.chessUrlInput, els.gameLinksInput, els.saveSecretGamesButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
   });
@@ -5389,7 +5416,8 @@ function renderQuickEdit() {
 function renderUsers() {
   if (!els.ownerPasswordForm) return;
   const admin = isOwner();
-  [els.ownerPasswordForm, els.createAccountForm, els.accountManager, els.featureLockForm, els.roomForm].forEach((element) => {
+  [els.ownerPasswordForm, els.createAccountForm, els.accountManager, els.featureLockForm, els.roomForm, els.secretGamesForm].forEach((element) => {
+    if (!element) return;
     element.classList.toggle("hidden", !admin);
   });
   if (!admin) return;

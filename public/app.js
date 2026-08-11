@@ -3934,14 +3934,11 @@ function renderCornerAd() {
 
 function renderShell() {
   const enabled = Boolean(state.settings.serverEnabled);
-  const custom = state.settings.customizations || {};
   els.roomName.textContent = (state.settings.customizations && state.settings.customizations.appName) || state.settings.roomName || "Inner";
-  els.serverPill.textContent = enabled ? (custom.serverOnLabel || "Server on") : (custom.serverOffLabel || "Server off");
-  els.serverPill.classList.toggle("on", enabled);
-  els.serverPill.classList.toggle("off", !enabled);
+  if (els.serverPill) els.serverPill.classList.add("hidden");
   if (els.buildBadge) {
-    els.buildBadge.textContent = custom.versionLabel || "";
-    els.buildBadge.classList.toggle("hidden", !custom.versionLabel);
+    els.buildBadge.textContent = "";
+    els.buildBadge.classList.add("hidden");
   }
   els.currentUser.textContent = state.user ? `${state.user.username} (${state.user.role})` : "-";
   els.messageCount.textContent = String(state.messages.length);
@@ -4939,8 +4936,8 @@ function applyCustomizations() {
   if (els.roomName) els.roomName.textContent = appName;
   document.title = appName;
   if (els.buildBadge) {
-    els.buildBadge.textContent = custom.versionLabel || "";
-    els.buildBadge.classList.toggle("hidden", !custom.versionLabel);
+    els.buildBadge.textContent = "";
+    els.buildBadge.classList.add("hidden");
   }
   if (els.siteNotice) {
     els.siteNotice.textContent = custom.notice || "";

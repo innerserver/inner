@@ -4480,6 +4480,12 @@ body.standalone-page .tutorial-shell {
   max-width: 100%;
 }
 
+/* v73: only one connection status is shown. */
+#serverPill,
+#buildBadge {
+  display: none !important;
+}
+
 @media (max-width: 920px) {
   #filesView.view.active {
     padding-bottom: 110px !important;

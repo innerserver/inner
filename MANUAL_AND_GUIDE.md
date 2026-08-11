@@ -2,7 +2,7 @@
 
 ## Start Here
 
-Inner is a private workspace app with accounts, rooms, DMs, uploads, voice/screen tools, admin controls, HMD tools, Google Docs/Slides/Sheets tabs, and experimental Inner Docs.
+Inner is a private workspace app with accounts, rooms, DMs, uploads, voice/screen tools, admin controls, HMD tools, and Google Docs/Slides/Sheets tabs.
 
 Use the hardcoded owner admin account for full controls. Normal users should not see Admin, HMD, or Domain tabs.
 
@@ -64,16 +64,15 @@ Use Friends > Grade dropdown > Search grade to list allowed candidates for that 
 
 ## Docs
 
-Inner now has four document areas:
+Inner now uses Google Workspace inside the app:
 
-- Inner Docs: experimental built-in editor saved to Inner.
 - Google Docs: embedded Google Docs launcher/editor.
 - Slides: embedded Google Slides launcher/editor.
 - Sheets: embedded Google Sheets launcher/editor.
 
 Google may block sign-in or editing inside the iframe. If that happens, use Open full tab once, then return to Inner. Files save in the user's Google account.
 
-Admin > Hidden tabs / Feature locks / Paywalls includes Docs. That controls Inner Docs, Google Docs, Slides, and Sheets together.
+Admin > Hidden tabs / Feature locks / Paywalls includes Docs. That controls Google Docs, Slides, and Sheets together.
 
 ## Uploads
 

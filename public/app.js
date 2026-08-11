@@ -106,7 +106,6 @@ const viewRoutes = {
   profile: "/profile",
   store: "/store",
   files: "/files",
-  docs: "/docs",
   googleDocs: "/google-docs",
   googleSlides: "/slides",
   googleSheets: "/sheets",
@@ -1018,6 +1017,7 @@ function showApp() {
 }
 
 function showView(viewName, options = {}) {
+  if (viewName === "docs") viewName = "googleDocs";
   if (!viewRoutes[viewName]) viewName = "dashboard";
   if (viewName === "domain" && !isOwner()) viewName = "dashboard";
   if (viewName === "admin" && !isOwner()) viewName = "dashboard";
@@ -3529,7 +3529,7 @@ function onboardingGuideForRole(role) {
         { title: "Use rooms and messages", detail: "Switch rooms, read announcements, and keep public chats on topic.", view: "messages", action: "Open messages" },
         { title: "Use DMs carefully", detail: "Create DMs or group chats with accepted friends, send files, links, and call when available.", view: "dms", action: "Open DMs" },
         { title: "Review reports if enabled", detail: "If the owner admin gives moderation tools, use the available reports/logs area to mark issues reviewed." },
-        { title: "Share docs", detail: "Use Google Docs/Slides/Sheets for main work and Inner Docs as experimental shared notes.", view: "googleDocs", action: "Google Docs" },
+        { title: "Share docs", detail: "Use Google Docs/Slides/Sheets for your documents, decks, and spreadsheets inside Inner.", view: "googleDocs", action: "Google Docs" },
       ],
     };
   }
@@ -3541,7 +3541,7 @@ function onboardingGuideForRole(role) {
       { title: "Add friends", detail: "Same-grade users show by default. Search exact username, email, or phone to find someone outside your grade.", view: "friends", action: "Find friends" },
       { title: "Use messages and DMs", detail: "Use Messages for rooms and DMs for private or group conversations with accepted friends.", view: "messages", action: "Open messages" },
       { title: "Upload and share files", detail: "Use Files for photos, videos, audio, and documents. Turn on Private if only you and admins should see it.", view: "files", action: "Open files" },
-      { title: "Use Docs, Slides, and Sheets", detail: "Use Google Docs/Slides/Sheets for school work. Inner Docs is experimental and saved inside Inner.", view: "googleDocs", action: "Open Docs" },
+      { title: "Use Docs, Slides, and Sheets", detail: "Use Google Docs/Slides/Sheets for school work directly inside Inner.", view: "googleDocs", action: "Open Docs" },
     ],
   };
 }
@@ -7028,6 +7028,7 @@ function previewText(value) {
 
 function viewFromPath() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  if (path === "/docs") return "googleDocs";
   return Object.entries(viewRoutes).find(([, route]) => route === path)?.[0] || "";
 }
 

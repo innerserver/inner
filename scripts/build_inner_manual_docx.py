@@ -94,7 +94,7 @@ def build():
         "The Dashboard has a role-based guide after login.",
         "The HTML manual is available in the app at /tutorials.html.",
         "Normal users should not see Admin, HMD, or Domain tabs.",
-        "Inner Docs stays experimental while Google Docs, Slides, and Sheets are the main work tools.",
+        "Google Docs, Slides, and Sheets are the main document tools inside Inner.",
     ])
 
     add_heading(doc, "Creating or Requesting an Account", 1)
@@ -137,7 +137,6 @@ def build():
         ("Google Docs", "Create and edit documents inside Inner.", "If Google blocks sign-in in the frame, open full tab once, then return."),
         ("Google Slides", "Create and edit presentations inside Inner.", "Files save in the user's Google account."),
         ("Google Sheets", "Create and edit spreadsheets inside Inner.", "Works like the Chess embedded app tab."),
-        ("Inner Docs", "Experimental built-in docs, slides, and notes saved inside Inner.", "Use for testing until fully upgraded."),
         ("Browser", "Open allowed sites inside Inner and send links to friends/groups.", "Admin block/allow rules apply through Inner's browser route."),
     ]
     for row in rows:

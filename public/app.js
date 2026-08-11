@@ -605,7 +605,7 @@ function bindEvents() {
     fillShareLink(game.url, game.name || "Game", "app");
   });
   if (els.openGoogleWorkspaceButton) els.openGoogleWorkspaceButton.addEventListener("click", () => openGoogleWorkspaceFullTab());
-  if (els.newGoogleWorkspaceButton) els.newGoogleWorkspaceButton.addEventListener("click", () => openGoogleWorkspaceInApp(state.googleWorkspaceKind, true));
+  if (els.newGoogleWorkspaceButton) els.newGoogleWorkspaceButton.addEventListener("click", () => openGoogleWorkspaceFullTab(state.googleWorkspaceKind, true));
   if (els.shareGoogleWorkspaceButton) els.shareGoogleWorkspaceButton.addEventListener("click", () => shareGoogleWorkspace());
   document.querySelectorAll("[data-google-kind]").forEach((button) => {
     button.addEventListener("click", () => openGoogleWorkspaceInApp(button.dataset.googleKind || "docs"));
@@ -1023,6 +1023,7 @@ async function loadState() {
   connectSocket();
   flushPendingSends();
   joinInviteFromUrl();
+  shareLinkFromUrl();
 }
 
 function showLogin(message = "") {
@@ -1272,13 +1273,14 @@ function openPublicBrowser(event) {
   if (!url) return notify("Enter a search or website link");
   if (els.publicBrowserUrl) els.publicBrowserUrl.value = url;
   if (els.publicBrowserFrame) els.publicBrowserFrame.src = `/api/browser/frame?public=1&url=${encodeURIComponent(url)}`;
-  if (els.publicBrowserStatus) els.publicBrowserStatus.textContent = "Opening through Inner browser. Network-level blocks still apply.";
+  if (els.publicBrowserStatus) els.publicBrowserStatus.textContent = "Previewing through Inner. If the site looks broken, press Full tab to open the real site.";
 }
 
 function openPublicBrowserFullTab() {
   const url = normalizePublicBrowserUrl((els.publicBrowserUrl && els.publicBrowserUrl.value) || (els.publicBrowserFrame && els.publicBrowserFrame.src) || "");
   if (!url) return notify("Open or enter a website first");
-  window.open(`/api/browser/frame?public=1&url=${encodeURIComponent(url)}`, "_blank", "noopener");
+  window.open(url, "_blank", "noopener");
+  if (els.publicBrowserStatus) els.publicBrowserStatus.textContent = "Opened the real site in a full tab. Use this for Google, login pages, videos, and blocked frames.";
 }
 
 function sharePublicBrowserLink() {
@@ -1350,10 +1352,13 @@ function openGoogleWorkspaceInApp(kind, create = false) {
   notify(`${config.title} opened in the Workspace tab`);
 }
 
-function openGoogleWorkspaceFullTab(kind = state.googleWorkspaceKind) {
+function openGoogleWorkspaceFullTab(kind = state.googleWorkspaceKind, create = false) {
   const config = googleWorkspaceConfig(kind);
-  const current = els.googleWorkspaceFrame && els.googleWorkspaceFrame.src ? els.googleWorkspaceFrame.src : config.home;
+  const current = create ? config.create : (els.googleWorkspaceFrame && els.googleWorkspaceFrame.src ? els.googleWorkspaceFrame.src : config.home);
   window.open(current || config.home, "_blank", "noopener");
+  if (els.googleWorkspaceNote) {
+    els.googleWorkspaceNote.textContent = `${config.label} opened in a real tab. This avoids Google's iframe sign-in/editing block.`;
+  }
 }
 
 function shareGoogleWorkspace(kind = state.googleWorkspaceKind) {
@@ -1376,7 +1381,7 @@ function syncGoogleWorkspaceControls() {
     button.setAttribute("aria-selected", active ? "true" : "false");
   });
   if (els.googleWorkspaceNote) {
-    els.googleWorkspaceNote.textContent = `${config.label} is selected. If Google blocks sign-in or editing inside the frame, use Open full tab once, then return here.`;
+    els.googleWorkspaceNote.textContent = `${config.label} is selected. Google often blocks editing/sign-in inside frames; use Open full tab or the helper extension for the reliable path.`;
   }
 }
 
@@ -2069,6 +2074,22 @@ function joinInviteFromUrl() {
   const nextSearch = params.toString();
   history.replaceState({}, "", `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}${location.hash || ""}`);
   joinInviteCode(invite, { silent: true });
+}
+
+function shareLinkFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const rawUrl = params.get("shareUrl");
+  if (!rawUrl) return;
+  const url = normalizeExternalUrl(rawUrl);
+  if (!url) return;
+  const title = String(params.get("shareTitle") || "Shared link").slice(0, 120);
+  const type = String(params.get("shareType") || "link").slice(0, 30);
+  params.delete("shareUrl");
+  params.delete("shareTitle");
+  params.delete("shareType");
+  const nextSearch = params.toString();
+  history.replaceState({}, "", `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}${location.hash || ""}`);
+  fillShareLink(url, title, type);
 }
 
 async function createStoreItem(event) {

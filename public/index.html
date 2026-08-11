@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-50-games-account-tab-final" />
+    <link rel="stylesheet" href="/styles.css?v=inner-51-google-extension-browser-final" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -436,7 +436,7 @@
           <div class="section-header">
             <div>
               <h2>Google Workspace</h2>
-              <p>Docs, Slides, and Sheets in one app tab. Google may require full-tab sign-in before the frame works.</p>
+              <p>Docs, Slides, and Sheets launcher. Google sign-in/editing works best in a real tab or with the Inner Google helper extension.</p>
             </div>
             <div class="button-row">
               <button id="openGoogleWorkspaceButton" class="primary-button compact-button" type="button">Open full tab</button>
@@ -449,7 +449,7 @@
             <button id="googleSlidesModeButton" class="secondary-button compact-button" type="button" data-google-kind="slides">Slides</button>
             <button id="googleSheetsModeButton" class="secondary-button compact-button" type="button" data-google-kind="sheets">Sheets</button>
           </div>
-          <p id="googleWorkspaceNote" class="panel-note google-embed-note">Docs is selected. If Google blocks sign-in or editing inside the frame, use Open full tab once, then return here.</p>
+          <p id="googleWorkspaceNote" class="panel-note google-embed-note">Docs is selected. If Google blocks sign-in or editing inside the frame, use Open full tab or install the helper extension from extensions/inner-google-helper.</p>
           <iframe
             id="googleWorkspaceFrame"
             class="embedded-app-frame google-app-frame"
@@ -464,7 +464,7 @@
           <div class="section-header">
             <div>
               <h2>Browser</h2>
-              <p>Open normal sites and share links with accepted friends.</p>
+              <p>Preview simple pages inside Inner, or open login-heavy sites in a real tab.</p>
             </div>
           </div>
           <form id="publicBrowserForm" class="upload-bar invite-join-bar public-browser-bar">
@@ -485,7 +485,7 @@
             <select id="publicBrowserShareTarget" aria-label="Browser share target"></select>
             <button id="publicBrowserSendButton" class="secondary-button" type="button">Send in Inner</button>
           </div>
-          <p id="publicBrowserStatus" class="panel-note">Private from other users; admin-audited. Inner Browser opens reachable sites through the app. Admin browser rules and network filters still apply.</p>
+          <p id="publicBrowserStatus" class="panel-note">Private from other users; admin-audited. Embedded preview works for simple pages. Use Full tab for Google, Instagram, sign-in pages, videos, and sites that block frames.</p>
           <iframe id="publicBrowserFrame" class="embedded-app-frame" title="Public browser" referrerpolicy="strict-origin-when-cross-origin"></iframe>
         </section>
 
@@ -837,8 +837,8 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-50-games-account-tab-final" defer></script>
-    <script src="/app.js?v=inner-50-games-account-tab-final" defer></script>
-    <script src="/force-logout.js?v=inner-50-games-account-tab-final" defer></script>
+    <script src="/session-guard.js?v=inner-51-google-extension-browser-final" defer></script>
+    <script src="/app.js?v=inner-51-google-extension-browser-final" defer></script>
+    <script src="/force-logout.js?v=inner-51-google-extension-browser-final" defer></script>
   </body>
 </html>

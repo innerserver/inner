@@ -1565,6 +1565,7 @@ async function uploadOneFile(file, category, options = {}) {
     method: "POST",
     credentials: "same-origin",
     headers: {
+      "x-inner-csrf": "1",
       "x-file-name": encodeURIComponent(file.name),
       "x-file-type": file.type || "application/octet-stream",
       "x-file-category": category || "document",
@@ -8056,6 +8057,9 @@ async function api(path, options = {}) {
     credentials: "same-origin",
     headers: options.headers || {},
   };
+  if (!["GET", "HEAD", "OPTIONS"].includes(String(init.method || "GET").toUpperCase())) {
+    init.headers = { ...init.headers, "x-inner-csrf": "1" };
+  }
 
   if (options.json !== undefined) {
     init.headers = { ...init.headers, "Content-Type": "application/json" };

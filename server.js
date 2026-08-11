@@ -92,6 +92,7 @@ const messageRateLimits = new Map();
 const banExpiryTimers = new Map();
 let backblazeAuthCache = null;
 let backblazeBucketCache = null;
+const requestRateLimits = new Map();
 const serverStartedAt = new Date().toISOString();
 const persistence = {
   mode: "local",
@@ -255,7 +256,7 @@ async function main() {
   const server = createInnerServer((req, res) => {
     route(req, res).catch((error) => {
       console.error(error);
-      json(res, 500, { error: "Internal server error" });
+      json(res, error.statusCode || 500, { error: error.publicMessage || (error.statusCode ? error.message : "Internal server error") });
     });
   });
 
@@ -765,12 +766,35 @@ async function ensureJson(file, fallback) {
 }
 
 async function route(req, res) {
+  applySecurityHeaders(req, res);
+  if (!["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"].includes(req.method)) {
+    return text(res, 405, "Method not allowed");
+  }
+  if (String(req.url || "").length > 4096) {
+    return text(res, 414, "Request URL is too long");
+  }
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    return res.end();
+  }
   if (shouldRedirectToHttps(req)) {
     return redirectToHttps(req, res);
   }
 
-  const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
-  const pathname = decodeURIComponent(requestUrl.pathname);
+  let requestUrl;
+  let pathname;
+  try {
+    requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
+    pathname = decodeURIComponent(requestUrl.pathname);
+  } catch {
+    return text(res, 400, "Bad request");
+  }
+  const rateError = checkRequestRate(req, requestUrl);
+  if (rateError) return json(res, 429, { error: rateError });
+  if (pathname.startsWith("/api/") && !csrfSafeRequest(req)) {
+    await addSystemLog("security.csrf.blocked", "system", { path: pathname, method: req.method, origin: req.headers.origin || "", referer: req.headers.referer || "" }, req);
+    return json(res, 403, { error: "Security check failed. Refresh Inner and try again." });
+  }
 
   if (req.method === "GET" && pathname === "/") {
     return serveStatic(res, path.join(PUBLIC_DIR, "index.html"));
@@ -4293,6 +4317,82 @@ function sessionCookie(value, req, maxAgeSeconds = null) {
   return parts.join("; ");
 }
 
+function applySecurityHeaders(req, res) {
+  res.setHeader("Content-Security-Policy", [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "media-src 'self' blob: data: https:",
+    "font-src 'self' data:",
+    "connect-src 'self' https://*.backblazeb2.com https://*.cloudinary.com https://api.cloudinary.com",
+    "frame-src 'self' https:",
+    "form-action 'self'",
+    "upgrade-insecure-requests",
+  ].join("; "));
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(self), display-capture=(self), payment=()");
+  if (isHttpsRequest(req)) res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+}
+
+function csrfSafeRequest(req) {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return true;
+  if (req.headers["x-inner-csrf"] !== "1") return false;
+  const origin = String(req.headers.origin || "").trim();
+  const referer = String(req.headers.referer || "").trim();
+  const requestOrigin = requestOriginFromHeaders(req);
+  if (origin && origin !== requestOrigin) return false;
+  if (!origin && referer) {
+    try {
+      if (new URL(referer).origin !== requestOrigin) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+function requestOriginFromHeaders(req) {
+  const proto = isHttpsRequest(req) ? "https" : "http";
+  const host = String(req.headers.host || `${HOST}:${PORT}`).toLowerCase();
+  return `${proto}://${host}`;
+}
+
+function checkRequestRate(req, requestUrl) {
+  const pathname = requestUrl.pathname || "/";
+  const ip = getClientIp(req) || "unknown";
+  const unsafe = !["GET", "HEAD", "OPTIONS"].includes(req.method);
+  const strict = pathname === "/api/login" || pathname === "/api/signup" || pathname === "/api/account-requests";
+  if (strict) return rateLimitBucket(`strict:${ip}:${pathname}`, 20, 10 * 60 * 1000);
+  if (unsafe && pathname.startsWith("/api/")) return rateLimitBucket(`write:${ip}`, 240, 60 * 1000);
+  if (pathname.startsWith("/api/")) return rateLimitBucket(`api:${ip}`, 900, 60 * 1000);
+  return "";
+}
+
+function rateLimitBucket(key, limit, windowMs) {
+  const now = Date.now();
+  const bucket = requestRateLimits.get(key) || { count: 0, resetAt: now + windowMs };
+  if (bucket.resetAt <= now) {
+    bucket.count = 0;
+    bucket.resetAt = now + windowMs;
+  }
+  bucket.count += 1;
+  requestRateLimits.set(key, bucket);
+  if (requestRateLimits.size > 5000) pruneRateLimitBuckets(now);
+  return bucket.count > limit ? "Too many requests. Slow down and try again." : "";
+}
+
+function pruneRateLimitBuckets(now = Date.now()) {
+  for (const [key, bucket] of requestRateLimits) {
+    if (!bucket || bucket.resetAt <= now) requestRateLimits.delete(key);
+  }
+}
+
 function isHttpsRequest(req) {
   if (req.socket && req.socket.encrypted) return true;
   const forwarded = firstForwardedValue(req.headers["x-forwarded-proto"]).toLowerCase();
@@ -6551,9 +6651,22 @@ function verifyPassword(password, passwordRecord) {
 }
 
 async function readJsonBody(req) {
-  const body = await readBody(req, MAX_JSON_BYTES);
+  let body;
+  try {
+    body = await readBody(req, MAX_JSON_BYTES);
+  } catch (error) {
+    error.statusCode = String(error.message || "").includes("too large") ? 413 : 400;
+    error.publicMessage = error.message || "Bad request body";
+    throw error;
+  }
   if (!body.trim()) return {};
-  return JSON.parse(body);
+  try {
+    return JSON.parse(body);
+  } catch (error) {
+    error.statusCode = 400;
+    error.publicMessage = "Invalid JSON body";
+    throw error;
+  }
 }
 
 function readBody(req, maxBytes) {

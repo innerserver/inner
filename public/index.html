@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-36-editable-update-version-final" />
+    <link rel="stylesheet" href="/styles.css?v=inner-39-search-guide-final" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -92,7 +92,9 @@
           <button class="nav-button" type="button" data-view="profile">Profile</button>
           <button class="nav-button" type="button" data-view="store">Store</button>
           <button class="nav-button" type="button" data-view="files">Files</button>
-          <button class="nav-button" type="button" data-view="docs">Docs</button>
+          <button class="nav-button" type="button" data-view="docs">Inner Docs</button>
+          <button class="nav-button" type="button" data-view="googleDocs">Google Docs</button>
+          <button class="nav-button" type="button" data-view="googleSlides">Slides</button>
           <button class="nav-button" type="button" data-view="browser">Browser</button>
           <button class="nav-button" type="button" data-view="chess">Chess</button>
           <button class="nav-button" type="button" data-view="voice">Voice</button>
@@ -417,8 +419,8 @@
         <section id="docsView" class="view embedded-app-view">
           <div class="section-header">
             <div>
-              <h2>Docs</h2>
-              <p>Write, format, save, and share Inner cloud docs with accepted friends.</p>
+              <h2>Inner Docs</h2>
+              <p>Experimental Inner cloud docs. Use Google Docs or Slides for the main full editor.</p>
             </div>
           </div>
           <div class="settings-grid docs-grid">
@@ -463,6 +465,52 @@
               <p id="innerDocWordCount" class="panel-note doc-word-count">0 words</p>
             </form>
           </div>
+        </section>
+
+        <section id="googleDocsView" class="view embedded-app-view google-workspace-view">
+          <div class="section-header">
+            <div>
+              <h2>Google Docs</h2>
+              <p>Create and edit Google documents inside Inner when Google allows embedded access.</p>
+            </div>
+            <div class="button-row">
+              <button id="openGoogleDocsButton" class="primary-button compact-button" type="button">Open full tab</button>
+              <button id="newGoogleDocButton" class="secondary-button compact-button" type="button">New doc</button>
+              <button id="shareGoogleDocsButton" class="ghost-light-button compact-button" type="button">Share link</button>
+            </div>
+          </div>
+          <p class="panel-note google-embed-note">If Google sign-in or editing is blocked in the frame, use Open full tab. Your Google files still save in your Google account.</p>
+          <iframe
+            id="googleDocsFrame"
+            class="embedded-app-frame google-app-frame"
+            src="https://docs.google.com/document/u/0/"
+            title="Google Docs"
+            allow="clipboard-read; clipboard-write; fullscreen"
+            referrerpolicy="strict-origin-when-cross-origin"
+          ></iframe>
+        </section>
+
+        <section id="googleSlidesView" class="view embedded-app-view google-workspace-view">
+          <div class="section-header">
+            <div>
+              <h2>Slides</h2>
+              <p>Create and edit Google Slides presentations inside Inner when Google allows embedded access.</p>
+            </div>
+            <div class="button-row">
+              <button id="openGoogleSlidesButton" class="primary-button compact-button" type="button">Open full tab</button>
+              <button id="newGoogleSlidesButton" class="secondary-button compact-button" type="button">New slides</button>
+              <button id="shareGoogleSlidesButton" class="ghost-light-button compact-button" type="button">Share link</button>
+            </div>
+          </div>
+          <p class="panel-note google-embed-note">If Google sign-in or editing is blocked in the frame, use Open full tab. Your presentations still save in your Google account.</p>
+          <iframe
+            id="googleSlidesFrame"
+            class="embedded-app-frame google-app-frame"
+            src="https://docs.google.com/presentation/u/0/"
+            title="Google Slides"
+            allow="clipboard-read; clipboard-write; fullscreen"
+            referrerpolicy="strict-origin-when-cross-origin"
+          ></iframe>
         </section>
 
         <section id="browserView" class="view embedded-app-view">
@@ -612,7 +660,7 @@
 
             <form id="featureLockForm" class="panel-form owner-only hidden">
               <h3>Feature locks</h3>
-              <label>Feature<select id="featureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option><option value="store">Store</option><option value="chess">Chess</option><option value="domain">Domain</option></select></label>
+              <label>Feature<select id="featureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="docs">Docs</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option><option value="store">Store</option><option value="chess">Chess</option><option value="domain">Domain</option></select></label>
               <label>Minutes<input id="featureMinutes" type="number" min="0" max="525600" value="60" /></label>
               <label>Reason<input id="featureReason" maxlength="160" placeholder="optional" /></label>
               <button id="saveFeatureLockButton" class="primary-button" type="submit">Set lock</button>
@@ -622,7 +670,7 @@
             <form id="featureVisibilityForm" class="panel-form owner-only hidden">
               <h3>Hidden tabs</h3>
               <p class="panel-note">Hardcoded owner controls for the admin account. Hidden tabs disappear from member sidebars.</p>
-              <label>Feature<select id="visibilityFeatureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option><option value="store">Store</option><option value="chess">Chess</option><option value="domain">Domain</option></select></label>
+              <label>Feature<select id="visibilityFeatureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="docs">Docs</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option><option value="store">Store</option><option value="chess">Chess</option><option value="domain">Domain</option></select></label>
               <label class="switch-row"><input id="visibilityHidden" type="checkbox" /><span>Hide from normal users</span></label>
               <label>Allowed users<input id="visibilityAllowedUsers" maxlength="300" placeholder="username1, username2" /></label>
               <button id="saveFeatureVisibilityButton" class="primary-button" type="submit">Save hidden tab</button>
@@ -631,7 +679,7 @@
             <form id="paywallForm" class="panel-form owner-only hidden">
               <h3>Paywall</h3>
               <p class="panel-note">Choose a Store item as the pass. Mark the user's order paid to unlock the feature.</p>
-              <label>Feature<select id="paywallFeatureName"><option value="all">All / whole app</option><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="store">Store</option><option value="chess">Chess</option><option value="domain">Domain</option></select></label>
+              <label>Feature<select id="paywallFeatureName"><option value="all">All / whole app</option><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="docs">Docs</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="store">Store</option><option value="chess">Chess</option><option value="domain">Domain</option></select></label>
               <label>Store item<select id="paywallItemId"></select></label>
               <label class="switch-row"><input id="paywallEnabled" type="checkbox" /><span>Enable paywall</span></label>
               <label>Message<input id="paywallMessage" maxlength="220" placeholder="Buy the access pass in Store to unlock this." /></label>
@@ -728,7 +776,7 @@
             <div class="status-panel owner-only hidden wide-panel"><h3>AI requests</h3><div id="aiResponseList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>Backups</h3><button id="createBackupButton" class="secondary-button compact-button" type="button">Create backup</button></div><p class="panel-note">Backups save account data, messages, DMs, settings, and file records. Uploaded file contents stay in the data/uploads folder.</p><div id="backupList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Account requests</h3><p class="panel-note">Requests include browser location because users must turn on location for server allocation.</p><div id="accountRequestList" class="account-list"></div></div>
-            <div id="accountManager" class="status-panel account-manager owner-only hidden"><div class="panel-title-row"><h3>Accounts</h3><button id="showAllAccountsButton" class="secondary-button compact-button" type="button">Show all</button><input id="accountSearchInput" class="compact-search" maxlength="80" placeholder="Type a username/email/IP/grade to show accounts" autocomplete="off" /></div><p class="panel-note">Admin/HMD/dev accounts show by default except the hardcoded admin. Search to find specific accounts, grade, IP, device, or use Show all.</p><div id="accountList" class="account-list compact-account-list"></div></div>
+            <div id="accountManager" class="status-panel account-manager owner-only hidden"><div class="panel-title-row account-search-row"><h3>Accounts</h3><button id="showAllAccountsButton" class="secondary-button compact-button" type="button">Show all</button><select id="accountGradeFilter" class="compact-search" aria-label="Filter accounts by grade"><option value="">All grades</option><option value="6">Grade 6</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option><option value="none">No grade</option></select><input id="accountSearchInput" class="compact-search" maxlength="120" placeholder="Search username, display name, email, phone, IP, device, role" autocomplete="off" /></div><p class="panel-note">Admin/HMD/dev accounts show by default. Use grade filter, search, or Show all to display member accounts.</p><div id="accountList" class="account-list compact-account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Live IP tracking</h3><p class="panel-note">Shows active sessions first, then latest login/IP data for accounts.</p><div id="liveIpList" class="account-list compact-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Reports</h3><div id="reportList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>Moderation logs</h3><button id="exportModerationLogsButton" class="secondary-button compact-button" type="button">Export</button></div><div id="moderationLogList" class="account-list"></div></div>
@@ -824,8 +872,8 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-36-editable-update-version-final" defer></script>
-    <script src="/app.js?v=inner-36-editable-update-version-final" defer></script>
-    <script src="/force-logout.js?v=inner-36-editable-update-version-final" defer></script>
+    <script src="/session-guard.js?v=inner-39-search-guide-final" defer></script>
+    <script src="/app.js?v=inner-39-search-guide-final" defer></script>
+    <script src="/force-logout.js?v=inner-39-search-guide-final" defer></script>
   </body>
 </html>

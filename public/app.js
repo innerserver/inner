@@ -14,10 +14,12 @@ const state = {
   people: [],
   friendCandidates: [],
   friendSearch: "",
+  friendGradeFilter: "",
   friendSearchTimer: 0,
   selectedDmUser: "",
   adminDmFilter: "all",
   accountSearch: "",
+  accountGradeFilter: "",
   accountShowAll: false,
   logSearch: "",
   logDate: "",
@@ -105,6 +107,8 @@ const viewRoutes = {
   store: "/store",
   files: "/files",
   docs: "/docs",
+  googleDocs: "/google-docs",
+  googleSlides: "/slides",
   browser: "/browser",
   chess: "/chess",
   voice: "/voice",
@@ -182,6 +186,16 @@ function cacheElements() {
     "storeView",
     "filesView",
     "docsView",
+    "googleDocsView",
+    "googleSlidesView",
+    "googleDocsFrame",
+    "googleSlidesFrame",
+    "openGoogleDocsButton",
+    "newGoogleDocButton",
+    "shareGoogleDocsButton",
+    "openGoogleSlidesButton",
+    "newGoogleSlidesButton",
+    "shareGoogleSlidesButton",
     "docsToggleListButton",
     "newInnerDocButton",
     "deleteInnerDocButton",
@@ -354,6 +368,7 @@ function cacheElements() {
     "createAccountForm",
     "accountManager",
     "showAllAccountsButton",
+    "accountGradeFilter",
     "accountSearchInput",
     "accountList",
     "currentPassword",
@@ -557,6 +572,12 @@ function bindEvents() {
   els.deleteDmGroupButton.addEventListener("click", deleteCurrentDmGroup);
   if (els.shareLinkForm) els.shareLinkForm.addEventListener("submit", shareLinkToFriends);
   if (els.shareChessButton) els.shareChessButton.addEventListener("click", () => fillShareLink(currentChessUrl(), "ChessVerse", "app"));
+  if (els.openGoogleDocsButton) els.openGoogleDocsButton.addEventListener("click", () => window.open("https://docs.google.com/document/u/0/", "_blank", "noopener"));
+  if (els.newGoogleDocButton) els.newGoogleDocButton.addEventListener("click", () => window.open("https://docs.google.com/document/create", "_blank", "noopener"));
+  if (els.shareGoogleDocsButton) els.shareGoogleDocsButton.addEventListener("click", () => fillShareLink("https://docs.google.com/document/u/0/", "Google Docs", "doc"));
+  if (els.openGoogleSlidesButton) els.openGoogleSlidesButton.addEventListener("click", () => window.open("https://docs.google.com/presentation/u/0/", "_blank", "noopener"));
+  if (els.newGoogleSlidesButton) els.newGoogleSlidesButton.addEventListener("click", () => window.open("https://docs.google.com/presentation/create", "_blank", "noopener"));
+  if (els.shareGoogleSlidesButton) els.shareGoogleSlidesButton.addEventListener("click", () => fillShareLink("https://docs.google.com/presentation/u/0/", "Google Slides", "slides"));
   if (els.docsToggleListButton) els.docsToggleListButton.addEventListener("click", toggleDocsList);
   if (els.newInnerDocButton) els.newInnerDocButton.addEventListener("click", newInnerDoc);
   if (els.deleteInnerDocButton) els.deleteInnerDocButton.addEventListener("click", deleteInnerDoc);
@@ -593,6 +614,11 @@ function bindEvents() {
     });
   }
   if (els.friendGradeSearchButton) els.friendGradeSearchButton.addEventListener("click", searchFriendsByGrade);
+  if (els.friendGradeSearch) {
+    els.friendGradeSearch.addEventListener("change", () => {
+      state.friendGradeFilter = els.friendGradeSearch.value || "";
+    });
+  }
   els.profileForm.addEventListener("submit", saveProfile);
   els.profileTheme.addEventListener("change", () => {
     applyProfileTheme(els.profileTheme.value);
@@ -635,6 +661,13 @@ function bindEvents() {
     state.accountShowAll = false;
     renderUsers();
   });
+  if (els.accountGradeFilter) {
+    els.accountGradeFilter.addEventListener("change", () => {
+      state.accountGradeFilter = els.accountGradeFilter.value || "";
+      state.accountShowAll = false;
+      renderUsers();
+    });
+  }
   if (els.showAllAccountsButton) {
     els.showAllAccountsButton.addEventListener("click", () => {
       state.accountShowAll = !state.accountShowAll;
@@ -960,6 +993,11 @@ function showView(viewName, options = {}) {
   document.querySelectorAll(".view").forEach((view) => {
     view.classList.toggle("active", view.id === `${viewName}View`);
   });
+  if (viewName === "docs" && window.matchMedia("(max-width: 720px)").matches) {
+    window.setTimeout(() => {
+      if (els.innerDocPage) els.innerDocPage.scrollIntoView({ block: "nearest" });
+    }, 0);
+  }
   if (window.matchMedia("(max-width: 920px)").matches) closeSidebar();
 }
 
@@ -3922,9 +3960,12 @@ function renderFriends() {
   );
   if (els.friendState) {
     const search = String(state.friendSearch || "").trim();
+    const grade = String(state.friendGradeFilter || "").trim();
     els.friendState.textContent = search
-      ? (search.startsWith("grade:") ? `Showing grade ${search.slice(6)} candidates you are allowed to add.` : "Exact username/email/phone search can find people outside your grade.")
-      : "Same-grade people show here. Search exact username, email, or phone for anyone else.";
+      ? "Exact username/email/phone search can find people outside your grade."
+      : grade
+        ? `Showing grade ${grade} candidates you are allowed to add.`
+        : "Same-grade people show here. Search exact username, email, or phone for anyone else.";
   }
 
   els.friendList.replaceChildren();
@@ -3972,21 +4013,22 @@ function renderFriends() {
 
 function friendCandidatePeople() {
   const search = String(state.friendSearch || "").trim();
+  const gradeFilter = String(state.friendGradeFilter || "").trim();
   const currentGrade = gradeOf(state.user);
-  const people = search ? state.friendCandidates : state.people;
+  const people = search || gradeFilter ? state.friendCandidates : state.people;
   return (people || [])
     .filter((person) => {
       if (!person || !person.username || person.banned) return false;
       if (person.username === state.user.username) return false;
       if (isOwner()) return true;
-      if (search) return true;
+      if (search || gradeFilter) return true;
       return currentGrade && gradeOf(person) === currentGrade;
     })
     .sort((a, b) => String(a.displayName || a.username).localeCompare(String(b.displayName || b.username)));
 }
 
 async function loadFriendCandidates() {
-  const query = String(state.friendSearch || "").trim();
+  const query = String(state.friendSearch || "").trim() || (state.friendGradeFilter ? `grade:${state.friendGradeFilter}` : "");
   if (!query) {
     state.friendCandidates = [];
     renderFriends();
@@ -4004,8 +4046,9 @@ async function loadFriendCandidates() {
 function searchFriendsByGrade() {
   const grade = els.friendGradeSearch ? els.friendGradeSearch.value : "";
   if (!grade) return notify("Choose a grade first");
-  state.friendSearch = `grade:${grade}`;
-  if (els.friendSearchInput) els.friendSearchInput.value = state.friendSearch;
+  state.friendGradeFilter = grade;
+  state.friendSearch = "";
+  if (els.friendSearchInput) els.friendSearchInput.value = "";
   loadFriendCandidates();
 }
 
@@ -4773,6 +4816,9 @@ function renderUsers() {
   if (document.activeElement !== els.accountSearchInput) {
     els.accountSearchInput.value = state.accountSearch || "";
   }
+  if (els.accountGradeFilter && document.activeElement !== els.accountGradeFilter) {
+    els.accountGradeFilter.value = state.accountGradeFilter || "";
+  }
 
   els.resetUser.replaceChildren(
     ...state.users.map((user) => {
@@ -4789,8 +4835,8 @@ function renderUsers() {
   if (els.showAllAccountsButton) {
     els.showAllAccountsButton.textContent = state.accountShowAll ? "Hide all" : "Show all";
   }
-  if (!String(state.accountSearch || "").trim() && !state.accountShowAll && !visibleUsers.length) {
-    els.accountList.append(emptyBlock("Public admin accounts show here. Search a username, email, role, IP, or device to show more accounts."));
+  if (!String(state.accountSearch || "").trim() && !String(state.accountGradeFilter || "").trim() && !state.accountShowAll && !visibleUsers.length) {
+    els.accountList.append(emptyBlock("Public admin accounts show here. Search a username/email/phone/IP/device or choose a grade to show more accounts."));
     return;
   }
   if (!state.users.length) {
@@ -6142,24 +6188,44 @@ async function deleteUser(username) {
 
 function filterUsersForAdmin(users) {
   const term = String(state.accountSearch || "").trim().toLowerCase();
-  if (state.accountShowAll) return users || [];
-  if (!term) {
-    return (users || []).filter((user) => {
+  const gradeFilter = normalizeClientGrade(state.accountGradeFilter || "");
+  const noGradeFilter = String(state.accountGradeFilter || "") === "none";
+  const list = users || [];
+  const matchesGrade = (user) => {
+    if (!gradeFilter && !noGradeFilter) return true;
+    const profile = state.profiles[user.username] || {};
+    const grade = normalizeClientGrade(user.grade || profile.grade || "");
+    return noGradeFilter ? !grade : grade === gradeFilter;
+  };
+  const matchesSearch = (user) => {
+    if (!term) return true;
+    const profile = state.profiles[user.username] || {};
+    const contact = typeof user.contact === "object" && user.contact ? user.contact : {};
+    return searchableText({
+      username: user.username,
+      displayName: profile.displayName,
+      email: user.email || contact.email,
+      phone: user.phone || contact.phone,
+      role: user.role,
+      grade: user.grade || profile.grade,
+      lastLoginIp: user.lastLoginIp,
+      lastLoginDevice: user.lastLoginDevice,
+      sourceIp: user.sourceIp,
+      sourceDevice: user.sourceDevice,
+      createdBy: user.createdBy,
+      banReason: user.banReason,
+      approximateLocation: user.lastLoginApproximateLocation,
+    }).includes(term);
+  };
+  if (state.accountShowAll) return list.filter((user) => matchesGrade(user) && matchesSearch(user));
+  if (!term && !gradeFilter && !noGradeFilter) {
+    return list.filter((user) => {
       const role = String(user.role || "member").toLowerCase();
       const username = String(user.username || "").toLowerCase();
       return username !== "admin" && ["admin", "hmd", "dev"].includes(role);
     });
   }
-  return (users || []).filter((user) => {
-    const profile = state.profiles[user.username] || {};
-    return searchableText({
-      ...user,
-      profile,
-      lastLoginDevice: user.lastLoginDevice || "",
-      grade: user.grade || profile.grade || "",
-      banReason: user.banReason || "",
-    }).includes(term);
-  });
+  return list.filter((user) => matchesGrade(user) && matchesSearch(user));
 }
 
 function filteredSystemLogs() {
@@ -6429,6 +6495,7 @@ function featureLabel(feature) {
     plugins: "Plugins",
     store: "Store",
     chess: "Chess",
+    docs: "Docs",
     domain: "Domain",
   };
   return labels[feature] || feature;
@@ -6442,6 +6509,9 @@ function viewFeature(viewName) {
     profile: "profiles",
     store: "store",
     files: "files",
+    docs: "docs",
+    googleDocs: "docs",
+    googleSlides: "docs",
     chess: "chess",
     voice: "voice",
     screen: "screen",

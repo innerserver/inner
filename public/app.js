@@ -70,6 +70,10 @@ const state = {
   aiConfigured: false,
   ws: null,
   reconnectTimer: null,
+  healthTimer: null,
+  wsReconnectDelay: 1400,
+  lastHealthOkAt: 0,
+  lastHealthError: "",
   wsPingTimer: null,
   wsOutbox: [],
   wsEverConnected: false,
@@ -1012,6 +1016,7 @@ function fallbackAccountLocation(reason) {
 async function handleLogout() {
   state.loggedIn = false;
   leaveVoice();
+  stopHealthMonitor();
   closeSocket();
   stopShare({ silent: true });
   await api("/api/logout", { method: "POST" }).catch(() => {});
@@ -1068,6 +1073,7 @@ async function loadState() {
   showApp();
   showView(state.activeView, { updateHistory: false });
   renderAll();
+  startHealthMonitor();
   connectSocket();
   flushPendingSends();
   joinInviteFromUrl();
@@ -1086,6 +1092,7 @@ function showLogin(message = "") {
   }
   els.appView.classList.add("hidden");
   els.loginError.textContent = message;
+  stopHealthMonitor();
   setConnection("Offline");
   const focusTarget = isAccountEntryRoute()
     ? (String(state.settings.signupMode || "request") === "open" ? els.signupUsername : els.requestUsername)
@@ -1967,20 +1974,76 @@ async function resetUserPassword(event) {
   if (!isOwner()) return notify("Admin access required");
 
   try {
+    const selectedUsername = els.resetUser ? els.resetUser.value : "";
+    const tempPassword = els.resetPassword ? els.resetPassword.value : "";
     const data = await api("/api/users/reset-password", {
       method: "POST",
       json: {
-        username: els.resetUser.value,
-        nextPassword: els.resetPassword.value,
+        username: selectedUsername,
+        nextPassword: tempPassword,
       },
     });
     state.users = data.users || state.users;
+    if (els.resetPasswordResult) {
+      els.resetPasswordResult.textContent = `Temporary password for ${selectedUsername}: ${tempPassword}`;
+    }
     els.resetPassword.value = "";
     renderUsers();
     notify("Password reset");
   } catch (error) {
     notify(error.message);
   }
+}
+
+function renderPasswordResetOptions() {
+  if (!els.resetUser) return;
+  const previous = els.resetUser.value;
+  const term = String(els.resetAccountSearch ? els.resetAccountSearch.value : "").trim().toLowerCase();
+  const users = (state.users || [])
+    .filter((user) => !term || userMatchesAccountSearch(user, term))
+    .sort((a, b) => String(a.username || "").localeCompare(String(b.username || "")));
+  els.resetUser.replaceChildren(
+    ...users.map((user) => {
+      const contact = typeof user.contact === "object" && user.contact ? user.contact : {};
+      const option = document.createElement("option");
+      option.value = user.username;
+      option.textContent = [
+        `${user.username} (${user.role || "member"})`,
+        user.grade ? `grade ${user.grade}` : "",
+        user.email || contact.email || "",
+        user.phone || contact.phone || "",
+      ].filter(Boolean).join(" - ");
+      return option;
+    })
+  );
+  if (users.some((user) => user.username === previous)) {
+    els.resetUser.value = previous;
+  }
+  if (els.resetPasswordButton) els.resetPasswordButton.disabled = users.length === 0;
+  if (els.resetPasswordResult && term && !users.length) {
+    els.resetPasswordResult.textContent = "No account matches that reset search.";
+  }
+}
+
+function generateResetPassword() {
+  if (!els.resetPassword) return;
+  const password = generateTemporaryPassword();
+  els.resetPassword.value = password;
+  if (els.resetPasswordResult) {
+    const username = els.resetUser && els.resetUser.value ? els.resetUser.value : "selected account";
+    els.resetPasswordResult.textContent = `Generated temp password for ${username}: ${password}`;
+  }
+}
+
+function generateTemporaryPassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const bytes = new Uint8Array(14);
+  if (window.crypto && window.crypto.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 }
 
 async function createAccount(event) {
@@ -2625,6 +2688,7 @@ function connectSocket() {
     return;
   }
   closeSocket();
+  setConnection(state.lastHealthOkAt ? "Running" : "Connecting");
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
   state.ws = ws;
@@ -2632,6 +2696,7 @@ function connectSocket() {
   ws.addEventListener("open", () => {
     const wasReconnect = state.wsEverConnected;
     state.wsEverConnected = true;
+    state.wsReconnectDelay = 1400;
     setConnection("Live");
     sendWs({ type: "client:network", network: browserNetworkInfo() });
     flushWsOutbox();
@@ -2647,13 +2712,15 @@ function connectSocket() {
     if (state.ws !== ws) return;
     clearInterval(state.wsPingTimer);
     state.wsPingTimer = null;
-    setConnection("Offline");
+    setConnection(state.lastHealthOkAt ? "Running" : "Reconnecting");
     if (state.loggedIn) {
       clearTimeout(state.reconnectTimer);
-      state.reconnectTimer = setTimeout(connectSocket, 1600);
+      const delay = Math.min(state.wsReconnectDelay || 1400, 12000);
+      state.wsReconnectDelay = Math.min(Math.round(delay * 1.45), 12000);
+      state.reconnectTimer = setTimeout(connectSocket, delay);
     }
   });
-  ws.addEventListener("error", () => setConnection("Offline"));
+  ws.addEventListener("error", () => setConnection(state.lastHealthOkAt ? "Running" : "Reconnecting"));
   ws.addEventListener("message", (event) => {
     try {
       handleSocketMessage(JSON.parse(event.data));
@@ -2677,6 +2744,41 @@ function closeSocket() {
   state.voicePeers = [];
   state.peerLocations.clear();
   renderPeers();
+}
+
+function startHealthMonitor() {
+  stopHealthMonitor();
+  checkServerHealth({ silent: true });
+  state.healthTimer = window.setInterval(() => checkServerHealth({ silent: true }), 12000);
+}
+
+function stopHealthMonitor() {
+  clearInterval(state.healthTimer);
+  state.healthTimer = null;
+}
+
+async function checkServerHealth(options = {}) {
+  if (!state.loggedIn && options.requireLogin !== false) return false;
+  try {
+    const response = await fetch("/api/health", {
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Health failed (${response.status})`);
+    state.lastHealthOkAt = Date.now();
+    state.lastHealthError = "";
+    if (!isRealtimeReady()) {
+      setConnection(data.serverEnabled === false ? "Paused" : "Running");
+    }
+    return true;
+  } catch (error) {
+    state.lastHealthError = error.message || "Health check failed";
+    if (!isRealtimeReady()) setConnection("Reconnecting");
+    if (!options.silent) notify(state.lastHealthError);
+    return false;
+  }
 }
 
 function handleSocketMessage(message) {
@@ -3557,6 +3659,7 @@ function isRealtimeReady() {
 async function ensureRealtimeReady(label = "live features") {
   if (isRealtimeReady()) return true;
   setConnection("Connecting");
+  await checkServerHealth({ silent: true, requireLogin: false });
   if (!state.ws || state.ws.readyState === WebSocket.CLOSED || state.ws.readyState === WebSocket.CLOSING) {
     connectSocket();
   }
@@ -3565,7 +3668,8 @@ async function ensureRealtimeReady(label = "live features") {
     if (isRealtimeReady()) return true;
     await sleep(120);
   }
-  notify(`Live connection is still reconnecting. ${label} needs the server opened from its live URL.`);
+  const serverPart = state.lastHealthOkAt ? "The server API is running, but live WebSocket is still reconnecting." : "The server is still waking up or unreachable.";
+  notify(`${serverPart} ${label} needs live mode.`);
   return false;
 }
 
@@ -5485,15 +5589,7 @@ function renderUsers() {
     els.accountGradeFilter.value = state.accountGradeFilter || "";
   }
 
-  els.resetUser.replaceChildren(
-    ...state.users.map((user) => {
-      const option = document.createElement("option");
-      option.value = user.username;
-      option.textContent = `${user.username} (${user.role})`;
-      return option;
-    })
-  );
-  els.resetPasswordButton.disabled = state.users.length === 0;
+  renderPasswordResetOptions();
 
   els.accountList.replaceChildren();
   const visibleUsers = filterUsersForAdmin(state.users);
@@ -5695,6 +5791,8 @@ function renderAccountDetails() {
     user.passwordStatus ? `Password ${user.passwordStatus}` : user.passwordSet ? "Password hash saved" : "Password missing",
     "Plaintext password is not stored. Use Reset password to set a new one.",
     user.lastPasswordResetAt ? `Password reset ${formatDate(user.lastPasswordResetAt)}` : "",
+    user.lastPasswordResetBy ? `Reset by ${user.lastPasswordResetBy}` : "",
+    user.mustChangePassword ? "Must change password on next login" : "",
   ];
   els.accountDetailBody.append(adminCard("Account", user.banned ? "Banned" : "Active", identityLines));
 
@@ -8111,11 +8209,20 @@ function setConnection(value) {
   const custom = state.settings.customizations || {};
   const normalized = String(value || "").toLowerCase();
   const connected = ["live", "connected", "online"].includes(normalized);
-  const disconnected = ["offline", "disconnected", "reconnecting"].includes(normalized);
+  const running = ["running", "server running", "api"].includes(normalized);
+  const paused = ["paused", "server paused"].includes(normalized);
+  const reconnecting = ["reconnecting", "connecting"].includes(normalized);
+  const disconnected = ["offline", "disconnected"].includes(normalized);
   if (connected) {
     els.connectionStatus.textContent = custom.connectedLabel || "Live";
+  } else if (running) {
+    els.connectionStatus.textContent = custom.runningLabel || "Server running";
+  } else if (paused) {
+    els.connectionStatus.textContent = custom.pausedLabel || "Server paused";
+  } else if (reconnecting) {
+    els.connectionStatus.textContent = custom.reconnectingLabel || "Connecting...";
   } else if (disconnected) {
-    els.connectionStatus.textContent = custom.disconnectedLabel || "Running, live reconnecting";
+    els.connectionStatus.textContent = custom.disconnectedLabel || "Offline";
   } else {
     els.connectionStatus.textContent = value;
   }

@@ -4463,3 +4463,49 @@ body.standalone-page .tutorial-shell {
     min-height: 360px;
   }
 }
+
+/* v65: iPhone upload release controls and toast polish. */
+#uploadForm #fileReleaseRoom,
+#uploadForm #fileReleaseAt {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+@media (max-width: 920px) {
+  #filesView.view.active {
+    padding-bottom: 110px !important;
+  }
+
+  #uploadForm .file-picker-summary {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #uploadForm #fileReleaseAt {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: 46px !important;
+    min-height: 46px !important;
+    padding: 8px 10px !important;
+    line-height: 1.2 !important;
+    font-size: 0.95rem !important;
+    overflow: hidden !important;
+  }
+
+  .toast {
+    left: 14px !important;
+    right: 14px !important;
+    bottom: max(14px, env(safe-area-inset-bottom)) !important;
+    width: auto !important;
+    max-width: none !important;
+    padding: 12px 14px !important;
+    font-size: 0.95rem !important;
+    line-height: 1.25 !important;
+    overflow-wrap: anywhere;
+  }
+}

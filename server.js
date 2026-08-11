@@ -2986,7 +2986,9 @@ async function routeApi(req, res, requestUrl) {
       ...users[index],
       passwordHash: hashPassword(nextPassword),
       passwordPreset: "",
+      mustChangePassword: true,
       lastPasswordResetAt: new Date().toISOString(),
+      lastPasswordResetBy: user.username,
       updatedAt: new Date().toISOString(),
       updatedBy: user.username,
     };
@@ -4489,7 +4491,9 @@ function safeUser(user, viewer = null) {
     shadowMuted: Boolean(user.shadowMuted),
     passwordSet: Boolean(user.passwordHash),
     passwordStatus: user.passwordHash ? "hashed" : "missing",
+    mustChangePassword: Boolean(user.mustChangePassword),
     lastPasswordResetAt: user.lastPasswordResetAt || "",
+    lastPasswordResetBy: user.lastPasswordResetBy || "",
   };
   if (ownerView) {
     safe.lastLoginAt = user.lastLoginAt || "";

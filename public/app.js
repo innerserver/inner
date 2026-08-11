@@ -109,6 +109,7 @@ const viewRoutes = {
   docs: "/docs",
   googleDocs: "/google-docs",
   googleSlides: "/slides",
+  googleSheets: "/sheets",
   browser: "/browser",
   chess: "/chess",
   voice: "/voice",
@@ -197,14 +198,19 @@ function cacheElements() {
     "docsView",
     "googleDocsView",
     "googleSlidesView",
+    "googleSheetsView",
     "googleDocsFrame",
     "googleSlidesFrame",
+    "googleSheetsFrame",
     "openGoogleDocsButton",
     "newGoogleDocButton",
     "shareGoogleDocsButton",
     "openGoogleSlidesButton",
     "newGoogleSlidesButton",
     "shareGoogleSlidesButton",
+    "openGoogleSheetsButton",
+    "newGoogleSheetsButton",
+    "shareGoogleSheetsButton",
     "docsToggleListButton",
     "newInnerDocButton",
     "deleteInnerDocButton",
@@ -227,6 +233,10 @@ function cacheElements() {
     "publicBrowserOpenButton",
     "publicBrowserFullTabButton",
     "publicBrowserShareButton",
+    "publicBrowserShareTitle",
+    "publicBrowserShareType",
+    "publicBrowserShareTarget",
+    "publicBrowserSendButton",
     "publicBrowserStatus",
     "publicBrowserFrame",
     "chessView",
@@ -584,12 +594,15 @@ function bindEvents() {
   els.deleteDmGroupButton.addEventListener("click", deleteCurrentDmGroup);
   if (els.shareLinkForm) els.shareLinkForm.addEventListener("submit", shareLinkToFriends);
   if (els.shareChessButton) els.shareChessButton.addEventListener("click", () => fillShareLink(currentChessUrl(), "ChessVerse", "app"));
-  if (els.openGoogleDocsButton) els.openGoogleDocsButton.addEventListener("click", () => window.open("https://docs.google.com/document/u/0/", "_blank", "noopener"));
-  if (els.newGoogleDocButton) els.newGoogleDocButton.addEventListener("click", () => window.open("https://docs.google.com/document/create", "_blank", "noopener"));
-  if (els.shareGoogleDocsButton) els.shareGoogleDocsButton.addEventListener("click", () => fillShareLink("https://docs.google.com/document/u/0/", "Google Docs", "doc"));
-  if (els.openGoogleSlidesButton) els.openGoogleSlidesButton.addEventListener("click", () => window.open("https://docs.google.com/presentation/u/0/", "_blank", "noopener"));
-  if (els.newGoogleSlidesButton) els.newGoogleSlidesButton.addEventListener("click", () => window.open("https://docs.google.com/presentation/create", "_blank", "noopener"));
-  if (els.shareGoogleSlidesButton) els.shareGoogleSlidesButton.addEventListener("click", () => fillShareLink("https://docs.google.com/presentation/u/0/", "Google Slides", "slides"));
+  if (els.openGoogleDocsButton) els.openGoogleDocsButton.addEventListener("click", () => openGoogleWorkspaceFullTab("docs"));
+  if (els.newGoogleDocButton) els.newGoogleDocButton.addEventListener("click", () => openGoogleWorkspaceInApp("docs", true));
+  if (els.shareGoogleDocsButton) els.shareGoogleDocsButton.addEventListener("click", () => shareGoogleWorkspace("docs"));
+  if (els.openGoogleSlidesButton) els.openGoogleSlidesButton.addEventListener("click", () => openGoogleWorkspaceFullTab("slides"));
+  if (els.newGoogleSlidesButton) els.newGoogleSlidesButton.addEventListener("click", () => openGoogleWorkspaceInApp("slides", true));
+  if (els.shareGoogleSlidesButton) els.shareGoogleSlidesButton.addEventListener("click", () => shareGoogleWorkspace("slides"));
+  if (els.openGoogleSheetsButton) els.openGoogleSheetsButton.addEventListener("click", () => openGoogleWorkspaceFullTab("sheets"));
+  if (els.newGoogleSheetsButton) els.newGoogleSheetsButton.addEventListener("click", () => openGoogleWorkspaceInApp("sheets", true));
+  if (els.shareGoogleSheetsButton) els.shareGoogleSheetsButton.addEventListener("click", () => shareGoogleWorkspace("sheets"));
   if (els.docsToggleListButton) els.docsToggleListButton.addEventListener("click", toggleDocsList);
   if (els.newInnerDocButton) els.newInnerDocButton.addEventListener("click", newInnerDoc);
   if (els.deleteInnerDocButton) els.deleteInnerDocButton.addEventListener("click", deleteInnerDoc);
@@ -610,6 +623,7 @@ function bindEvents() {
   if (els.publicBrowserForm) els.publicBrowserForm.addEventListener("submit", openPublicBrowser);
   if (els.publicBrowserFullTabButton) els.publicBrowserFullTabButton.addEventListener("click", openPublicBrowserFullTab);
   if (els.publicBrowserShareButton) els.publicBrowserShareButton.addEventListener("click", sharePublicBrowserLink);
+  if (els.publicBrowserSendButton) els.publicBrowserSendButton.addEventListener("click", sendPublicBrowserLink);
   els.dmVoiceCallButton.addEventListener("click", () => startDmCall(false));
   els.dmVideoCallButton.addEventListener("click", () => startDmCall(true));
   els.dmShareScreenButton.addEventListener("click", () => startDmScreenShare());
@@ -1223,7 +1237,7 @@ function openPublicBrowser(event) {
 function openPublicBrowserFullTab() {
   const url = normalizePublicBrowserUrl((els.publicBrowserUrl && els.publicBrowserUrl.value) || (els.publicBrowserFrame && els.publicBrowserFrame.src) || "");
   if (!url) return notify("Open or enter a website first");
-  window.open(url, "_blank", "noopener");
+  window.open(`/api/browser/frame?public=1&url=${encodeURIComponent(url)}`, "_blank", "noopener");
 }
 
 function sharePublicBrowserLink() {
@@ -1232,12 +1246,76 @@ function sharePublicBrowserLink() {
   fillShareLink(url, "Browser link", "link");
 }
 
+async function sendPublicBrowserLink() {
+  const url = normalizePublicBrowserUrl((els.publicBrowserUrl && els.publicBrowserUrl.value) || "");
+  const target = els.publicBrowserShareTarget ? els.publicBrowserShareTarget.value : "";
+  const title = String((els.publicBrowserShareTitle && els.publicBrowserShareTitle.value) || "Browser link").trim().slice(0, 120);
+  const type = String((els.publicBrowserShareType && els.publicBrowserShareType.value) || "link").trim().toLowerCase();
+  if (!url) return notify("Open or enter a website first");
+  if (!target) return notify("Choose an accepted friend or group");
+  if (els.shareLinkUrl) els.shareLinkUrl.value = url;
+  if (els.shareLinkTitle) els.shareLinkTitle.value = title;
+  if (els.shareLinkType) els.shareLinkType.value = type;
+  if (els.shareLinkTarget) els.shareLinkTarget.value = target;
+  await shareLinkToFriends();
+  if (els.publicBrowserShareTitle) els.publicBrowserShareTitle.value = "";
+}
+
 function normalizePublicBrowserUrl(rawUrl) {
   const value = String(rawUrl || "").trim();
   if (!value) return "";
   if (/^https?:\/\//i.test(value)) return normalizeExternalUrl(value);
   if (/^[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(value)) return normalizeExternalUrl(`https://${value}`);
   return `https://www.google.com/search?q=${encodeURIComponent(value)}`;
+}
+
+function googleWorkspaceConfig(kind) {
+  const configs = {
+    docs: {
+      home: "https://docs.google.com/document/u/0/",
+      create: "https://docs.google.com/document/create",
+      title: "Google Docs",
+      type: "doc",
+      frame: els.googleDocsFrame,
+      view: "googleDocs",
+    },
+    slides: {
+      home: "https://docs.google.com/presentation/u/0/",
+      create: "https://docs.google.com/presentation/create",
+      title: "Google Slides",
+      type: "slides",
+      frame: els.googleSlidesFrame,
+      view: "googleSlides",
+    },
+    sheets: {
+      home: "https://docs.google.com/spreadsheets/u/0/",
+      create: "https://docs.google.com/spreadsheets/create",
+      title: "Google Sheets",
+      type: "sheet",
+      frame: els.googleSheetsFrame,
+      view: "googleSheets",
+    },
+  };
+  return configs[kind] || configs.docs;
+}
+
+function openGoogleWorkspaceInApp(kind, create = false) {
+  const config = googleWorkspaceConfig(kind);
+  if (config.frame) config.frame.src = create ? config.create : config.home;
+  showView(config.view);
+  notify(`${config.title} opened inside Inner`);
+}
+
+function openGoogleWorkspaceFullTab(kind) {
+  const config = googleWorkspaceConfig(kind);
+  const current = config.frame && config.frame.src ? config.frame.src : config.home;
+  window.open(current || config.home, "_blank", "noopener");
+}
+
+function shareGoogleWorkspace(kind) {
+  const config = googleWorkspaceConfig(kind);
+  const url = normalizeExternalUrl((config.frame && config.frame.src) || config.home);
+  fillShareLink(url || config.home, config.title, config.type);
 }
 
 async function saveBrowserPolicy(event) {
@@ -3451,7 +3529,7 @@ function onboardingGuideForRole(role) {
         { title: "Use rooms and messages", detail: "Switch rooms, read announcements, and keep public chats on topic.", view: "messages", action: "Open messages" },
         { title: "Use DMs carefully", detail: "Create DMs or group chats with accepted friends, send files, links, and call when available.", view: "dms", action: "Open DMs" },
         { title: "Review reports if enabled", detail: "If the owner admin gives moderation tools, use the available reports/logs area to mark issues reviewed." },
-        { title: "Share docs", detail: "Use Google Docs/Slides for main work and Inner Docs as experimental shared notes.", view: "googleDocs", action: "Google Docs" },
+        { title: "Share docs", detail: "Use Google Docs/Slides/Sheets for main work and Inner Docs as experimental shared notes.", view: "googleDocs", action: "Google Docs" },
       ],
     };
   }
@@ -3463,7 +3541,7 @@ function onboardingGuideForRole(role) {
       { title: "Add friends", detail: "Same-grade users show by default. Search exact username, email, or phone to find someone outside your grade.", view: "friends", action: "Find friends" },
       { title: "Use messages and DMs", detail: "Use Messages for rooms and DMs for private or group conversations with accepted friends.", view: "messages", action: "Open messages" },
       { title: "Upload and share files", detail: "Use Files for photos, videos, audio, and documents. Turn on Private if only you and admins should see it.", view: "files", action: "Open files" },
-      { title: "Use Docs and Slides", detail: "Use Google Docs/Slides for school work. Inner Docs is experimental and saved inside Inner.", view: "googleDocs", action: "Open Docs" },
+      { title: "Use Docs, Slides, and Sheets", detail: "Use Google Docs/Slides/Sheets for school work. Inner Docs is experimental and saved inside Inner.", view: "googleDocs", action: "Open Docs" },
     ],
   };
 }
@@ -6459,8 +6537,10 @@ function renderShareTargets() {
   const people = shareTargetPeople();
   fillShareTargetSelect(els.shareLinkTarget, people);
   fillShareTargetSelect(els.innerDocShareTarget, people);
+  fillShareTargetSelect(els.publicBrowserShareTarget, people);
   if (els.shareLinkButton) els.shareLinkButton.disabled = !people.length;
   if (els.shareInnerDocButton) els.shareInnerDocButton.disabled = !people.length;
+  if (els.publicBrowserSendButton) els.publicBrowserSendButton.disabled = !people.length;
 }
 
 function fillShareTargetSelect(select, people) {
@@ -6660,6 +6740,7 @@ function viewFeature(viewName) {
     docs: "docs",
     googleDocs: "docs",
     googleSlides: "docs",
+    googleSheets: "docs",
     chess: "chess",
     voice: "voice",
     screen: "screen",

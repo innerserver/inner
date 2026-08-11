@@ -2,7 +2,7 @@
 
 ## Start Here
 
-Inner is a private workspace app with accounts, rooms, DMs, uploads, voice/screen tools, admin controls, HMD tools, Google Docs/Slides tabs, and experimental Inner Docs.
+Inner is a private workspace app with accounts, rooms, DMs, uploads, voice/screen tools, admin controls, HMD tools, Google Docs/Slides/Sheets tabs, and experimental Inner Docs.
 
 Use the hardcoded owner admin account for full controls. Normal users should not see Admin, HMD, or Domain tabs.
 
@@ -18,7 +18,7 @@ The full standalone handout is `TUTORIALS_BY_ACCOUNT_TYPE.md`.
 
 Every account type gets a role-specific guide on the Dashboard:
 
-- Member: profile, friends, messages, uploads, Google Docs/Slides.
+- Member: profile, friends, messages, uploads, Google Docs/Slides/Sheets.
 - Moderator: profile, rooms/messages, DMs, moderation expectations, docs.
 - Admin: server settings, account requests, announcements, feature controls, backups.
 - HMD/dev: metrics, storage, localhost tools, bots/plugins, automod, recovery work.
@@ -64,15 +64,16 @@ Use Friends > Grade dropdown > Search grade to list allowed candidates for that 
 
 ## Docs
 
-Inner now has three document areas:
+Inner now has four document areas:
 
 - Inner Docs: experimental built-in editor saved to Inner.
 - Google Docs: embedded Google Docs launcher/editor.
 - Slides: embedded Google Slides launcher/editor.
+- Sheets: embedded Google Sheets launcher/editor.
 
-Google may block sign-in or editing inside the iframe. If that happens, use Open full tab or New doc/slides. Files save in the user's Google account.
+Google may block sign-in or editing inside the iframe. If that happens, use Open full tab once, then return to Inner. Files save in the user's Google account.
 
-Admin > Hidden tabs / Feature locks / Paywalls includes Docs. That controls Inner Docs, Google Docs, and Slides together.
+Admin > Hidden tabs / Feature locks / Paywalls includes Docs. That controls Inner Docs, Google Docs, Slides, and Sheets together.
 
 ## Uploads
 
@@ -147,18 +148,29 @@ Admin > Active locks temporarily disables a feature.
 
 Admin > Paywall rules can require a paid Store item before access.
 
-## Google Docs and Slides
+## Google Docs, Slides, and Sheets
 
 Tabs:
 
 - Google Docs: `/google-docs`
 - Slides: `/slides`
+- Sheets: `/sheets`
 
 Buttons:
 
 - Open full tab: opens Google in a browser tab.
-- New doc/slides: starts a new Google file.
+- New doc/slides/sheet in app: starts a new Google file inside the Inner panel when Google permits it.
 - Share link: sends the Google app link through Inner share tools.
+
+## Browser Rules and Sharing
+
+Admin > Browser rules controls what normal users can open in the Inner Browser.
+
+- Blocked sites are rejected by Inner.
+- Allow-only mode lets users open only approved domains.
+- The public Browser full-tab fallback still opens through Inner's browser route, so rules still apply.
+
+From Browser, users can pick a friend/group and press **Send in Inner** to share the current link as a link, doc, slides, sheet, or app item.
 
 ## Backups
 

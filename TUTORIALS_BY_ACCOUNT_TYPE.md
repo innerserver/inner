@@ -21,8 +21,9 @@ Location permission is used for server allocation and admin review. If a browser
 4. DMs: create direct messages or group chats with accepted friends only.
 5. Messages: chat in rooms, reply/react without losing your typing area, and use the jump-to-bottom button when needed.
 6. Files: upload public or private files. Private files are visible to the uploader and admins.
-7. Google Docs / Slides: open the embedded Google tools inside Inner, create work, and share links with friends.
+7. Google Docs / Slides / Sheets: open the embedded Google tools inside Inner, create work, and share links with friends.
 8. Inner Docs: experimental built-in docs and slides saved inside Inner.
+9. Browser: open allowed sites inside Inner and send the current link to accepted friends or groups.
 
 ## Moderator / Teacher
 
@@ -30,7 +31,7 @@ Location permission is used for server allocation and admin review. If a browser
 2. Messages and DMs: help keep chats clean.
 3. Reports: review reported content if the owner/admin gives access.
 4. Users: teacher/moderator accounts should not be created through open signup. Admins assign moderator role manually.
-5. Docs and Slides: use Google Docs/Slides for main work and Inner Docs for experimental shared notes.
+5. Docs, Slides, and Sheets: use Google Workspace for main work and Inner Docs for experimental shared notes.
 
 ## Admin
 
@@ -42,7 +43,7 @@ Location permission is used for server allocation and admin review. If a browser
 6. Admin > Feature locks / Paywalls: disable, lock, or paywall app areas.
 7. Admin > Logs and reports: search by account/day, export logs, wipe selected log areas, and mark reports done.
 8. Admin > Backups: create backups and rollback/reinstate from saved backups.
-9. Admin > Browser / Apps: manage custom app links, browser permissions, Chess link, Google Docs, and Slides access.
+9. Admin > Browser / Apps: manage custom app links, browser permissions, Chess link, Google Docs, Slides, and Sheets access.
 10. Admin > Scaling: review service categories, links, rough monthly costs, and scaling notes.
 
 ## HMD / Dev

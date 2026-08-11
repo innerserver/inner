@@ -1320,6 +1320,15 @@ textarea:focus {
   background: var(--surface-muted);
 }
 
+.public-browser-share-bar {
+  grid-template-columns: minmax(180px, 1.4fr) minmax(120px, 0.6fr) minmax(180px, 1fr) auto;
+}
+
+.public-browser-share-bar input,
+.public-browser-share-bar select {
+  min-width: 0;
+}
+
 .account-head,
 .account-actions {
   display: flex;
@@ -3770,6 +3779,7 @@ textarea {
 
   #uploadForm.upload-bar,
   .public-browser-bar,
+  .public-browser-share-bar,
   #friendRequestForm.upload-bar {
     grid-template-columns: minmax(0, 1fr) !important;
   }

@@ -392,6 +392,8 @@ function cacheElements() {
     "quickServerOnLabel",
     "quickServerOffLabel",
     "quickVersionLabel",
+    "quickUpdateTitle",
+    "quickUpdateNote",
     "quickNotice",
     "quickAccent",
     "quickDensity",
@@ -1434,6 +1436,8 @@ async function saveQuickEdit(event) {
           serverOnLabel: els.quickServerOnLabel.value,
           serverOffLabel: els.quickServerOffLabel.value,
           versionLabel: els.quickVersionLabel.value,
+          updateTitle: els.quickUpdateTitle ? els.quickUpdateTitle.value : "",
+          updateNote: els.quickUpdateNote ? els.quickUpdateNote.value : "",
           notice: els.quickNotice.value,
           accent: els.quickAccent.value,
           density: els.quickDensity.value,
@@ -3408,8 +3412,19 @@ function yearlyGradeReminder() {
 function renderDashboardAnnouncements() {
   if (!els.dashboardAnnouncementList) return;
   els.dashboardAnnouncementList.replaceChildren();
+  const custom = state.settings.customizations || {};
+  if (custom.updateTitle || custom.updateNote || custom.versionLabel) {
+    els.dashboardAnnouncementList.append(adminCard(
+      custom.updateTitle || "Update",
+      custom.versionLabel || "Latest",
+      [
+        custom.updateNote || "No update notes added yet.",
+        custom.updatedAt ? `Updated ${formatDate(custom.updatedAt)}${custom.updatedBy ? ` by ${custom.updatedBy}` : ""}` : "",
+      ]
+    ));
+  }
   const items = (state.announcements || []).slice(0, 5);
-  if (!items.length) {
+  if (!items.length && !els.dashboardAnnouncementList.children.length) {
     els.dashboardAnnouncementList.append(emptyBlock("No announcements yet"));
     return;
   }
@@ -4739,6 +4754,8 @@ function renderQuickEdit() {
   els.quickServerOnLabel.value = custom.serverOnLabel || "";
   els.quickServerOffLabel.value = custom.serverOffLabel || "";
   els.quickVersionLabel.value = custom.versionLabel || "";
+  if (els.quickUpdateTitle) els.quickUpdateTitle.value = custom.updateTitle || "";
+  if (els.quickUpdateNote) els.quickUpdateNote.value = custom.updateNote || "";
   els.quickNotice.value = custom.notice || "";
   els.quickAccent.value = /^#[0-9a-f]{6}$/i.test(custom.accent || "") ? custom.accent : "#245c4f";
   els.quickDensity.value = custom.density || "comfortable";

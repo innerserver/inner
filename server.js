@@ -2369,28 +2369,43 @@ async function routeApi(req, res, requestUrl) {
     const username = String(body.username || "").trim();
     if (!username) return json(res, 400, { error: "Choose a user" });
 
-    const users = await readJson(FILES.users, []);
+    const [users, profiles] = await Promise.all([
+      readJson(FILES.users, []),
+      readJson(FILES.profiles, {}),
+    ]);
     const index = users.findIndex((entry) => entry.username.toLowerCase() === username.toLowerCase());
     if (index === -1) return json(res, 404, { error: "User not found" });
 
     const previous = users[index];
     const nextRole = username.toLowerCase() === "admin" ? "admin" : normalizeRole(body.role);
+    const nextGrade = body.grade !== undefined ? normalizeGrade(body.grade) : normalizeGrade(previous.grade || "");
+    const gradeChanged = nextGrade !== normalizeGrade(previous.grade || "");
     if (["hmd", "dev"].includes(nextRole) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
     users[index] = {
       ...previous,
       role: nextRole,
+      grade: nextGrade,
+      gradeUpdatedAt: gradeChanged ? new Date().toISOString() : previous.gradeUpdatedAt || "",
       allowPersistentLogin: Boolean(body.allowPersistentLogin),
       mutedUntil: body.mutedUntil !== undefined ? String(body.mutedUntil || "") : previous.mutedUntil || "",
       shadowMuted: body.shadowMuted !== undefined ? Boolean(body.shadowMuted) : Boolean(previous.shadowMuted),
       updatedAt: new Date().toISOString(),
       updatedBy: user.username,
     };
-    await writeJson(FILES.users, users);
+    profiles[previous.username] = sanitizeProfile({
+      ...defaultProfile(previous.username),
+      ...(profiles[previous.username] || {}),
+      grade: nextGrade,
+      gradeUpdatedAt: users[index].gradeUpdatedAt,
+      updatedAt: new Date().toISOString(),
+    });
+    await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles)]);
     if (previous.role !== nextRole || previous.allowPersistentLogin !== users[index].allowPersistentLogin) {
       expireUserSessions(username);
     }
+    broadcast({ type: "profiles:update", profiles: safeProfiles(profiles, users, user) });
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
-    return json(res, 200, { users: users.map((entry) => safeUser(entry, user)) });
+    return json(res, 200, { users: users.map((entry) => safeUser(entry, user)), profiles: safeProfiles(profiles, users, user) });
   }
 
   if (req.method === "DELETE" && pathname.startsWith("/api/users/")) {

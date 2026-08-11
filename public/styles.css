@@ -3108,3 +3108,249 @@ body {
     background: rgba(0, 0, 0, 0.38) !important;
   }
 }
+
+/* v35 phone polish and Docs editor fix. */
+.account-grade-select {
+  min-height: 34px;
+  min-width: 112px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 800;
+}
+
+@media (max-width: 920px) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden !important;
+  }
+
+  #appView.app:not(.hidden) {
+    height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  #appView .workspace {
+    height: 100dvh !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  #appView .topbar {
+    min-height: 58px !important;
+    grid-template-columns: 46px minmax(0, 1fr) !important;
+    align-items: center !important;
+    padding: 8px 10px !important;
+    gap: 8px !important;
+  }
+
+  #appView .topbar > div:first-of-type {
+    min-width: 0 !important;
+  }
+
+  #appView .topbar .muted-label {
+    font-size: 0.68rem !important;
+  }
+
+  #connectionStatus {
+    display: block;
+    font-size: 0.96rem;
+    line-height: 1.1;
+  }
+
+  #appView .topbar-metrics {
+    grid-column: 1 / -1 !important;
+    display: flex !important;
+    gap: 6px !important;
+    overflow-x: auto !important;
+    padding-bottom: 2px !important;
+  }
+
+  #appView .topbar-metrics span {
+    flex: 0 0 auto;
+    min-height: 30px;
+    padding: 5px 9px;
+    font-size: 0.8rem;
+  }
+
+  #appView .topbar-actions {
+    grid-column: 1 / -1 !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  #appView .topbar-actions button {
+    min-height: 38px !important;
+    padding: 8px !important;
+    font-size: 0.9rem !important;
+  }
+
+  #appView .view.active {
+    height: calc(100dvh - 136px) !important;
+    padding: 10px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+  .section-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 10px !important;
+    margin-bottom: 10px !important;
+  }
+
+  .section-header h2 {
+    font-size: 1.35rem !important;
+    line-height: 1.1 !important;
+  }
+
+  .section-header p {
+    font-size: 0.94rem !important;
+    line-height: 1.28 !important;
+  }
+
+  .button-row,
+  .account-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .button-row button,
+  .account-actions button,
+  .account-actions select {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 40px !important;
+    font-size: 0.88rem !important;
+  }
+
+  .account-card {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 10px !important;
+    padding: 12px !important;
+  }
+
+  .account-head,
+  .account-meta {
+    min-width: 0 !important;
+  }
+
+  .account-meta {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    font-size: 0.86rem !important;
+  }
+}
+
+@media (max-width: 720px) {
+  #docsView.view.active {
+    display: grid !important;
+    grid-template-rows: auto minmax(0, 1fr) !important;
+    height: calc(100dvh - 136px) !important;
+    overflow: hidden !important;
+  }
+
+  #docsView .docs-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: auto minmax(0, 1fr) !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    gap: 8px !important;
+  }
+
+  #docsView.docs-list-collapsed .docs-grid {
+    grid-template-rows: minmax(0, 1fr) !important;
+  }
+
+  #docsView .docs-list-panel {
+    min-height: 0 !important;
+    max-height: 30dvh !important;
+    overflow: hidden !important;
+    padding: 10px !important;
+  }
+
+  #docsView .docs-card-list {
+    max-height: calc(30dvh - 58px) !important;
+    overflow-y: auto !important;
+    display: grid !important;
+    gap: 8px !important;
+  }
+
+  #docsView .docs-doc-card {
+    min-height: 46px !important;
+    padding: 10px !important;
+  }
+
+  #docsView .inner-doc-editor {
+    min-height: 0 !important;
+    height: 100% !important;
+    display: grid !important;
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto !important;
+    gap: 8px !important;
+    padding: 10px !important;
+    overflow: hidden !important;
+  }
+
+  #docsView .doc-editor-toolbar,
+  #docsView .doc-share-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  #docsView .doc-editor-toolbar input,
+  #docsView .doc-editor-toolbar select {
+    grid-column: 1 / -1;
+  }
+
+  #docsView .doc-format-toolbar {
+    display: flex !important;
+    gap: 6px !important;
+    overflow-x: auto !important;
+    padding-bottom: 4px !important;
+  }
+
+  #docsView .doc-tool-button {
+    flex: 0 0 auto !important;
+    min-width: 44px !important;
+    min-height: 38px !important;
+  }
+
+  #docsView .inner-doc-page-wrap {
+    min-height: 0 !important;
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #docsView .inner-doc-page {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 100% !important;
+    padding: 18px !important;
+    font-size: 1rem !important;
+    line-height: 1.55 !important;
+  }
+}
+
+@media (max-width: 420px) {
+  #appView .topbar-actions {
+    grid-template-columns: 1fr !important;
+  }
+
+  .button-row,
+  .account-actions,
+  #docsView .doc-editor-toolbar,
+  #docsView .doc-share-row {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}

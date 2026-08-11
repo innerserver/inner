@@ -4817,6 +4817,16 @@ function renderUsers() {
 
     const actions = document.createElement("div");
     actions.className = "account-actions";
+    const gradeSelect = document.createElement("select");
+    gradeSelect.className = "compact-select account-grade-select";
+    gradeSelect.setAttribute("aria-label", `Grade for ${user.username}`);
+    gradeOptions().forEach((option) => gradeSelect.append(option));
+    gradeSelect.value = normalizeClientGrade(user.grade || "");
+    gradeSelect.disabled = isMainAdmin;
+    const gradeButton = accountButton("Save grade", () =>
+      updateUser(user.username, { grade: gradeSelect.value })
+    );
+    gradeButton.disabled = isMainAdmin;
     const roleButton = accountButton(`Change to ${nextRoleLabel(user.role)}`, () =>
       updateUser(user.username, { role: nextRole(user.role) })
     );
@@ -4836,7 +4846,7 @@ function renderUsers() {
     banDay.disabled = isMainAdmin;
     unban.disabled = isMainAdmin;
     remove.disabled = isMainAdmin || isCurrentUser;
-    actions.append(roleButton, persistentButton, banFive, banShort, banHour, banDay, unban, remove);
+    actions.append(gradeSelect, gradeButton, roleButton, persistentButton, banFive, banShort, banHour, banDay, unban, remove);
 
     item.append(head, meta, actions);
     els.accountList.append(item);
@@ -5997,6 +6007,33 @@ function accountButton(label, onClick) {
   return button;
 }
 
+function gradeOptions() {
+  const grades = [
+    ["", "No grade"],
+    ["6", "Grade 6"],
+    ["7", "Grade 7"],
+    ["8", "Grade 8"],
+    ["9", "Grade 9"],
+    ["10", "Grade 10"],
+    ["11", "Grade 11"],
+    ["12", "Grade 12"],
+    ["college", "College"],
+    ["staff", "Staff"],
+    ["other", "Other"],
+  ];
+  return grades.map(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    return option;
+  });
+}
+
+function normalizeClientGrade(grade) {
+  const value = String(grade || "").trim().toLowerCase();
+  return ["6", "7", "8", "9", "10", "11", "12", "college", "staff", "other"].includes(value) ? value : "";
+}
+
 function nextRole(role) {
   const roles = isDev() ? ["member", "moderator", "admin", "hmd", "dev"] : ["member", "moderator", "admin"];
   const index = roles.indexOf(role);
@@ -6034,6 +6071,10 @@ async function updateUser(username, changes) {
       json: {
         username,
         role: changes.role || existing.role || "member",
+        grade:
+          changes.grade !== undefined
+            ? normalizeClientGrade(changes.grade)
+            : normalizeClientGrade(existing.grade || ""),
         allowPersistentLogin:
           typeof changes.allowPersistentLogin === "boolean"
             ? changes.allowPersistentLogin
@@ -6041,7 +6082,9 @@ async function updateUser(username, changes) {
       },
     });
     state.users = data.users || state.users;
+    state.profiles = data.profiles || state.profiles;
     renderUsers();
+    renderFriends();
     notify("Account updated");
   } catch (error) {
     notify(error.message);

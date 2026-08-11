@@ -2688,7 +2688,7 @@ function connectSocket() {
     return;
   }
   closeSocket();
-  setConnection(state.lastHealthOkAt ? "Running" : "Connecting");
+  setConnection("Not live");
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
   state.ws = ws;
@@ -2712,7 +2712,7 @@ function connectSocket() {
     if (state.ws !== ws) return;
     clearInterval(state.wsPingTimer);
     state.wsPingTimer = null;
-    setConnection(state.lastHealthOkAt ? "Running" : "Reconnecting");
+    setConnection("Not live");
     if (state.loggedIn) {
       clearTimeout(state.reconnectTimer);
       const delay = Math.min(state.wsReconnectDelay || 1400, 12000);
@@ -2720,7 +2720,7 @@ function connectSocket() {
       state.reconnectTimer = setTimeout(connectSocket, delay);
     }
   });
-  ws.addEventListener("error", () => setConnection(state.lastHealthOkAt ? "Running" : "Reconnecting"));
+  ws.addEventListener("error", () => setConnection("Not live"));
   ws.addEventListener("message", (event) => {
     try {
       handleSocketMessage(JSON.parse(event.data));
@@ -2770,12 +2770,12 @@ async function checkServerHealth(options = {}) {
     state.lastHealthOkAt = Date.now();
     state.lastHealthError = "";
     if (!isRealtimeReady()) {
-      setConnection(data.serverEnabled === false ? "Paused" : "Running");
+      setConnection(isRealtimeReady() ? "Live" : "Not live");
     }
     return true;
   } catch (error) {
     state.lastHealthError = error.message || "Health check failed";
-    if (!isRealtimeReady()) setConnection("Reconnecting");
+    if (!isRealtimeReady()) setConnection("Not live");
     if (!options.silent) notify(state.lastHealthError);
     return false;
   }
@@ -8209,23 +8209,19 @@ function setConnection(value) {
   const custom = state.settings.customizations || {};
   const normalized = String(value || "").toLowerCase();
   const connected = ["live", "connected", "online"].includes(normalized);
-  const running = ["running", "server running", "api"].includes(normalized);
-  const paused = ["paused", "server paused"].includes(normalized);
-  const reconnecting = ["reconnecting", "connecting"].includes(normalized);
-  const disconnected = ["offline", "disconnected"].includes(normalized);
   if (connected) {
     els.connectionStatus.textContent = custom.connectedLabel || "Live";
-  } else if (running) {
-    els.connectionStatus.textContent = custom.runningLabel || "Server running";
-  } else if (paused) {
-    els.connectionStatus.textContent = custom.pausedLabel || "Server paused";
-  } else if (reconnecting) {
-    els.connectionStatus.textContent = custom.reconnectingLabel || "Connecting...";
-  } else if (disconnected) {
-    els.connectionStatus.textContent = custom.disconnectedLabel || "Offline";
   } else {
-    els.connectionStatus.textContent = value;
+    els.connectionStatus.textContent = cleanDisconnectedLabel(custom.disconnectedLabel) || "Not live";
   }
+}
+
+function cleanDisconnectedLabel(label) {
+  const value = String(label || "").trim();
+  if (!value) return "";
+  const lower = value.toLowerCase();
+  if (lower.includes("running") || lower.includes("reconnect") || lower.includes("connecting")) return "";
+  return value;
 }
 
 function notify(message) {

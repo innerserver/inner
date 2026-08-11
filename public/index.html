@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-52-account-entry-scroll-final" />
+    <link rel="stylesheet" href="/styles.css?v=inner-55-request-retention-final" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -193,8 +193,9 @@
               Room
               <select id="roomSelect"></select>
             </label>
+            <button id="toggleInviteJoinButton" class="secondary-button compact-button hidden" type="button">Enter invite code</button>
           </div>
-          <form id="inviteJoinForm" class="upload-bar invite-join-bar">
+          <form id="inviteJoinForm" class="upload-bar invite-join-bar hidden">
             <input id="inviteCodeInput" maxlength="80" placeholder="Paste room invite code" autocomplete="off" />
             <button id="joinInviteButton" class="secondary-button" type="submit">Join invite</button>
           </form>
@@ -572,13 +573,18 @@
               <label>Signup mode<select id="signupMode"><option value="request">Request approval</option><option value="open">Open signup</option></select></label>
               <label class="switch-row"><input id="requireContact" type="checkbox" /><span>Require contact details</span></label>
               <label>Report emails<input id="reportEmails" maxlength="300" placeholder="admin@email.com, helper@email.com" /></label>
+              <div class="split-fields">
+                <label>Pending requests show days<input id="requestPendingDays" type="number" min="1" max="90" value="7" /></label>
+                <label>Approved requests show hours<input id="requestApprovedHours" type="number" min="1" max="720" value="48" /></label>
+              </div>
+              <label>Denied login message hours<input id="requestDeclinedLoginHours" type="number" min="1" max="168" value="12" /></label>
               <label>Main game link<input id="chessUrlInput" maxlength="300" placeholder="https://chessverse.co.in/" /></label>
-              <label>Games links<textarea id="gameLinksInput" rows="5" maxlength="2200" placeholder="ChessVerse | https://chessverse.co.in/ | admin, dev&#10;Cool Math | https://www.coolmathgames.com/&#10;Game name | https://site.com/ | username1, username2"></textarea></label>
-              <p class="panel-note">Format: Game name | URL | allowed usernames. Leave the usernames blank for everyone with Games access.</p>
-              <label class="switch-row"><input id="persistentDefaultEnabled" type="checkbox" checked /><span>Persistent login default on</span></label>
-              <label>Persistent grades<input id="persistentGrades" maxlength="160" placeholder="9, 10, 11, staff" /></label>
-              <label>Persistent roles/classes<input id="persistentRoles" maxlength="160" placeholder="member, moderator" /></label>
-              <label>Persistent rooms<input id="persistentRooms" maxlength="300" placeholder="room names or room ids, comma separated" /></label>
+              <label>Secret games / app links<textarea id="gameLinksInput" rows="5" maxlength="2200" placeholder="ChessVerse | https://chessverse.co.in/ | admin, dev&#10;Cool Math | https://www.coolmathgames.com/&#10;Game name | https://site.com/ | username1, username2"></textarea></label>
+              <p class="panel-note">Format: Game name | URL | allowed usernames. Blank usernames means everyone with the Games tab can see it. Filled usernames means only those accounts can see that game.</p>
+              <label class="switch-row"><input id="persistentDefaultEnabled" type="checkbox" checked /><span>Keep users logged in by default</span></label>
+              <label>Keep logged in for grades<input id="persistentGrades" maxlength="160" placeholder="8a, 8b, 9, staff" /></label>
+              <label>Keep logged in for roles/classes<input id="persistentRoles" maxlength="160" placeholder="member, moderator" /></label>
+              <label>Keep logged in for room memberships<input id="persistentRooms" maxlength="300" placeholder="optional room names or room ids" /></label>
               <button id="testEmailButton" class="secondary-button" type="button">Send test email</button>
               <p id="emailStatusText" class="panel-note">Email status is checking.</p>
               <label class="switch-row"><input id="serverEnabled" type="checkbox" /><span>Server enabled</span></label>
@@ -645,7 +651,7 @@
 
             <form id="featureVisibilityForm" class="panel-form owner-only hidden">
               <h3>Hidden tabs</h3>
-              <p class="panel-note">Hardcoded owner controls for the admin account. Hidden tabs disappear from member sidebars.</p>
+              <p class="panel-note">Hide whole tabs from everyone except your owner admin and the usernames you allow. Choose Games here to hide the whole Games tab; use Secret games above to hide only certain games.</p>
               <label>Feature<select id="visibilityFeatureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="docs">Google Workspace</option><option value="browser">Browser</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option><option value="store">Store</option><option value="chess">Games</option><option value="domain">Domain</option><option value="admin">Admin</option><option value="hmd">HMD</option></select></label>
               <label class="switch-row"><input id="visibilityHidden" type="checkbox" /><span>Hide from normal users</span></label>
               <label>Allowed users<input id="visibilityAllowedUsers" maxlength="300" placeholder="username1, username2" /></label>
@@ -849,8 +855,8 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-52-account-entry-scroll-final" defer></script>
-    <script src="/app.js?v=inner-52-account-entry-scroll-final" defer></script>
-    <script src="/force-logout.js?v=inner-52-account-entry-scroll-final" defer></script>
+    <script src="/session-guard.js?v=inner-55-request-retention-final" defer></script>
+    <script src="/app.js?v=inner-55-request-retention-final" defer></script>
+    <script src="/force-logout.js?v=inner-55-request-retention-final" defer></script>
   </body>
 </html>

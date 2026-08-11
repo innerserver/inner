@@ -6,6 +6,7 @@ const state = {
   selectedRoomId: "main",
   messages: [],
   pendingSends: [],
+  messageSending: false,
   replyToMessage: null,
   dms: [],
   pendingDms: [],
@@ -254,6 +255,7 @@ function cacheElements() {
     "hmdNavButton",
     "messageState",
     "roomSelect",
+    "toggleInviteJoinButton",
     "inviteJoinForm",
     "inviteCodeInput",
     "joinInviteButton",
@@ -375,6 +377,9 @@ function cacheElements() {
     "signupMode",
     "requireContact",
     "reportEmails",
+    "requestPendingDays",
+    "requestApprovedHours",
+    "requestDeclinedLoginHours",
     "chessUrlInput",
     "gameLinksInput",
     "persistentDefaultEnabled",
@@ -582,6 +587,7 @@ function bindEvents() {
     updateControls();
   });
   els.inviteJoinForm.addEventListener("submit", joinInvite);
+  if (els.toggleInviteJoinButton) els.toggleInviteJoinButton.addEventListener("click", toggleInviteJoin);
   els.messageForm.addEventListener("submit", sendMessage);
   els.messageList.addEventListener("scroll", () => {
     updateJumpButton(els.messageList, els.messageJumpBottomButton);
@@ -1119,11 +1125,13 @@ function showView(viewName, options = {}) {
 
 async function sendMessage(event) {
   event.preventDefault();
+  if (state.messageSending) return;
   const text = els.messageInput.value.trim();
   const file = els.messageAttachment.files[0];
   if (!text && !file) return;
 
   try {
+    state.messageSending = true;
     els.sendMessageButton.disabled = true;
     const attachment = file ? await uploadChatAttachment(file) : null;
     queueOutgoingMessage({
@@ -1141,6 +1149,7 @@ async function sendMessage(event) {
   } catch (error) {
     notify(error.message);
   } finally {
+    state.messageSending = false;
     updateControls();
   }
 }
@@ -1662,6 +1671,11 @@ function serverSettingsPayload(extra = {}) {
     signupMode: els.signupMode.value,
     requireContact: els.requireContact.checked,
     reportEmails: els.reportEmails.value.split(",").map((entry) => entry.trim()).filter(Boolean),
+    accountRequestRetention: {
+      pendingDays: Number(els.requestPendingDays ? els.requestPendingDays.value || 7 : 7),
+      approvedHours: Number(els.requestApprovedHours ? els.requestApprovedHours.value || 48 : 48),
+      declinedLoginHours: Number(els.requestDeclinedLoginHours ? els.requestDeclinedLoginHours.value || 12 : 12),
+    },
     chessUrl: normalizeExternalUrl(els.chessUrlInput ? els.chessUrlInput.value : ""),
     gameLinks: parseGameLinksInput(els.gameLinksInput ? els.gameLinksInput.value : ""),
     persistentLogin: {
@@ -2095,6 +2109,14 @@ async function joinInvite(event) {
   await joinInviteCode(els.inviteCodeInput.value);
 }
 
+function toggleInviteJoin(forceOpen) {
+  if (!els.inviteJoinForm) return;
+  const open = typeof forceOpen === "boolean" ? forceOpen : els.inviteJoinForm.classList.contains("hidden");
+  els.inviteJoinForm.classList.toggle("hidden", !open);
+  if (els.toggleInviteJoinButton) els.toggleInviteJoinButton.textContent = open ? "Hide code" : "Enter invite code";
+  if (open && els.inviteCodeInput) els.inviteCodeInput.focus();
+}
+
 async function joinInviteCode(rawCode, options = {}) {
   const code = String(rawCode || "").trim();
   if (!code) return notify("Paste an invite code first");
@@ -2104,6 +2126,7 @@ async function joinInviteCode(rawCode, options = {}) {
     state.rooms = data.rooms || state.rooms;
     state.selectedRoomId = data.room ? data.room.id : state.selectedRoomId;
     els.inviteCodeInput.value = "";
+    toggleInviteJoin(false);
     renderRooms();
     renderRoomManager();
     renderMessages();
@@ -2371,7 +2394,7 @@ function gameLinks() {
     }))
     .filter((entry) => entry.name && entry.url);
   const chess = { name: "ChessVerse", url: currentChessUrl() || "https://chessverse.co.in/", allowedUsers: [] };
-  const merged = [...normalized, chess];
+  const merged = normalized.length ? normalized : [chess];
   const seen = new Set();
   return merged.filter((entry) => {
     const key = entry.url.toLowerCase();
@@ -2412,6 +2435,11 @@ function renderGames() {
     state.selectedGameUrl = links[0] ? links[0].url : "";
   }
   els.gameLauncherList.replaceChildren();
+  if (!links.length) {
+    els.gameLauncherList.append(emptyBlock("No games are assigned to your account yet."));
+    if (els.chessFrame) els.chessFrame.removeAttribute("src");
+    return;
+  }
   links.forEach((game) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -5279,6 +5307,10 @@ function renderServer() {
   els.signupMode.value = state.settings.signupMode || "request";
   els.requireContact.checked = state.settings.requireContact !== false;
   els.reportEmails.value = Array.isArray(state.settings.reportEmails) ? state.settings.reportEmails.join(", ") : "";
+  const requestRetention = state.settings.accountRequestRetention || {};
+  if (els.requestPendingDays) els.requestPendingDays.value = requestRetention.pendingDays || 7;
+  if (els.requestApprovedHours) els.requestApprovedHours.value = requestRetention.approvedHours || 48;
+  if (els.requestDeclinedLoginHours) els.requestDeclinedLoginHours.value = requestRetention.declinedLoginHours || 12;
   if (els.chessUrlInput) els.chessUrlInput.value = currentChessUrl();
   if (els.gameLinksInput && document.activeElement !== els.gameLinksInput) {
     els.gameLinksInput.value = gameLinksInputValue(state.settings.gameLinks || []);
@@ -5294,7 +5326,7 @@ function renderServer() {
   if (els.newAccountPersistent) els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
 
   const admin = isOwner();
-  [els.roomNameInput, els.signupMode, els.requireContact, els.reportEmails, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+  [els.roomNameInput, els.signupMode, els.requireContact, els.reportEmails, els.requestPendingDays, els.requestApprovedHours, els.requestDeclinedLoginHours, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
   });
@@ -5640,10 +5672,47 @@ function renderFeatureVisibility() {
     return;
   }
   visibleRules.forEach(([name, rule]) => {
-    els.featureVisibilityList.append(adminCard(featureLabel(name), rule.hidden ? "Hidden" : "Visible", [
+    const card = adminCard(featureLabel(name), rule.hidden ? "Hidden" : "Visible", [
       (rule.allowedUsers || []).length ? `Allowed: ${(rule.allowedUsers || []).join(", ")}` : "No allowed users",
-    ]));
+    ]);
+    const actions = document.createElement("div");
+    actions.className = "account-actions";
+    actions.append(
+      accountButton("Edit", () => editFeatureVisibilityRule(name)),
+      accountButton("Clear", () => clearFeatureVisibilityRule(name))
+    );
+    card.append(actions);
+    els.featureVisibilityList.append(card);
   });
+}
+
+function editFeatureVisibilityRule(feature) {
+  const rules = state.settings.featureVisibility || {};
+  const rule = rules[feature] || { hidden: false, allowedUsers: [] };
+  if (els.visibilityFeatureName) els.visibilityFeatureName.value = feature;
+  if (els.visibilityHidden) els.visibilityHidden.checked = Boolean(rule.hidden);
+  if (els.visibilityAllowedUsers) els.visibilityAllowedUsers.value = Array.isArray(rule.allowedUsers) ? rule.allowedUsers.join(", ") : "";
+  if (els.visibilityAllowedUsers) els.visibilityAllowedUsers.focus();
+}
+
+async function clearFeatureVisibilityRule(feature) {
+  if (!isOwner()) return notify("Hardcoded admin owner access required");
+  const nextVisibility = { ...(state.settings.featureVisibility || {}) };
+  delete nextVisibility[feature];
+  try {
+    const data = await api("/api/settings", {
+      method: "POST",
+      json: {
+        ...serverSettingsPayload(),
+        featureVisibility: nextVisibility,
+      },
+    });
+    state.settings = data.settings || state.settings;
+    renderAll();
+    notify("Hidden tab rule cleared");
+  } catch (error) {
+    notify(error.message);
+  }
 }
 
 function renderPaywalls() {
@@ -5937,6 +6006,12 @@ function renderBackups() {
 function renderAccountRequests() {
   if (!els.accountRequestList || !isOwner()) return;
   els.accountRequestList.replaceChildren();
+  const retention = state.settings.accountRequestRetention || {};
+  els.accountRequestList.append(adminCard("Request cleanup timing", "Managed", [
+    `Pending/reviewing show for ${retention.pendingDays || 7} days`,
+    `Approved show for ${retention.approvedHours || 48} hours`,
+    `Declined login message works for ${retention.declinedLoginHours || 12} hours`,
+  ]));
   if (!state.accountRequests.length) {
     els.accountRequestList.append(emptyBlock("No account requests"));
     return;
@@ -6279,10 +6354,17 @@ function updateControls() {
   els.roomSelect.disabled = !featureAvailable("rooms") && room.id !== "main";
   els.inviteCodeInput.disabled = !invitesEnabled;
   els.joinInviteButton.disabled = !invitesEnabled;
+  if (els.toggleInviteJoinButton) {
+    els.toggleInviteJoinButton.classList.toggle("hidden", !invitesEnabled);
+  }
+  if (!invitesEnabled && els.inviteJoinForm) {
+    els.inviteJoinForm.classList.add("hidden");
+    if (els.toggleInviteJoinButton) els.toggleInviteJoinButton.textContent = "Enter invite code";
+  }
   els.messageInput.disabled = !messagesEnabled;
   els.messageAttachment.disabled = !messagesEnabled;
   els.messageSelfieButton.disabled = !messagesEnabled;
-  els.sendMessageButton.disabled = !messagesEnabled;
+  els.sendMessageButton.disabled = !messagesEnabled || state.messageSending;
   els.dmPeerSelect.disabled = !dmsEnabled && !state.selectedDmUser;
   els.dmInput.disabled = !dmsEnabled;
   els.dmAttachment.disabled = !dmsEnabled;
@@ -6315,6 +6397,7 @@ function updateControls() {
 }
 
 function addMessage(message) {
+  replacePendingWithServerMessage(message);
   if (state.messages.some((entry) => entry.id === message.id)) return;
   message.roomId = message.roomId || "main";
   state.messages.push(message);
@@ -6324,6 +6407,7 @@ function addMessage(message) {
 }
 
 function addDm(dm) {
+  replacePendingWithServerDm(dm);
   if (state.dms.some((entry) => entry.id === dm.id)) return;
   state.dms.push(dm);
   state.dms = state.dms.slice(-500);
@@ -6394,8 +6478,8 @@ async function sendPendingItem(item) {
   item.sending = true;
   try {
     const payload = item.kind === "message"
-      ? { text: item.text, attachment: item.attachment, roomId: item.roomId || "main", parentId: item.parentId || "" }
-      : { to: item.to || "", groupId: item.groupId || "", text: item.text, attachment: item.attachment };
+      ? { text: item.text, attachment: item.attachment, roomId: item.roomId || "main", parentId: item.parentId || "", clientId: item.localId }
+      : { to: item.to || "", groupId: item.groupId || "", text: item.text, attachment: item.attachment, clientId: item.localId };
     const data = await api(item.kind === "message" ? "/api/messages" : "/api/dms", {
       method: "POST",
       json: payload,

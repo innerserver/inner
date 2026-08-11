@@ -4153,11 +4153,25 @@ textarea {
 
 .account-detail-shell {
   max-width: 1120px;
+  min-height: 100dvh;
+  overflow: visible;
+}
+
+body.standalone-page {
+  min-height: 100dvh;
+  overflow-y: auto;
+}
+
+body.standalone-page .tutorial-shell {
+  height: auto;
+  max-height: none;
+  overflow: visible;
 }
 
 .account-detail-page-list {
   display: grid;
   gap: 14px;
+  overflow: visible;
 }
 
 .detail-section {

@@ -403,6 +403,11 @@ async function ensureStorage() {
       roles: [],
       rooms: [],
     },
+    accountRequestRetention: {
+      pendingDays: 7,
+      approvedHours: 48,
+      declinedLoginHours: 12,
+    },
     shutdownAt: "",
     shutdownBy: "",
     updatedAt: new Date().toISOString(),
@@ -686,6 +691,13 @@ async function ensureSettings() {
   }
   if (!Array.isArray(next.reportEmails)) {
     next.reportEmails = REPORT_EMAILS;
+    changed = true;
+  }
+  if (typeof next.accountRequestRetention !== "object" || !next.accountRequestRetention || Array.isArray(next.accountRequestRetention)) {
+    next.accountRequestRetention = defaultAccountRequestRetention();
+    changed = true;
+  } else {
+    next.accountRequestRetention = sanitizeAccountRequestRetention(next.accountRequestRetention);
     changed = true;
   }
   if (typeof next.moderationSettings !== "object" || !next.moderationSettings || Array.isArray(next.moderationSettings)) {
@@ -973,7 +985,7 @@ async function routeApi(req, res, requestUrl) {
       `Browser: ${request.sourceAgent || "unknown"}`,
       `Time: ${request.createdAt}`,
     ].join("\n"));
-    broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
+    broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests, null, settings) });
     return json(res, 201, { request: safeAccountRequest(request) });
   }
 
@@ -1152,7 +1164,7 @@ async function routeApi(req, res, requestUrl) {
       dms: visibleDms.slice(-500),
       dmGroups: safeDmGroups(dmGroups, user),
       files: safeFileRecords(files, user),
-      accountRequests: canManage(user) ? safeAccountRequests(accountRequests, user) : [],
+      accountRequests: canManage(user) ? safeAccountRequests(accountRequests, user, settings) : [],
       store: safeStore(store, user),
       innerDocs: safeInnerDocs(innerDocs, user),
       aiRequests: canManage(user) ? aiRequests.slice(-100) : [],
@@ -1211,6 +1223,16 @@ async function routeApi(req, res, requestUrl) {
     if (automodError) return json(res, 400, { error: automodError });
 
     const messages = await readJson(FILES.messages, []);
+    const duplicateWindowMs = 2500;
+    const lastMessage = [...messages].reverse().find((entry) => entry && entry.user === user.username && (entry.roomId || "main") === roomId);
+    if (lastMessage) {
+      const lastTime = Date.parse(lastMessage.createdAt || "");
+      const sameText = String(lastMessage.text || "") === textValue;
+      const sameAttachment = JSON.stringify(lastMessage.attachment || null) === JSON.stringify(attachment || null);
+      if (sameText && sameAttachment && Number.isFinite(lastTime) && Date.now() - lastTime < duplicateWindowMs) {
+        return json(res, 200, { message: lastMessage, deduped: true });
+      }
+    }
     const message = {
       id: crypto.randomUUID(),
       roomId,
@@ -2325,7 +2347,7 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     const id = String(body.id || "");
     const status = normalizeAccountRequestStatus(body.status);
-    const requests = await readJson(FILES.accountRequests, []);
+    const [requests, settings] = await Promise.all([readJson(FILES.accountRequests, []), readJson(FILES.settings, {})]);
     const index = requests.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "Account request not found" });
     requests[index] = sanitizeAccountRequest({
@@ -2339,8 +2361,8 @@ async function routeApi(req, res, requestUrl) {
     });
     await writeJson(FILES.accountRequests, requests);
     await addSystemLog("account.request.updated", user.username, { requestUsername: requests[index].username, status }, req);
-    broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
-    return json(res, 200, { accountRequests: safeAccountRequests(requests, user), request: safeAccountRequest(requests[index], user) });
+    broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests, null, settings) });
+    return json(res, 200, { accountRequests: safeAccountRequests(requests, user, settings), request: safeAccountRequest(requests[index], user) });
   }
 
   if (req.method === "POST" && pathname === "/api/account-requests/approve") {
@@ -2422,10 +2444,11 @@ async function routeApi(req, res, requestUrl) {
       `Time: ${new Date().toISOString()}`,
     ].join("\n"));
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
-    broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
+    const retentionSettings = await readJson(FILES.settings, {});
+    broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests, null, retentionSettings) });
     return json(res, 201, {
       users: users.map((entry) => safeUser(entry, user)),
-      accountRequests: safeAccountRequests(requests, user),
+      accountRequests: safeAccountRequests(requests, user, retentionSettings),
       user: safeUser(account, user),
       rooms: updatedRooms.length ? safeRoomsForUser(updatedRooms, user) : undefined,
     });
@@ -2713,6 +2736,11 @@ async function routeApi(req, res, requestUrl) {
           : REPORT_EMAILS,
       chessUrl: sanitizeExternalUrl(body.chessUrl) || sanitizeExternalUrl(settings.chessUrl) || "https://chessverse.co.in/",
       gameLinks: sanitizeGameLinks(body.gameLinks !== undefined ? body.gameLinks : settings.gameLinks || []),
+      accountRequestRetention: sanitizeAccountRequestRetention(
+        body.accountRequestRetention && typeof body.accountRequestRetention === "object"
+          ? body.accountRequestRetention
+          : settings.accountRequestRetention || {}
+      ),
       moderationSettings: {
         ...(settings.moderationSettings || {}),
         ...(body.moderationSettings && typeof body.moderationSettings === "object" ? body.moderationSettings : {}),
@@ -4666,18 +4694,19 @@ function safeAccountRequest(request, viewer = null) {
   return result;
 }
 
-function safeAccountRequests(requests, viewer = null) {
+function safeAccountRequests(requests, viewer = null, settings = {}) {
+  const retention = sanitizeAccountRequestRetention(settings.accountRequestRetention || {});
   return (requests || [])
     .map((request) => safeAccountRequest(request, viewer))
     .filter((request) => {
       if (request.status === "declined") return false;
       if (request.status === "approved") {
         const approvedAt = Date.parse(request.approvedAt || request.updatedAt || request.createdAt);
-        return Number.isFinite(approvedAt) ? Date.now() - approvedAt < 48 * 60 * 60 * 1000 : true;
+        return Number.isFinite(approvedAt) ? Date.now() - approvedAt < retention.approvedHours * 60 * 60 * 1000 : true;
       }
       if (request.status === "pending" || request.status === "reviewing") {
         const createdAt = Date.parse(request.createdAt || request.updatedAt);
-        return Number.isFinite(createdAt) ? Date.now() - createdAt < 7 * 24 * 60 * 60 * 1000 : true;
+        return Number.isFinite(createdAt) ? Date.now() - createdAt < retention.pendingDays * 24 * 60 * 60 * 1000 : true;
       }
       return true;
     })
@@ -4699,8 +4728,10 @@ async function requestLoginStatus(usernameValue, passwordValue) {
     };
   }
   if (request.status === "declined") {
+    const settings = await readJson(FILES.settings, {});
+    const retention = sanitizeAccountRequestRetention(settings.accountRequestRetention || {});
     const declinedAt = Date.parse(request.declinedAt || request.updatedAt || request.createdAt);
-    if (Number.isFinite(declinedAt) && Date.now() - declinedAt <= 12 * 60 * 60 * 1000) {
+    if (Number.isFinite(declinedAt) && Date.now() - declinedAt <= retention.declinedLoginHours * 60 * 60 * 1000) {
       return {
         status: "declined",
         message: "Request denied. Ask an admin if you think this was a mistake.",
@@ -4826,10 +4857,33 @@ function normalizeAccountRequestStatus(status) {
   return "pending";
 }
 
+function defaultAccountRequestRetention() {
+  return {
+    pendingDays: 7,
+    approvedHours: 48,
+    declinedLoginHours: 12,
+  };
+}
+
+function sanitizeAccountRequestRetention(source = {}) {
+  const defaults = defaultAccountRequestRetention();
+  const clampNumber = (value, fallback, min, max) => {
+    const number = Math.round(Number(value));
+    if (!Number.isFinite(number)) return fallback;
+    return Math.min(max, Math.max(min, number));
+  };
+  return {
+    pendingDays: clampNumber(source.pendingDays, defaults.pendingDays, 1, 90),
+    approvedHours: clampNumber(source.approvedHours, defaults.approvedHours, 1, 720),
+    declinedLoginHours: clampNumber(source.declinedLoginHours, defaults.declinedLoginHours, 1, 168),
+  };
+}
+
 function safeSettings(settings) {
   return {
     ...settings,
     gameLinks: sanitizeGameLinks(settings.gameLinks || []),
+    accountRequestRetention: sanitizeAccountRequestRetention(settings.accountRequestRetention || {}),
     customizations: sanitizeCustomizations(settings.customizations || {}),
     serviceScale: sanitizeServiceScale(settings.serviceScale || {}),
     persistentLogin: sanitizePersistentLogin(settings.persistentLogin || {}),

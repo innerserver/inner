@@ -257,6 +257,10 @@ function cacheElements() {
     "domainView",
     "adminView",
     "hmdView",
+    "collapseAdminPanelsButton",
+    "expandAdminPanelsButton",
+    "collapseHmdPanelsButton",
+    "expandHmdPanelsButton",
     "domainNavButton",
     "adminNavButton",
     "hmdNavButton",
@@ -813,6 +817,10 @@ function bindEvents() {
   document.querySelectorAll("[data-soundboard]").forEach((button) => {
     button.addEventListener("click", () => playSoundboard(button.dataset.soundboard, { broadcast: true }));
   });
+  if (els.collapseAdminPanelsButton) els.collapseAdminPanelsButton.addEventListener("click", () => setPanelGroupCollapsed(els.adminView, true));
+  if (els.expandAdminPanelsButton) els.expandAdminPanelsButton.addEventListener("click", () => setPanelGroupCollapsed(els.adminView, false));
+  if (els.collapseHmdPanelsButton) els.collapseHmdPanelsButton.addEventListener("click", () => setPanelGroupCollapsed(els.hmdView, true));
+  if (els.expandHmdPanelsButton) els.expandHmdPanelsButton.addEventListener("click", () => setPanelGroupCollapsed(els.hmdView, false));
 
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
@@ -2687,11 +2695,11 @@ async function handleNotifications() {
 
 function connectSocket() {
   if (!window.location.host) {
-    setConnection("Open from server");
+    setConnection("Not live");
     return;
   }
   closeSocket();
-  setConnection("Not live");
+  if (state.lastHealthOkAt && Date.now() - state.lastHealthOkAt < 30000) setConnection("Live");
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
   state.ws = ws;
@@ -2715,7 +2723,7 @@ function connectSocket() {
     if (state.ws !== ws) return;
     clearInterval(state.wsPingTimer);
     state.wsPingTimer = null;
-    setConnection("Not live");
+    checkServerHealth({ silent: true, requireLogin: false }).catch(() => setConnection("Not live"));
     if (state.loggedIn) {
       clearTimeout(state.reconnectTimer);
       const delay = Math.min(state.wsReconnectDelay || 1400, 12000);
@@ -2723,7 +2731,9 @@ function connectSocket() {
       state.reconnectTimer = setTimeout(connectSocket, delay);
     }
   });
-  ws.addEventListener("error", () => setConnection("Not live"));
+  ws.addEventListener("error", () => {
+    if (!state.lastHealthOkAt || Date.now() - state.lastHealthOkAt > 30000) setConnection("Not live");
+  });
   ws.addEventListener("message", (event) => {
     try {
       handleSocketMessage(JSON.parse(event.data));
@@ -2793,7 +2803,7 @@ async function checkServerHealth(options = {}) {
     if (!response.ok) throw new Error(data.error || `Health failed (${response.status})`);
     state.lastHealthOkAt = Date.now();
     state.lastHealthError = "";
-    if (!isRealtimeReady()) setConnection("Not live");
+    setConnection("Live");
     return true;
   } catch (error) {
     state.lastHealthError = error.message || "Health check failed";
@@ -3872,9 +3882,9 @@ function setupAdminCollapsibles() {
 }
 
 function ensurePanelCollapse(root, panel, index) {
-  const title = panel.querySelector(":scope > h3, :scope > .panel-title-row h3");
+  const title = panel.querySelector("h3");
   if (!title) return;
-  let button = panel.querySelector(":scope .collapse-toggle");
+  let button = panel.querySelector(".collapse-toggle");
   const key = `innerPanelCollapsed:${root.id || "panel"}:${index}:${title.textContent}`;
   if (!button) {
     button = document.createElement("button");
@@ -3908,6 +3918,24 @@ function ensurePanelCollapse(root, panel, index) {
     panel.dataset.collapsibleReady = "1";
   }
   sync();
+}
+
+function setPanelGroupCollapsed(root, collapsed) {
+  if (!root) return;
+  setupAdminCollapsibles();
+  root.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => {
+    const title = panel.querySelector("h3");
+    if (!title) return;
+    panel.classList.toggle("admin-collapsed", Boolean(collapsed));
+    const button = panel.querySelector(".collapse-toggle");
+    if (button) {
+      button.textContent = collapsed ? "Expand" : "Collapse";
+      button.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    }
+    try {
+      localStorage.setItem(`innerPanelCollapsed:${root.id || "panel"}:${index}:${title.textContent}`, collapsed ? "1" : "0");
+    } catch (error) {}
+  });
 }
 
 function renderCornerAd() {

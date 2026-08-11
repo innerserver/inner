@@ -10,19 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-73-single-status" />
-    <script>
-      (() => {
-        const normalize = () => {
-          const status = document.getElementById("connectionStatus");
-          if (status && !/^live$/i.test(status.textContent.trim())) status.textContent = "Not live";
-          document.getElementById("serverPill")?.classList.add("hidden");
-          document.getElementById("buildBadge")?.classList.add("hidden");
-        };
-        document.addEventListener("DOMContentLoaded", normalize);
-        new MutationObserver(normalize).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
-      })();
-    </script>
+    <link rel="stylesheet" href="/styles.css?v=inner-74-collapse-buttons" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -595,6 +583,10 @@
               <h2>Admin</h2>
               <p id="serverStateText">Active</p>
             </div>
+            <div class="button-row">
+              <button id="collapseAdminPanelsButton" class="secondary-button compact-button" type="button">Collapse all</button>
+              <button id="expandAdminPanelsButton" class="ghost-light-button compact-button" type="button">Expand all</button>
+            </div>
           </div>
 
           <div class="settings-grid admin-grid">
@@ -841,6 +833,10 @@
               <h2>HMD</h2>
               <p id="hmdState">Developer and system control</p>
             </div>
+            <div class="button-row">
+              <button id="collapseHmdPanelsButton" class="secondary-button compact-button" type="button">Collapse all</button>
+              <button id="expandHmdPanelsButton" class="ghost-light-button compact-button" type="button">Expand all</button>
+            </div>
           </div>
           <div id="hmdMetricGrid" class="file-grid"></div>
           <div class="settings-grid admin-grid">
@@ -896,8 +892,9 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-59-google-store-link-final" defer></script>
-    <script src="/app.js?v=inner-73-single-status" defer></script>
+    <script src="/session-guard.js?v=inner-74-collapse-buttons" defer></script>
+    <script src="/status-guard.js?v=inner-74-collapse-buttons" defer></script>
+    <script src="/app.js?v=inner-74-collapse-buttons" defer></script>
     <script src="/force-logout.js?v=inner-59-google-store-link-final" defer></script>
   </body>
 </html>

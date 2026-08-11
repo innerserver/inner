@@ -205,6 +205,7 @@ function cacheElements() {
     "googleWorkspaceView",
     "googleWorkspaceFrame",
     "googleWorkspaceNote",
+    "googleExtensionStoreLink",
     "openGoogleWorkspaceButton",
     "newGoogleWorkspaceButton",
     "shareGoogleWorkspaceButton",
@@ -338,6 +339,9 @@ function cacheElements() {
     "fileCategory",
     "privateUpload",
     "uploadButton",
+    "fileReleaseControls",
+    "fileReleaseRoom",
+    "fileReleaseAt",
     "uploadQueue",
     "uploadStatus",
     "fileList",
@@ -381,6 +385,7 @@ function cacheElements() {
     "requestPendingDays",
     "requestApprovedHours",
     "requestDeclinedLoginHours",
+    "googleExtensionStoreUrlInput",
     "chessUrlInput",
     "gameLinksInput",
     "saveSecretGamesButton",
@@ -1500,6 +1505,7 @@ async function uploadFile(event) {
 
   try {
     els.uploadButton.disabled = true;
+    const releaseOptions = currentFileReleaseOptions();
     state.uploadQueue = files.map((file) => ({ name: file.name, progress: "Queued" }));
     renderUploadQueue();
     for (let index = 0; index < files.length; index += 1) {
@@ -1507,11 +1513,12 @@ async function uploadFile(event) {
       state.uploadQueue[index].progress = "Uploading";
       els.uploadStatus.textContent = `Uploading ${file.name}`;
       renderUploadQueue();
-      await uploadOneFile(file, els.fileCategory.value, { private: els.privateUpload.checked });
+      await uploadOneFile(file, els.fileCategory.value, { private: els.privateUpload.checked, ...releaseOptions });
       state.uploadQueue[index].progress = "Done";
       renderUploadQueue();
     }
     els.fileInput.value = "";
+    if (els.fileReleaseAt) els.fileReleaseAt.value = "";
     updateFilePickerSummary();
     els.uploadStatus.textContent = "";
     notify(files.length === 1 ? "File uploaded" : "Files uploaded");
@@ -1534,6 +1541,22 @@ async function uploadChatAttachment(file) {
   return uploadOneFile(file, file.type.startsWith("image/") ? "image" : file.type.startsWith("audio/") ? "audio" : "video", { private: false });
 }
 
+function currentFileReleaseOptions() {
+  if (!canScheduleRoomFiles()) return {};
+  const roomId = String(els.fileReleaseRoom ? els.fileReleaseRoom.value : "").trim();
+  const releaseAt = localDateTimeToIso(els.fileReleaseAt ? els.fileReleaseAt.value : "");
+  return {
+    roomId,
+    releaseAt,
+  };
+}
+
+function localDateTimeToIso(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : "";
+}
+
 async function uploadOneFile(file, category, options = {}) {
   if (state.uploadConfig && state.uploadConfig.directCloudinary) {
     return uploadOneFileDirectCloudinary(file, category, options);
@@ -1546,6 +1569,8 @@ async function uploadOneFile(file, category, options = {}) {
       "x-file-type": file.type || "application/octet-stream",
       "x-file-category": category || "document",
       "x-file-private": options.private ? "1" : "0",
+      "x-file-room": encodeURIComponent(options.roomId || ""),
+      "x-file-release-at": encodeURIComponent(options.releaseAt || ""),
     },
     body: file,
   });
@@ -1565,6 +1590,8 @@ async function uploadOneFileDirectCloudinary(file, category, options = {}) {
       mimeType: file.type || "application/octet-stream",
       category: category || "document",
       private: Boolean(options.private),
+      roomId: options.roomId || "",
+      releaseAt: options.releaseAt || "",
       size: file.size,
     },
   });
@@ -1699,6 +1726,7 @@ function serverSettingsPayload(extra = {}) {
       approvedHours: Number(els.requestApprovedHours ? els.requestApprovedHours.value || 48 : 48),
       declinedLoginHours: Number(els.requestDeclinedLoginHours ? els.requestDeclinedLoginHours.value || 12 : 12),
     },
+    googleExtensionStoreUrl: normalizeExternalUrl(els.googleExtensionStoreUrlInput ? els.googleExtensionStoreUrlInput.value : ""),
     chessUrl: normalizeExternalUrl(els.chessUrlInput ? els.chessUrlInput.value : ""),
     gameLinks: parseGameLinksInput(els.gameLinksInput ? els.gameLinksInput.value : ""),
     persistentLogin: {
@@ -2731,6 +2759,7 @@ function handleSocketMessage(message) {
     renderRooms();
     renderRoomManager();
     renderAnnouncements();
+    renderFileReleaseControls();
     return;
   }
 
@@ -2774,6 +2803,13 @@ function handleSocketMessage(message) {
 
   if (message.type === "file:new") {
     addFile(message.file);
+    return;
+  }
+
+  if (message.type === "files:update") {
+    state.files = message.files || state.files;
+    renderShell();
+    renderFiles();
     return;
   }
 
@@ -4674,7 +4710,7 @@ function renderProfile() {
 function applyProfileTheme(themeOverride = "") {
   const profile = state.user ? state.profiles[state.user.username] || {} : {};
   const theme = themeOverride || profile.theme || "system";
-  const normalized = ["midnight", "ocean", "forest", "rose", "slate", "glass", "custom"].includes(theme) ? theme : "";
+  const normalized = ["midnight", "ocean", "forest", "rose", "slate", "glass", "bd-somani", "custom"].includes(theme) ? theme : "";
   document.body.dataset.theme = normalized;
   const editorTheme = els.profileThemeBg && els.profileTheme && els.profileTheme.value === "custom" ? currentProfileThemeEditor() : null;
   applyCustomThemeVariables(normalized === "custom" ? editorTheme || profile.customTheme : null);
@@ -4993,6 +5029,7 @@ async function deleteInnerDoc() {
 
 function renderFiles() {
   els.fileList.replaceChildren();
+  renderFileReleaseControls();
 
   if (!state.files.length) {
     els.fileList.append(emptyBlock("No files uploaded"));
@@ -5015,6 +5052,11 @@ function renderFiles() {
     meta.className = "file-meta";
     meta.append(textNode(`${file.kind} - ${formatBytes(file.size)}`), textNode(`Uploaded by ${file.user}`), textNode(formatDate(file.createdAt)));
     if (file.private) meta.append(textNode("Visible only to uploader and admins"));
+    if (file.roomName) meta.append(textNode(`Room: ${file.roomName}`));
+    if (file.releaseAt) {
+      const future = new Date(file.releaseAt).getTime() > Date.now();
+      meta.append(textNode(`${future ? "Releases" : "Released"} ${formatDate(file.releaseAt)}`));
+    }
     if (isOwner()) {
       meta.append(textNode(`From ${file.sourceIp || "unknown"}`));
       if (file.sourceAgent) meta.append(textNode(file.sourceAgent));
@@ -5334,6 +5376,12 @@ function renderServer() {
   if (els.requestPendingDays) els.requestPendingDays.value = requestRetention.pendingDays || 7;
   if (els.requestApprovedHours) els.requestApprovedHours.value = requestRetention.approvedHours || 48;
   if (els.requestDeclinedLoginHours) els.requestDeclinedLoginHours.value = requestRetention.declinedLoginHours || 12;
+  if (els.googleExtensionStoreUrlInput) els.googleExtensionStoreUrlInput.value = state.settings.googleExtensionStoreUrl || "";
+  if (els.googleExtensionStoreLink) {
+    const storeUrl = normalizeExternalUrl(state.settings.googleExtensionStoreUrl || "");
+    els.googleExtensionStoreLink.href = storeUrl || "https://chrome.google.com/webstore/devconsole";
+    els.googleExtensionStoreLink.textContent = storeUrl ? "Open Chrome Web Store listing" : "Publish in Chrome Web Store";
+  }
   if (els.chessUrlInput) els.chessUrlInput.value = currentChessUrl();
   if (els.gameLinksInput && document.activeElement !== els.gameLinksInput) {
     els.gameLinksInput.value = gameLinksInputValue(state.settings.gameLinks || []);
@@ -5349,7 +5397,7 @@ function renderServer() {
   if (els.newAccountPersistent) els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
 
   const admin = isOwner();
-  [els.roomNameInput, els.signupMode, els.requireContact, els.reportEmails, els.requestPendingDays, els.requestApprovedHours, els.requestDeclinedLoginHours, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+  [els.roomNameInput, els.signupMode, els.requireContact, els.reportEmails, els.requestPendingDays, els.requestApprovedHours, els.requestDeclinedLoginHours, els.googleExtensionStoreUrlInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
   });
@@ -5561,6 +5609,22 @@ function renderFeatureLocks() {
   });
 }
 
+function renderFileReleaseControls() {
+  if (!els.fileReleaseControls || !els.fileReleaseRoom) return;
+  const canSchedule = canScheduleRoomFiles();
+  els.fileReleaseControls.classList.toggle("hidden", !canSchedule);
+  if (!canSchedule) return;
+  const previous = els.fileReleaseRoom.value || "all";
+  const options = [
+    { value: "all", label: "All users" },
+    ...(state.rooms || [])
+      .filter((room) => canAccessVisibleRoom(room))
+      .map((room) => ({ value: room.id, label: room.name || room.id })),
+  ];
+  els.fileReleaseRoom.replaceChildren(...options.map((option) => optionNode(option.value, option.label)));
+  els.fileReleaseRoom.value = options.some((option) => option.value === previous) ? previous : "all";
+}
+
 function syncSearchedAccountDetails(visibleUsers) {
   const term = String(state.accountSearch || "").trim().toLowerCase();
   if (!term || state.selectedAccountDetails) return;
@@ -5637,6 +5701,32 @@ function renderAccountDetails() {
   ];
   els.accountDetailBody.append(adminCard("Access and device", user.role || "member", accessLines));
 
+  const uploadedFiles = filesForUser(user.username);
+  if (!uploadedFiles.length) {
+    els.accountDetailBody.append(adminCard("Uploaded files", "0 files", ["No uploaded files saved for this account."]));
+  } else {
+    uploadedFiles.slice(0, 25).forEach((file) => {
+      const lines = [
+        `${file.kind || "file"} - ${formatBytes(file.size || 0)}`,
+        file.category ? `Category ${file.category}` : "",
+        file.private ? "Private upload" : "Public upload",
+        file.roomName ? `Room ${file.roomName}` : "",
+        file.releaseAt ? `Release ${formatDate(file.releaseAt)}` : "",
+        file.createdAt ? `Uploaded ${formatDate(file.createdAt)}` : "",
+      ].filter(Boolean);
+      const card = adminCard(file.originalName || file.storedName || "Upload", file.persistence || "file", lines);
+      const actions = document.createElement("div");
+      actions.className = "account-actions";
+      actions.append(accountButton("Open", () => window.open(file.url, "_blank", "noopener")));
+      actions.append(accountButton("Download", () => downloadUrl(downloadableUrl(file.url), file.originalName || "upload")));
+      card.append(actions);
+      els.accountDetailBody.append(card);
+    });
+    if (uploadedFiles.length > 25) {
+      els.accountDetailBody.append(adminCard("Uploaded files", `${uploadedFiles.length} total`, [`Showing newest 25 of ${uploadedFiles.length}.`]));
+    }
+  }
+
   const history = browserHistoryForUser(user.username);
   if (!history.length) {
     els.accountDetailBody.append(adminCard("Recent browser/search history", "Empty", ["No Inner Browser opens logged for this account."]));
@@ -5654,6 +5744,13 @@ function renderAccountDetails() {
     ];
     els.accountDetailBody.append(adminCard(details.query ? "Browser search" : "Browser open", details.host || "history", lines));
   });
+}
+
+function filesForUser(username) {
+  const current = String(username || "").toLowerCase();
+  return (state.files || [])
+    .filter((file) => String(file.user || "").toLowerCase() === current)
+    .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0));
 }
 
 function browserHistoryForUser(username) {
@@ -5827,7 +5924,7 @@ function renderRoomManager() {
 const serviceScaleLabels = [
   { key: "messages", title: "Messages", detail: "Render web service + JSON/database writes", baseUsd: 7, provider: "Render", url: "https://render.com/pricing" },
   { key: "dms", title: "DMs", detail: "Render web service + realtime message storage", baseUsd: 4, provider: "Render", url: "https://render.com/pricing" },
-  { key: "uploads", title: "Uploads", detail: "Cloudinary/file storage and bandwidth", baseUsd: 10, provider: "Cloudinary", url: "https://cloudinary.com/pricing" },
+  { key: "uploads", title: "Uploads", detail: "Backblaze B2/file storage and bandwidth", baseUsd: 5, provider: "Backblaze B2", url: "https://www.backblaze.com/cloud-storage/pricing" },
   { key: "voice", title: "Voice calls", detail: "TURN/WebRTC relay usage planning", baseUsd: 12, provider: "Open Relay / TURN", url: "https://www.metered.ca/tools/openrelay/" },
   { key: "screen", title: "Screen share", detail: "TURN bandwidth for screen/video streams", baseUsd: 14, provider: "TURN relay", url: "https://www.metered.ca/tools/openrelay/" },
   { key: "notifications", title: "Notifications", detail: "Browser alerts + email provider", baseUsd: 3, provider: "Resend", url: "https://resend.com/pricing" },
@@ -5899,7 +5996,7 @@ function renderServiceScaleCostSummary(presetTotal) {
         return sum + Math.round((baseCost * Number(input.value || 100)) / 100);
       }, 0);
   const rupees = formatInr(total);
-  els.serviceScaleCostSummary.textContent = `Rough monthly bill: about $${total}/month, around Rs ${rupees}/month. Planning rate: $1 = Rs ${usdToInrEstimate}. Real billing comes from Render, Cloudinary, Resend, TURN, domain/DNS, and actual usage.`;
+  els.serviceScaleCostSummary.textContent = `Rough monthly bill: about $${total}/month, around Rs ${rupees}/month. Planning rate: $1 = Rs ${usdToInrEstimate}. Real billing comes from Render, Backblaze B2, Resend, TURN, domain/DNS, and actual usage.`;
   if (els.domainBillSummary) {
     els.domainBillSummary.textContent = `Rough monthly bill for the whole app: about $${total}/month, around Rs ${rupees}/month. Domain alone is estimated around $1/month or Rs ${formatInr(1)}/month, usually billed yearly by your registrar.`;
   }
@@ -6413,6 +6510,8 @@ function updateControls() {
   els.fileCategory.disabled = !filesEnabled;
   els.privateUpload.disabled = !filesEnabled;
   els.uploadButton.disabled = !filesEnabled;
+  if (els.fileReleaseRoom) els.fileReleaseRoom.disabled = !filesEnabled || !canScheduleRoomFiles();
+  if (els.fileReleaseAt) els.fileReleaseAt.disabled = !filesEnabled || !canScheduleRoomFiles();
   els.friendUserSelect.disabled = !friendsEnabled;
   els.sendFriendRequestButton.disabled = !friendsEnabled;
   els.joinVoiceButton.disabled = !voiceEnabled || Boolean(state.voiceStream);
@@ -7988,6 +8087,10 @@ function isOwner() {
 
 function isDev() {
   return state.user && ["admin", "hmd", "dev"].includes(state.user.role);
+}
+
+function canScheduleRoomFiles() {
+  return state.user && ["moderator", "admin", "hmd", "dev"].includes(state.user.role);
 }
 
 function setConnection(value) {

@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-57-secret-games-panel-final" />
+    <link rel="stylesheet" href="/styles.css?v=inner-61-b2-account-files-theme-final" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -333,7 +333,7 @@
             <label>Status<select id="profileStatus"><option value="online">Online</option><option value="idle">Idle</option><option value="busy">Busy</option><option value="invisible">Invisible</option></select></label>
             <label>Custom status<input id="profileCustomStatus" maxlength="80" autocomplete="off" /></label>
             <label>Grade<select id="profileGrade"><option value="">Choose grade</option><option value="6">Grade 6</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
-            <label>Theme<select id="profileTheme"><option value="system">Light</option><option value="midnight">Night</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="custom">Custom</option></select></label>
+            <label>Theme<select id="profileTheme"><option value="system">Light</option><option value="midnight">Night</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="bd-somani">BD Somani</option><option value="custom">Custom</option></select></label>
             <div id="customThemeFields" class="theme-editor">
               <label>Background<input id="profileThemeBg" type="color" value="#f7f7f4" /></label>
               <label>Cards<input id="profileThemeSurface" type="color" value="#ffffff" /></label>
@@ -367,6 +367,14 @@
             </select>
             <label class="switch-row upload-private-toggle"><input id="privateUpload" type="checkbox" /><span>Private</span></label>
             <button id="uploadButton" class="primary-button" type="submit">Upload</button>
+            <div id="fileReleaseControls" class="file-release-controls hidden">
+              <label>Release to
+                <select id="fileReleaseRoom"></select>
+              </label>
+              <label>Release at
+                <input id="fileReleaseAt" type="datetime-local" />
+              </label>
+            </div>
           </form>
           <div id="uploadQueue" class="account-list"></div>
           <div id="uploadStatus" class="inline-status"></div>
@@ -459,6 +467,17 @@
             <button id="googleSheetsModeButton" class="secondary-button compact-button" type="button" data-google-kind="sheets">Sheets</button>
           </div>
           <p id="googleWorkspaceNote" class="panel-note google-embed-note">Docs is selected. If Google blocks sign-in or editing inside the frame, use Open full tab or install the helper extension from extensions/inner-google-helper.</p>
+          <div class="workspace-extension-card">
+            <div>
+              <h3>Chrome extension</h3>
+              <p>Use the helper extension for the reliable Google flow: Docs, Slides, and Sheets open in real Chrome tabs, then links can be shared back into Inner.</p>
+            </div>
+            <div class="button-row">
+              <a class="primary-button compact-button" href="/downloads/inner-google-helper-chrome-store.zip" download>Download extension ZIP</a>
+              <a id="googleExtensionStoreLink" class="secondary-button compact-button" href="https://chrome.google.com/webstore/devconsole" target="_blank" rel="noopener">Chrome Web Store</a>
+              <a class="secondary-button compact-button" href="/downloads/INNER_GOOGLE_HELPER_INSTALL.html" target="_blank" rel="noopener">Install / publish guide</a>
+            </div>
+          </div>
           <iframe
             id="googleWorkspaceFrame"
             class="embedded-app-frame google-app-frame"
@@ -578,6 +597,7 @@
                 <label>Approved requests show hours<input id="requestApprovedHours" type="number" min="1" max="720" value="48" /></label>
               </div>
               <label>Denied login message hours<input id="requestDeclinedLoginHours" type="number" min="1" max="168" value="12" /></label>
+              <label>Chrome Web Store extension link<input id="googleExtensionStoreUrlInput" maxlength="500" placeholder="Paste approved Chrome Web Store URL after publishing" /></label>
               <label class="switch-row"><input id="persistentDefaultEnabled" type="checkbox" checked /><span>Keep users logged in by default</span></label>
               <label>Keep logged in for grades<input id="persistentGrades" maxlength="160" placeholder="8a, 8b, 9, staff" /></label>
               <label>Keep logged in for roles/classes<input id="persistentRoles" maxlength="160" placeholder="member, moderator" /></label>
@@ -680,7 +700,7 @@
               <label>Icon<input id="newRoomIcon" maxlength="12" placeholder="#" /></label>
               <label>Category<input id="newRoomCategory" maxlength="80" placeholder="General" /></label>
               <label>Password optional<input id="newRoomPassword" type="password" autocomplete="new-password" placeholder="Leave blank for no password" /></label>
-              <label>Theme<select id="newRoomTheme"><option value="system">System</option><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option></select></label>
+              <label>Theme<select id="newRoomTheme"><option value="system">System</option><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="bd-somani">BD Somani</option></select></label>
               <label class="switch-row"><input id="newRoomPrivate" type="checkbox" /><span>Private room</span></label>
               <label class="switch-row"><input id="newRoomInviteOnly" type="checkbox" /><span>Invite-only</span></label>
               <button id="createRoomButton" class="primary-button" type="submit">Create room</button>
@@ -773,7 +793,7 @@
             <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>System logs</h3><button id="exportLogsButton" class="secondary-button compact-button" type="button">Export</button></div><div class="log-filter-row"><input id="logSearchInput" class="compact-search" maxlength="120" placeholder="Search account, action, IP, details" autocomplete="off" /><input id="logDateInput" class="compact-search" type="date" /></div><div id="logList" class="account-list compact-list"></div></div>
             <form id="serviceScaleForm" class="panel-form owner-only hidden wide-panel">
               <h3>Service scaling</h3>
-              <p class="panel-note">Tune capacity targets for each service. Estimates are planning numbers only; Render/Cloudinary/Resend/TURN bills depend on your actual provider plans and usage.</p>
+              <p class="panel-note">Tune capacity targets for each service. Estimates are planning numbers only; Render/Backblaze B2/Resend/TURN bills depend on your actual provider plans and usage.</p>
               <div id="serviceScaleList" class="account-list"></div>
               <div id="serviceScaleCostSummary" class="cost-summary"></div>
               <button id="saveServiceScaleButton" class="primary-button" type="submit">Save scaling</button>
@@ -813,7 +833,7 @@
               <h3>Emergency controls</h3>
               <label class="switch-row"><input id="devEmergencyMode" type="checkbox" /><span>Emergency mode</span></label>
               <label class="switch-row"><input id="devMetricsEnabled" type="checkbox" /><span>Metrics enabled</span></label>
-              <label>Theme engine<select id="devTheme"><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option></select></label>
+              <label>Theme engine<select id="devTheme"><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="bd-somani">BD Somani</option></select></label>
               <button id="saveDevConfigButton" class="primary-button" type="submit">Save HMD</button>
             </form>
             <div class="status-panel wide-panel">
@@ -861,8 +881,9 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-57-secret-games-panel-final" defer></script>
-    <script src="/app.js?v=inner-57-secret-games-panel-final" defer></script>
-    <script src="/force-logout.js?v=inner-57-secret-games-panel-final" defer></script>
+    <script src="/session-guard.js?v=inner-59-google-store-link-final" defer></script>
+    <script src="/app.js?v=inner-61-b2-account-files-theme-final" defer></script>
+    <script src="/force-logout.js?v=inner-59-google-store-link-final" defer></script>
   </body>
 </html>
+

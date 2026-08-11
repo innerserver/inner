@@ -86,6 +86,18 @@ body[data-theme="glass"] {
     linear-gradient(135deg, #102023 0%, #1d2933 52%, #1b1830 100%);
 }
 
+body[data-theme="bd-somani"] {
+  --bg: #f6f4ed;
+  --surface: #ffffff;
+  --surface-muted: #ebe6d8;
+  --ink: #13233a;
+  --muted: #667085;
+  --line: #ddd3bd;
+  --accent: #9a1f2f;
+  --accent-soft: #f7e7e9;
+  --danger: #9a1f2f;
+}
+
 body[data-theme="custom"] {
   --bg: var(--custom-bg, #f7f7f4);
   --surface: var(--custom-surface, #ffffff);
@@ -727,6 +739,29 @@ textarea:focus {
 .upload-bar {
   grid-template-columns: auto minmax(160px, 1fr) minmax(150px, 210px) auto auto;
   align-items: center;
+}
+
+.file-release-controls {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(170px, 240px);
+  gap: 10px;
+}
+
+.file-release-controls label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 900;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.file-release-controls select,
+.file-release-controls input {
+  min-height: 40px;
+  text-transform: none;
+  color: var(--ink);
 }
 
 .share-link-form {
@@ -1372,6 +1407,27 @@ textarea:focus {
   color: var(--surface);
 }
 
+.workspace-extension-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.workspace-extension-card h3,
+.workspace-extension-card p {
+  margin: 0;
+}
+
+.workspace-extension-card p {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
 .account-head,
 .account-actions {
   display: flex;
@@ -1927,6 +1983,7 @@ select[multiple] {
   .login-stack,
   .composer,
   .upload-bar,
+  .file-release-controls,
   .log-filter-row,
   .scale-row,
   .call-grid,
@@ -4249,6 +4306,16 @@ body.standalone-page .tutorial-shell {
   #gameLinksInput {
     min-height: 130px;
     max-height: 42dvh;
+  }
+
+  .workspace-extension-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace-extension-card .button-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

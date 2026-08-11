@@ -369,6 +369,10 @@ function cacheElements() {
     "requireContact",
     "reportEmails",
     "chessUrlInput",
+    "persistentDefaultEnabled",
+    "persistentGrades",
+    "persistentRoles",
+    "persistentRooms",
     "testEmailButton",
     "emailStatusText",
     "serverEnabled",
@@ -681,6 +685,7 @@ function bindEvents() {
   els.accountSearchInput.addEventListener("input", () => {
     state.accountSearch = els.accountSearchInput.value.trim().toLowerCase();
     state.accountShowAll = false;
+    state.selectedAccountDetails = "";
     renderUsers();
   });
   if (els.accountGradeFilter) {
@@ -1605,6 +1610,12 @@ function serverSettingsPayload(extra = {}) {
     requireContact: els.requireContact.checked,
     reportEmails: els.reportEmails.value.split(",").map((entry) => entry.trim()).filter(Boolean),
     chessUrl: normalizeExternalUrl(els.chessUrlInput ? els.chessUrlInput.value : ""),
+    persistentLogin: {
+      defaultEnabled: Boolean(els.persistentDefaultEnabled && els.persistentDefaultEnabled.checked),
+      grades: splitUserList(els.persistentGrades ? els.persistentGrades.value : ""),
+      roles: splitUserList(els.persistentRoles ? els.persistentRoles.value : ""),
+      rooms: splitUserList(els.persistentRooms ? els.persistentRooms.value : ""),
+    },
     ...extra,
   };
 }
@@ -1826,14 +1837,14 @@ async function createAccount(event) {
         username: els.newAccountUsername.value,
         password: els.newAccountPassword.value,
         role: els.newAccountRole.value,
-        allowPersistentLogin: els.newAccountPersistent.checked,
+        allowPersistentLogin: els.newAccountPersistent.checked || effectivePersistentDefaultForNewAccount(),
       },
     });
     state.users = data.users || state.users;
     els.newAccountUsername.value = "";
     els.newAccountPassword.value = "";
     els.newAccountRole.value = "member";
-    els.newAccountPersistent.checked = false;
+    els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
     renderUsers();
     notify("Account created");
   } catch (error) {
@@ -5094,11 +5105,18 @@ function renderServer() {
   els.requireContact.checked = state.settings.requireContact !== false;
   els.reportEmails.value = Array.isArray(state.settings.reportEmails) ? state.settings.reportEmails.join(", ") : "";
   if (els.chessUrlInput) els.chessUrlInput.value = currentChessUrl();
+  const persistent = state.settings.persistentLogin || {};
+  if (els.persistentDefaultEnabled) els.persistentDefaultEnabled.checked = persistent.defaultEnabled !== false;
+  if (els.persistentGrades && document.activeElement !== els.persistentGrades) els.persistentGrades.value = Array.isArray(persistent.grades) ? persistent.grades.join(", ") : "";
+  if (els.persistentRoles && document.activeElement !== els.persistentRoles) els.persistentRoles.value = Array.isArray(persistent.roles) ? persistent.roles.join(", ") : "";
+  if (els.persistentRooms && document.activeElement !== els.persistentRooms) els.persistentRooms.value = Array.isArray(persistent.rooms) ? persistent.rooms.join(", ") : "";
   if (els.chessFrame && els.chessFrame.src !== currentChessUrl()) els.chessFrame.src = currentChessUrl();
   els.serverEnabled.checked = enabled;
+  if (els.newAccountPersistent) els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
 
   const admin = isOwner();
-  [els.roomNameInput, els.signupMode, els.requireContact, els.reportEmails, els.chessUrlInput, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+  [els.roomNameInput, els.signupMode, els.requireContact, els.reportEmails, els.chessUrlInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+    if (!input) return;
     input.disabled = !admin;
   });
   els.shutdownServerButton.disabled = !admin || !enabled;
@@ -5317,7 +5335,8 @@ function syncSearchedAccountDetails(visibleUsers) {
     ].filter(Boolean).map((value) => String(value).toLowerCase());
     return values.includes(term);
   });
-  if (exact) state.selectedAccountDetails = exact.username;
+  const fuzzy = exact || visibleUsers.find((user) => userMatchesAccountSearch(user, term));
+  if (fuzzy) state.selectedAccountDetails = fuzzy.username;
 }
 
 function openAccountDetails(username) {
@@ -5351,7 +5370,9 @@ function renderAccountDetails() {
   els.accountDetailBody.append(adminCard("Account", user.banned ? "Banned" : "Active", identityLines));
 
   const accessLines = [
-    `Persistent login ${user.allowPersistentLogin ? "allowed" : "off"}`,
+    `Persistent login ${effectivePersistentForUser(user) ? "allowed" : "off"}`,
+    `Persistent reason ${persistentReasonForUser(user)}`,
+    `Per-account override ${user.allowPersistentLogin ? "on" : "off"}`,
     user.lastLoginAt ? `Last login ${formatDate(user.lastLoginAt)}` : "No login recorded",
     user.lastLoginIp ? `Latest IP ${user.lastLoginIp}` : "No IP recorded",
     user.lastLoginDevice ? `Latest device ${user.lastLoginDevice}` : "No device recorded",
@@ -5384,6 +5405,7 @@ function browserHistoryForUser(username) {
   const current = String(username || "").toLowerCase();
   return (state.logs || [])
     .filter((log) => String(log.actor || "").toLowerCase() === current && String(log.action || "") === "browser.open")
+    .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0))
     .slice(0, 25);
 }
 
@@ -6725,23 +6747,7 @@ function filterUsersForAdmin(users) {
   };
   const matchesSearch = (user) => {
     if (!term) return true;
-    const profile = state.profiles[user.username] || {};
-    const contact = typeof user.contact === "object" && user.contact ? user.contact : {};
-    return searchableText({
-      username: user.username,
-      displayName: profile.displayName,
-      email: user.email || contact.email,
-      phone: user.phone || contact.phone,
-      role: user.role,
-      grade: user.grade || profile.grade,
-      lastLoginIp: user.lastLoginIp,
-      lastLoginDevice: user.lastLoginDevice,
-      sourceIp: user.sourceIp,
-      sourceDevice: user.sourceDevice,
-      createdBy: user.createdBy,
-      banReason: user.banReason,
-      approximateLocation: user.lastLoginApproximateLocation,
-    }).includes(term);
+    return userMatchesAccountSearch(user, term);
   };
   if (state.accountShowAll) return list.filter((user) => matchesGrade(user) && matchesSearch(user));
   if (!term && !gradeFilter && !noGradeFilter) {
@@ -6752,6 +6758,56 @@ function filterUsersForAdmin(users) {
     });
   }
   return list.filter((user) => matchesGrade(user) && matchesSearch(user));
+}
+
+function userMatchesAccountSearch(user, term) {
+  const profile = state.profiles[user.username] || {};
+  const contact = typeof user.contact === "object" && user.contact ? user.contact : {};
+  return searchableText({
+    username: user.username,
+    displayName: user.displayName || profile.displayName,
+    email: user.email || contact.email,
+    phone: user.phone || contact.phone,
+    role: user.role,
+    grade: user.grade || profile.grade,
+    lastLoginIp: user.lastLoginIp,
+    lastLoginDevice: user.lastLoginDevice,
+    sourceIp: user.sourceIp,
+    sourceDevice: user.sourceDevice,
+    createdBy: user.createdBy,
+    banReason: user.banReason,
+    approximateLocation: user.lastLoginApproximateLocation,
+  }).includes(String(term || "").toLowerCase());
+}
+
+function effectivePersistentDefaultForNewAccount() {
+  const persistent = state.settings.persistentLogin || {};
+  return persistent.defaultEnabled !== false;
+}
+
+function effectivePersistentForUser(user) {
+  return user.allowPersistentLogin || persistentReasonForUser(user) !== "not matched";
+}
+
+function persistentReasonForUser(user) {
+  if (!user) return "not matched";
+  if (user.allowPersistentLogin) return "per-account enabled";
+  const settings = state.settings.persistentLogin || {};
+  if (settings.defaultEnabled !== false) return "default enabled";
+  const grade = normalizeClientGrade(user.grade || (state.profiles[user.username] || {}).grade || "");
+  const role = String(user.role || "member").toLowerCase();
+  const grades = new Set((settings.grades || []).map((entry) => normalizeClientGrade(entry)).filter(Boolean));
+  const roles = new Set((settings.roles || []).map((entry) => String(entry || "").toLowerCase()).filter(Boolean));
+  const roomRules = new Set((settings.rooms || []).map((entry) => String(entry || "").toLowerCase()).filter(Boolean));
+  if (grade && grades.has(grade)) return `grade ${grade}`;
+  if (role && roles.has(role)) return `role/class ${role}`;
+  const inRoom = (state.rooms || []).some((room) => {
+    const names = [room.id, room.name, room.category].map((entry) => String(entry || "").toLowerCase()).filter(Boolean);
+    if (!names.some((name) => roomRules.has(name))) return false;
+    return Array.isArray(room.allowedUsers) && room.allowedUsers.includes(user.username);
+  });
+  if (inRoom) return "room rule";
+  return "not matched";
 }
 
 function filteredSystemLogs() {

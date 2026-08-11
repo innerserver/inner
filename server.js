@@ -397,6 +397,12 @@ async function ensureStorage() {
     featureLocks: {},
     featureVisibility: {},
     paywalls: {},
+    persistentLogin: {
+      defaultEnabled: true,
+      grades: [],
+      roles: [],
+      rooms: [],
+    },
     shutdownAt: "",
     shutdownBy: "",
     updatedAt: new Date().toISOString(),
@@ -769,8 +775,9 @@ async function routeApi(req, res, requestUrl) {
       return json(res, 423, { error: "Server is shut down. Only admin, HMD, and dev access is open right now." });
     }
 
+    const rooms = await readJson(FILES.rooms, []);
+    const persistent = effectivePersistentLogin(user, settings, rooms);
     const token = crypto.randomBytes(32).toString("hex");
-    const persistent = Boolean(user.allowPersistentLogin);
     sessions.set(token, {
       username: user.username,
       role: normalizeRole(user.role),
@@ -798,7 +805,7 @@ async function routeApi(req, res, requestUrl) {
       await writeJson(FILES.users, users);
     }
 
-    await addSystemLog("login.success", user.username, { role: normalizeRole(user.role), persistent }, req);
+    await addSystemLog("login.success", user.username, { role: normalizeRole(user.role), persistent, persistentReason: persistentLoginReason(user, settings, rooms) }, req);
     await notifyAdminEmails(differentLogin ? "Inner different login alert" : "Inner login alert", [
       `${user.username} signed in.`,
       `Role: ${normalizeRole(user.role)}`,
@@ -2311,7 +2318,7 @@ async function routeApi(req, res, requestUrl) {
       role: grantedRole,
       passwordHash: nextPasswordHash,
       passwordPreset: "",
-      allowPersistentLogin: Boolean(body.allowPersistentLogin),
+      allowPersistentLogin: Boolean(body.allowPersistentLogin) || effectivePersistentLogin({ username: request.username, role: grantedRole, grade: request.grade }, await readJson(FILES.settings, {}), await readJson(FILES.rooms, [])),
       contact: request.contact,
       email: request.email,
       phone: request.phone,
@@ -2382,7 +2389,7 @@ async function routeApi(req, res, requestUrl) {
       passwordHash: hashPassword(password),
       createdAt: new Date().toISOString(),
       createdBy: user.username,
-      allowPersistentLogin: Boolean(body.allowPersistentLogin),
+      allowPersistentLogin: Boolean(body.allowPersistentLogin) || effectivePersistentLogin({ username, role, grade: body.grade }, await readJson(FILES.settings, {}), await readJson(FILES.rooms, [])),
       bannedUntil: "",
       banReason: "",
     });
@@ -2631,6 +2638,7 @@ async function routeApi(req, res, requestUrl) {
         updatedAt: new Date().toISOString(),
         updatedBy: user.username,
       }),
+      persistentLogin: sanitizePersistentLogin(body.persistentLogin && typeof body.persistentLogin === "object" ? body.persistentLogin : settings.persistentLogin || {}),
       serviceScale: sanitizeServiceScale(body.serviceScale && typeof body.serviceScale === "object" ? body.serviceScale : settings.serviceScale || {}),
       featureVisibility: sanitizeFeatureVisibility(canOwn(user) && body.featureVisibility && typeof body.featureVisibility === "object" ? body.featureVisibility : settings.featureVisibility || {}),
       paywalls: sanitizePaywalls(canOwn(user) && body.paywalls && typeof body.paywalls === "object" ? body.paywalls : settings.paywalls || {}),
@@ -4286,6 +4294,30 @@ function safeRoomsForUser(rooms, user) {
   return (rooms || []).filter((room) => canAccessRoom(room, user)).map(safeRoom);
 }
 
+function effectivePersistentLogin(user, settings, rooms = []) {
+  return persistentLoginReason(user, settings, rooms) !== "not matched";
+}
+
+function persistentLoginReason(user, settings, rooms = []) {
+  if (!user) return "not matched";
+  if (user.allowPersistentLogin) return "per-account enabled";
+  const rules = sanitizePersistentLogin((settings || {}).persistentLogin || {});
+  if (rules.defaultEnabled) return "default enabled";
+  const grade = normalizeGrade(user.grade || "");
+  const role = normalizeRole(user.role || "member");
+  if (grade && rules.grades.includes(grade)) return `grade ${grade}`;
+  if (role && rules.roles.includes(role)) return `role ${role}`;
+  const roomRules = new Set(rules.rooms);
+  const inMatchedRoom = (rooms || []).some((room) => {
+    const names = [room.id, room.name, room.category].map((entry) => String(entry || "").toLowerCase()).filter(Boolean);
+    if (!names.some((name) => roomRules.has(name))) return false;
+    return room.createdBy === user.username ||
+      normalizeUsernameList(room.allowedUsers).includes(user.username) ||
+      normalizeUsernameList(room.moderators).includes(user.username);
+  });
+  return inMatchedRoom ? "room rule" : "not matched";
+}
+
 function canAccessRoom(room, user) {
   if (!room || !user) return false;
   if (room.id === "main" || canManage(user)) return true;
@@ -4702,6 +4734,7 @@ function safeSettings(settings) {
     ...settings,
     customizations: sanitizeCustomizations(settings.customizations || {}),
     serviceScale: sanitizeServiceScale(settings.serviceScale || {}),
+    persistentLogin: sanitizePersistentLogin(settings.persistentLogin || {}),
     featureLocks: activeFeatureLocks(settings.featureLocks || {}),
     featureVisibility: sanitizeFeatureVisibility(settings.featureVisibility || {}),
     paywalls: sanitizePaywalls(settings.paywalls || {}),
@@ -4710,6 +4743,20 @@ function safeSettings(settings) {
     shutdownAt: settings.serverEnabled === false ? String(settings.shutdownAt || "") : "",
     shutdownBy: settings.serverEnabled === false ? String(settings.shutdownBy || "") : "",
     shutdownReason: settings.serverEnabled === false ? String(settings.shutdownReason || "") : "",
+  };
+}
+
+function sanitizePersistentLogin(source = {}) {
+  const cleanList = (value, limit = 80) =>
+    Array.from(new Set((Array.isArray(value) ? value : String(value || "").split(/[\n,]+/))
+      .map((entry) => String(entry || "").trim().toLowerCase())
+      .filter(Boolean)))
+      .slice(0, limit);
+  return {
+    defaultEnabled: source.defaultEnabled !== false,
+    grades: cleanList(source.grades).map(normalizeGrade).filter(Boolean),
+    roles: cleanList(source.roles).filter((entry) => ["member", "moderator", "admin", "hmd", "dev"].includes(entry)),
+    rooms: cleanList(source.rooms, 200),
   };
 }
 

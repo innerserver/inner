@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-48-room-invites-workspace-final" />
+    <link rel="stylesheet" href="/styles.css?v=inner-49-account-search-persistent-final" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -564,6 +564,10 @@
               <label class="switch-row"><input id="requireContact" type="checkbox" /><span>Require contact details</span></label>
               <label>Report emails<input id="reportEmails" maxlength="300" placeholder="admin@email.com, helper@email.com" /></label>
               <label>Chess tab link<input id="chessUrlInput" maxlength="300" placeholder="https://chessverse.co.in/" /></label>
+              <label class="switch-row"><input id="persistentDefaultEnabled" type="checkbox" checked /><span>Persistent login default on</span></label>
+              <label>Persistent grades<input id="persistentGrades" maxlength="160" placeholder="9, 10, 11, staff" /></label>
+              <label>Persistent roles/classes<input id="persistentRoles" maxlength="160" placeholder="member, moderator" /></label>
+              <label>Persistent rooms<input id="persistentRooms" maxlength="300" placeholder="room names or room ids, comma separated" /></label>
               <button id="testEmailButton" class="secondary-button" type="button">Send test email</button>
               <p id="emailStatusText" class="panel-note">Email status is checking.</p>
               <label class="switch-row"><input id="serverEnabled" type="checkbox" /><span>Server enabled</span></label>
@@ -831,8 +835,8 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-48-room-invites-workspace-final" defer></script>
-    <script src="/app.js?v=inner-48-room-invites-workspace-final" defer></script>
-    <script src="/force-logout.js?v=inner-48-room-invites-workspace-final" defer></script>
+    <script src="/session-guard.js?v=inner-49-account-search-persistent-final" defer></script>
+    <script src="/app.js?v=inner-49-account-search-persistent-final" defer></script>
+    <script src="/force-logout.js?v=inner-49-account-search-persistent-final" defer></script>
   </body>
 </html>

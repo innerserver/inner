@@ -5395,8 +5395,8 @@ function sanitizeCustomizations(customizations) {
   return {
     ...defaultCustomizations(),
     appName: String(customizations.appName || "").trim().slice(0, 60),
-    connectedLabel: String(customizations.connectedLabel || "").trim().slice(0, 40),
-    disconnectedLabel: String(customizations.disconnectedLabel || "").trim().slice(0, 40),
+    connectedLabel: "",
+    disconnectedLabel: "",
     serverOnLabel: String(customizations.serverOnLabel || "").trim().slice(0, 40),
     serverOffLabel: String(customizations.serverOffLabel || "").trim().slice(0, 40),
     versionLabel: String(customizations.versionLabel || "").trim().slice(0, 80),

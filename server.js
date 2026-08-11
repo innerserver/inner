@@ -3046,10 +3046,25 @@ async function saveUpload(req, res, user) {
 
   const storedName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${extension}`;
   const useBackblaze = backblazePreferred();
-  const mustAvoidLocalDisk = cloudStorageRequired() && !useBackblaze && cloudinaryConfigured() && UPLOAD_PROVIDER !== "mongodb";
+  const provider = uploadProviderRequested();
+  const useCloudinary = !useBackblaze && cloudinaryConfigured() && (provider === "auto" || cloudinaryUploadPreferred());
+  const useMongoGridFs = !useBackblaze && !useCloudinary && persistence.ready && (provider === "auto" || mongoUploadPreferred());
+  const mustAvoidLocalDisk = cloudStorageRequired() && useCloudinary;
+  if (backblazeUploadRequested() && !backblazeConfigured()) {
+    await addSystemLog("file.upload.blocked", user.username, { name: originalName, reason: "cloud storage missing" }, req);
+    return json(res, 503, { error: "Backblaze B2 is selected but not connected. Set INNER_B2_KEY_ID, INNER_B2_APPLICATION_KEY, and INNER_B2_BUCKET_NAME on Render." });
+  }
+  if (mongoUploadPreferred() && !persistence.ready) {
+    await addSystemLog("file.upload.blocked", user.username, { name: originalName, reason: "mongodb unavailable" }, req);
+    return json(res, 503, { error: "MongoDB/GridFS is selected but not connected. Remove INNER_UPLOAD_PROVIDER=mongodb or fix MONGODB_URI." });
+  }
+  if (cloudinaryUploadPreferred() && !cloudinaryConfigured()) {
+    await addSystemLog("file.upload.blocked", user.username, { name: originalName, reason: "cloudinary unavailable" }, req);
+    return json(res, 503, { error: "Cloudinary is selected but not connected. Remove INNER_UPLOAD_PROVIDER=cloudinary or set Cloudinary env vars." });
+  }
   if (cloudStorageRequired() && !backblazeConfigured() && !cloudinaryConfigured() && !persistence.ready) {
     await addSystemLog("file.upload.blocked", user.username, { name: originalName, reason: "cloud storage missing" }, req);
-    return json(res, 503, { error: "Cloud storage is not connected. Set Backblaze B2 env vars or MongoDB before uploads." });
+    return json(res, 503, { error: "Cloud storage is not connected. Set Backblaze B2 env vars before uploads." });
   }
 
   if (mustAvoidLocalDisk) {
@@ -3171,7 +3186,7 @@ async function saveUpload(req, res, user) {
       await addSystemLog("file.upload.failed", user.username, { name: originalName, provider: "backblaze-b2", reason: error.message || "Backblaze upload failed" }, req);
       return json(res, 503, { error: `Upload could not be saved to Backblaze B2. ${error.message || "Check B2 env vars."}` });
     }
-  } else if (cloudinaryConfigured() && UPLOAD_PROVIDER !== "mongodb") {
+  } else if (useCloudinary) {
     try {
       const cloudFile = await uploadLocalFileToCloudinary(storedName, target, fileRecord);
       fileRecord.cloudStorage = "cloudinary";
@@ -3188,7 +3203,7 @@ async function saveUpload(req, res, user) {
       await addSystemLog("file.upload.failed", user.username, { name: originalName, provider: "cloudinary", reason: error.message || "Cloudinary upload failed" }, req);
       return json(res, 503, { error: "Upload could not be saved to Cloudinary. Check CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET." });
     }
-  } else if (persistence.ready) {
+  } else if (useMongoGridFs) {
     try {
       const cloudFile = await uploadLocalFileToCloud(storedName, target, fileRecord);
       fileRecord.cloudStorage = "mongodb-gridfs";
@@ -3630,6 +3645,23 @@ function backblazePreferred() {
   return !UPLOAD_PROVIDER || ["backblaze", "b2", "backblaze-b2"].includes(UPLOAD_PROVIDER);
 }
 
+function uploadProviderRequested(provider) {
+  const value = String(provider || UPLOAD_PROVIDER || "").toLowerCase();
+  return value ? value : "auto";
+}
+
+function mongoUploadPreferred() {
+  return ["mongodb", "mongo", "gridfs", "mongodb-gridfs"].includes(uploadProviderRequested());
+}
+
+function cloudinaryUploadPreferred() {
+  return ["cloudinary"].includes(uploadProviderRequested());
+}
+
+function backblazeUploadRequested() {
+  return ["backblaze", "b2", "backblaze-b2"].includes(uploadProviderRequested());
+}
+
 function storageModeLabel() {
   if (backblazePreferred() && persistence.ready) return "backblaze-b2+mongodb-gridfs";
   if (backblazePreferred()) return "backblaze-b2";
@@ -3654,7 +3686,7 @@ function uploadMetadata(record) {
 }
 
 function cloudStorageRequired() {
-  return REQUIRE_CLOUD_STORAGE || (!LOCALHOST_MODE && Boolean(MONGODB_URI));
+  return REQUIRE_CLOUD_STORAGE || backblazeUploadRequested() || cloudinaryUploadPreferred() || mongoUploadPreferred();
 }
 
 async function handleUpgrade(req, socket) {

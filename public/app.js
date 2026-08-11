@@ -710,6 +710,8 @@ function bindEvents() {
   els.restartServerButton.addEventListener("click", () => setServerPower(true));
   els.passwordForm.addEventListener("submit", changePassword);
   els.ownerPasswordForm.addEventListener("submit", resetUserPassword);
+  if (els.resetAccountSearch) els.resetAccountSearch.addEventListener("input", renderPasswordResetOptions);
+  if (els.generateResetPasswordButton) els.generateResetPasswordButton.addEventListener("click", generateResetPassword);
   els.createAccountForm.addEventListener("submit", createAccount);
   els.accountSearchInput.addEventListener("input", () => {
     state.accountSearch = els.accountSearchInput.value.trim().toLowerCase();
@@ -5691,6 +5693,7 @@ function renderAccountDetails() {
     `Created ${formatDate(user.createdAt) || "-"}`,
     user.createdBy ? `Created by ${user.createdBy}` : "",
     user.passwordStatus ? `Password ${user.passwordStatus}` : user.passwordSet ? "Password hash saved" : "Password missing",
+    "Plaintext password is not stored. Use Reset password to set a new one.",
     user.lastPasswordResetAt ? `Password reset ${formatDate(user.lastPasswordResetAt)}` : "",
   ];
   els.accountDetailBody.append(adminCard("Account", user.banned ? "Banned" : "Active", identityLines));
@@ -8112,7 +8115,7 @@ function setConnection(value) {
   if (connected) {
     els.connectionStatus.textContent = custom.connectedLabel || "Live";
   } else if (disconnected) {
-    els.connectionStatus.textContent = custom.disconnectedLabel || "Not live";
+    els.connectionStatus.textContent = custom.disconnectedLabel || "Running, live reconnecting";
   } else {
     els.connectionStatus.textContent = value;
   }

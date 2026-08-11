@@ -454,8 +454,6 @@ function cacheElements() {
     "paywallList",
     "quickEditForm",
     "quickAppName",
-    "quickConnectedLabel",
-    "quickDisconnectedLabel",
     "quickServerOnLabel",
     "quickServerOffLabel",
     "quickVersionLabel",
@@ -1822,8 +1820,8 @@ async function saveQuickEdit(event) {
         ...serverSettingsPayload(),
         customizations: {
           appName: els.quickAppName.value,
-          connectedLabel: els.quickConnectedLabel.value,
-          disconnectedLabel: els.quickDisconnectedLabel.value,
+          connectedLabel: "",
+          disconnectedLabel: "",
           serverOnLabel: els.quickServerOnLabel.value,
           serverOffLabel: els.quickServerOffLabel.value,
           versionLabel: els.quickVersionLabel.value,
@@ -5600,8 +5598,6 @@ function renderQuickEdit() {
   if (!admin) return;
   const custom = state.settings.customizations || {};
   els.quickAppName.value = custom.appName || "";
-  els.quickConnectedLabel.value = custom.connectedLabel || "";
-  els.quickDisconnectedLabel.value = custom.disconnectedLabel || "";
   els.quickServerOnLabel.value = custom.serverOnLabel || "";
   els.quickServerOffLabel.value = custom.serverOffLabel || "";
   els.quickVersionLabel.value = custom.versionLabel || "";
@@ -8246,22 +8242,9 @@ function canScheduleRoomFiles() {
 
 function setConnection(value) {
   if (!els.connectionStatus) return;
-  const custom = state.settings.customizations || {};
   const normalized = String(value || "").toLowerCase();
   const connected = ["live", "connected", "online"].includes(normalized);
-  if (connected) {
-    els.connectionStatus.textContent = custom.connectedLabel || "Live";
-  } else {
-    els.connectionStatus.textContent = cleanDisconnectedLabel(custom.disconnectedLabel) || "Not live";
-  }
-}
-
-function cleanDisconnectedLabel(label) {
-  const value = String(label || "").trim();
-  if (!value) return "";
-  const lower = value.toLowerCase();
-  if (lower.includes("running") || lower.includes("reconnect") || lower.includes("connecting")) return "";
-  return value;
+  els.connectionStatus.textContent = connected ? "Live" : "Not live";
 }
 
 function notify(message) {

@@ -69,6 +69,7 @@
     subtitle.textContent = `${user.role || "member"}${user.grade || profile.grade ? ` - Grade ${user.grade || profile.grade}` : ""}`;
     body.innerHTML = [
       section("Identity and contact", [
+        line("Legal name", [user.firstName, user.lastName].filter(Boolean).join(" ")),
         line("Display name", user.displayName || profile.displayName),
         line("Username", user.username),
         line("Role", user.role),

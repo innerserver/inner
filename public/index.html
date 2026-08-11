@@ -42,7 +42,11 @@
             <p>When your browser asks for location, choose Always allow. Inner uses it for server allocation, and admins can view the request details.</p>
           </div>
           <label>Username<input id="requestUsername" autocomplete="username" placeholder="your-name" required /></label>
-          <label>Display name<input id="requestDisplayName" autocomplete="name" /></label>
+          <div class="split-fields">
+            <label>First name<input id="requestFirstName" autocomplete="given-name" required /></label>
+            <label>Surname<input id="requestLastName" autocomplete="family-name" required /></label>
+          </div>
+          <label>Display name<input id="requestDisplayName" autocomplete="name" placeholder="optional nickname" /></label>
           <div class="split-fields">
             <label>Email<input id="requestEmail" type="email" autocomplete="email" placeholder="you@example.com" /></label>
             <label>Phone<input id="requestPhone" type="tel" autocomplete="tel" placeholder="+1 555 000 0000" /></label>
@@ -62,7 +66,11 @@
             <p>When your browser asks for location, choose Always allow. Open signup creates a normal member account and stores contact details for admins.</p>
           </div>
           <label>Username<input id="signupUsername" autocomplete="username" placeholder="your-name" /></label>
-          <label>Display name<input id="signupDisplayName" autocomplete="name" /></label>
+          <div class="split-fields">
+            <label>First name<input id="signupFirstName" autocomplete="given-name" required /></label>
+            <label>Surname<input id="signupLastName" autocomplete="family-name" required /></label>
+          </div>
+          <label>Display name<input id="signupDisplayName" autocomplete="name" placeholder="optional nickname" /></label>
           <div class="split-fields">
             <label>Email<input id="signupEmail" type="email" autocomplete="email" placeholder="you@example.com" /></label>
             <label>Phone<input id="signupPhone" type="tel" autocomplete="tel" placeholder="+1 555 000 0000" /></label>
@@ -565,7 +573,8 @@
               <label class="switch-row"><input id="requireContact" type="checkbox" /><span>Require contact details</span></label>
               <label>Report emails<input id="reportEmails" maxlength="300" placeholder="admin@email.com, helper@email.com" /></label>
               <label>Main game link<input id="chessUrlInput" maxlength="300" placeholder="https://chessverse.co.in/" /></label>
-              <label>Games links<textarea id="gameLinksInput" rows="4" maxlength="1600" placeholder="ChessVerse | https://chessverse.co.in/&#10;Cool Math | https://www.coolmathgames.com/"></textarea></label>
+              <label>Games links<textarea id="gameLinksInput" rows="5" maxlength="2200" placeholder="ChessVerse | https://chessverse.co.in/ | admin, dev&#10;Cool Math | https://www.coolmathgames.com/&#10;Game name | https://site.com/ | username1, username2"></textarea></label>
+              <p class="panel-note">Format: Game name | URL | allowed usernames. Leave the usernames blank for everyone with Games access.</p>
               <label class="switch-row"><input id="persistentDefaultEnabled" type="checkbox" checked /><span>Persistent login default on</span></label>
               <label>Persistent grades<input id="persistentGrades" maxlength="160" placeholder="9, 10, 11, staff" /></label>
               <label>Persistent roles/classes<input id="persistentRoles" maxlength="160" placeholder="member, moderator" /></label>

@@ -144,6 +144,8 @@ function cacheElements() {
     "signupEntryButton",
     "accountRequestForm",
     "requestUsername",
+    "requestFirstName",
+    "requestLastName",
     "requestDisplayName",
     "requestEmail",
     "requestPhone",
@@ -156,6 +158,8 @@ function cacheElements() {
     "accountRequestStatus",
     "signupForm",
     "signupUsername",
+    "signupFirstName",
+    "signupLastName",
     "signupDisplayName",
     "signupEmail",
     "signupPhone",
@@ -845,6 +849,8 @@ async function submitAccountRequest(event) {
       method: "POST",
       json: {
         username: els.requestUsername.value.trim(),
+        firstName: els.requestFirstName ? els.requestFirstName.value.trim() : "",
+        lastName: els.requestLastName ? els.requestLastName.value.trim() : "",
         displayName: els.requestDisplayName.value.trim(),
         email: els.requestEmail ? els.requestEmail.value.trim() : "",
         phone: els.requestPhone ? els.requestPhone.value.trim() : "",
@@ -876,6 +882,8 @@ async function handleSignup(event) {
       method: "POST",
       json: {
         username: els.signupUsername.value.trim(),
+        firstName: els.signupFirstName ? els.signupFirstName.value.trim() : "",
+        lastName: els.signupLastName ? els.signupLastName.value.trim() : "",
         displayName: els.signupDisplayName.value.trim(),
         email: els.signupEmail ? els.signupEmail.value.trim() : "",
         phone: els.signupPhone ? els.signupPhone.value.trim() : "",
@@ -1651,10 +1659,11 @@ function parseGameLinksInput(value) {
     .filter(Boolean)
     .map((line) => {
       const parts = line.split("|");
+      const allowedRaw = parts.length > 2 ? parts.pop() : "";
       const rawUrl = parts.length > 1 ? parts.pop() : line;
       const url = normalizeExternalUrl(rawUrl);
       const name = (parts.join("|").trim() || hostLabel(url) || "Game").slice(0, 80);
-      return { name, url };
+      return { name, url, allowedUsers: splitUserList(allowedRaw) };
     })
     .filter((entry) => entry.url)
     .slice(0, 24);
@@ -1662,7 +1671,10 @@ function parseGameLinksInput(value) {
 
 function gameLinksInputValue(links) {
   return (Array.isArray(links) ? links : [])
-    .map((entry) => `${entry.name || hostLabel(entry.url) || "Game"} | ${entry.url || ""}`)
+    .map((entry) => {
+      const allowed = Array.isArray(entry.allowedUsers) && entry.allowedUsers.length ? ` | ${entry.allowedUsers.join(", ")}` : "";
+      return `${entry.name || hostLabel(entry.url) || "Game"} | ${entry.url || ""}${allowed}`;
+    })
     .filter((line) => line.includes("http"))
     .join("\n");
 }
@@ -2333,17 +2345,27 @@ function gameLinks() {
     .map((entry) => ({
       name: String(entry && entry.name || "").trim().slice(0, 80),
       url: normalizeExternalUrl(entry && entry.url),
+      allowedUsers: splitUserList(entry && entry.allowedUsers),
     }))
     .filter((entry) => entry.name && entry.url);
-  const chess = { name: "ChessVerse", url: currentChessUrl() || "https://chessverse.co.in/" };
-  const merged = [chess, ...normalized];
+  const chess = { name: "ChessVerse", url: currentChessUrl() || "https://chessverse.co.in/", allowedUsers: [] };
+  const merged = [...normalized, chess];
   const seen = new Set();
   return merged.filter((entry) => {
     const key = entry.url.toLowerCase();
     if (seen.has(key)) return false;
     seen.add(key);
-    return true;
+    return canUseGame(entry);
   }).slice(0, 24);
+}
+
+function canUseGame(game) {
+  if (!game) return false;
+  if (isOwner()) return true;
+  const allowed = splitUserList(game.allowedUsers);
+  if (!allowed.length) return true;
+  const username = String(state.user && state.user.username || "").toLowerCase();
+  return allowed.includes(username);
 }
 
 function selectedGameLink() {
@@ -2354,6 +2376,7 @@ function selectedGameLink() {
 function openSelectedGameInFrame(url = selectedGameLink().url) {
   const target = normalizeExternalUrl(url);
   if (!target) return notify("Choose a valid game link");
+  if (!gameLinks().some((entry) => entry.url === target)) return notify("This game is not available for your account");
   state.selectedGameUrl = target;
   if (els.chessFrame) els.chessFrame.src = target;
   renderGames();
@@ -5503,7 +5526,8 @@ function renderAccountDetails() {
   els.accountDetailBody.replaceChildren();
   const contact = typeof user.contact === "object" && user.contact ? user.contact : {};
   const profile = state.profiles[user.username] || {};
-  const identityLines = [
+    const identityLines = [
+    user.firstName || user.lastName ? `Legal name ${[user.firstName, user.lastName].filter(Boolean).join(" ")}` : "",
     user.displayName || profile.displayName ? `Name ${user.displayName || profile.displayName}` : "",
     `Username ${user.username}`,
     `Role ${user.role || "member"}`,
@@ -5902,6 +5926,7 @@ function renderAccountRequests() {
       ? `${Number(request.location.latitude).toFixed(4)}, ${Number(request.location.longitude).toFixed(4)} accuracy ${Math.round(Number(request.location.accuracy || 0))}m`
       : "No location";
     const card = adminCard(request.username, status, [
+      request.firstName || request.lastName ? `Legal name ${[request.firstName, request.lastName].filter(Boolean).join(" ")}` : "",
       request.displayName ? `Name ${request.displayName}` : "",
       `Requested type ${request.requestedRole || "member"}`,
       request.grade ? `Grade ${request.grade}` : "",
@@ -6940,9 +6965,11 @@ function filterUsersForAdmin(users) {
 function userMatchesAccountSearch(user, term) {
   const profile = state.profiles[user.username] || {};
   const contact = typeof user.contact === "object" && user.contact ? user.contact : {};
-  return searchableText({
-    username: user.username,
-    displayName: user.displayName || profile.displayName,
+    return searchableText({
+      username: user.username,
+    firstName: user.firstName,
+    lastName: user.lastName,
+      displayName: user.displayName || profile.displayName,
     email: user.email || contact.email,
     phone: user.phone || contact.phone,
     role: user.role,
@@ -7328,7 +7355,8 @@ function hasPaidOrder(itemId) {
 }
 
 function splitUserList(value) {
-  return String(value || "")
+  const source = Array.isArray(value) ? value.join(",") : String(value || "");
+  return source
     .split(/[,\n]/)
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean);

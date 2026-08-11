@@ -912,8 +912,12 @@ async function routeApi(req, res, requestUrl) {
     const phone = String(body.phone || "").trim().slice(0, 80);
     const password = String(body.password || "");
     const grade = normalizeGrade(body.grade || "");
+    const firstName = normalizePersonName(body.firstName || "");
+    const lastName = normalizePersonName(body.lastName || "");
+    const displayName = String(body.displayName || [firstName, lastName].filter(Boolean).join(" ") || username).trim().slice(0, 80);
     const contact = String(body.contact || [email, phone].filter(Boolean).join(" / ")).trim().slice(0, 160);
     if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
+    if (!firstName || !lastName) return json(res, 400, { error: "Add your first name and surname." });
     if (settings.requireContact !== false && !contact) {
       return json(res, 400, { error: "Add an email or phone number so admins can contact you after review." });
     }
@@ -935,7 +939,9 @@ async function routeApi(req, res, requestUrl) {
     const request = sanitizeAccountRequest({
       id: crypto.randomUUID(),
       username,
-      displayName: body.displayName,
+      firstName,
+      lastName,
+      displayName,
       contact,
       email,
       phone,
@@ -983,8 +989,12 @@ async function routeApi(req, res, requestUrl) {
     const phone = String(body.phone || "").trim().slice(0, 80);
     const contact = String(body.contact || [email, phone].filter(Boolean).join(" / ")).trim().slice(0, 160);
     const grade = normalizeGrade(body.grade || "");
+    const firstName = normalizePersonName(body.firstName || "");
+    const lastName = normalizePersonName(body.lastName || "");
+    const displayName = String(body.displayName || [firstName, lastName].filter(Boolean).join(" ") || username).trim().slice(0, 80);
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
     if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
+    if (!firstName || !lastName) return json(res, 400, { error: "Add your first name and surname." });
     if (settings.requireContact !== false && !contact) {
       return json(res, 400, { error: "Add an email or phone number so admins can contact you." });
     }
@@ -1004,6 +1014,9 @@ async function routeApi(req, res, requestUrl) {
       contact,
       email,
       phone,
+      firstName,
+      lastName,
+      displayName,
       grade,
       sourceIp: getClientIp(req),
       sourceHost: req.headers.host || "",
@@ -1017,7 +1030,7 @@ async function routeApi(req, res, requestUrl) {
     users.push(account);
     profiles[username] = sanitizeProfile({
       ...defaultProfile(username),
-      displayName: body.displayName || username,
+      displayName,
       grade,
       gradeUpdatedAt: grade ? now : "",
       updatedAt: now,
@@ -2364,6 +2377,9 @@ async function routeApi(req, res, requestUrl) {
       contact: request.contact,
       email: request.email,
       phone: request.phone,
+      firstName: request.firstName,
+      lastName: request.lastName,
+      displayName: request.displayName,
       grade: request.grade,
       sourceIp: request.sourceIp,
       sourceDevice: request.sourceDevice,
@@ -4114,6 +4130,9 @@ function safeUser(user, viewer = null) {
     contact: user.contact || "",
     email: user.email || "",
     phone: user.phone || "",
+    firstName: user.firstName || "",
+    lastName: user.lastName || "",
+    displayName: user.displayName || "",
     grade: normalizeGrade(user.grade || ""),
     gradeUpdatedAt: user.gradeUpdatedAt || "",
     mutedUntil: user.mutedUntil || "",
@@ -4589,6 +4608,8 @@ function sanitizeAccountRequest(request) {
   return {
     id: String(request.id || crypto.randomUUID()),
     username: normalizeUsername(request.username),
+    firstName: normalizePersonName(request.firstName || ""),
+    lastName: normalizePersonName(request.lastName || ""),
     displayName: String(request.displayName || request.username || "").trim().slice(0, 80),
     contact: String(request.contact || "").trim().slice(0, 160),
     email: String(request.email || "").trim().slice(0, 120),
@@ -5372,6 +5393,14 @@ function normalizeGrade(grade) {
   if (/^(6|7|8|9|10|11|12)[abc]$/.test(value)) return value;
   if (["6", "7", "8", "9", "10", "11", "12", "college", "staff", "other"].includes(value)) return value;
   return "";
+}
+
+function normalizePersonName(name) {
+  return String(name || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[^a-zA-Z .'-]/g, "")
+    .slice(0, 60);
 }
 
 function isSectionGrade(grade) {

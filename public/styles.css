@@ -4161,6 +4161,9 @@ textarea {
 
 /* v48 admin room/workspace cleanup. */
 .collapse-toggle {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
   justify-self: end;
   width: fit-content;
   padding: 8px 12px;
@@ -4179,7 +4182,13 @@ textarea {
   margin-bottom: 4px;
 }
 
-.admin-collapsed > :not(h3):not(.panel-title-row):not(.collapse-toggle) {
+.panel-title-row .collapse-toggle {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.admin-collapsed > :not(h3):not(.panel-title-row):not(.collapse-toggle),
+.admin-collapsed > .panel-title-row > :not(h3):not(.collapse-toggle) {
   display: none !important;
 }
 

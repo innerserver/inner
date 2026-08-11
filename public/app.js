@@ -2793,9 +2793,7 @@ async function checkServerHealth(options = {}) {
     if (!response.ok) throw new Error(data.error || `Health failed (${response.status})`);
     state.lastHealthOkAt = Date.now();
     state.lastHealthError = "";
-    if (!isRealtimeReady()) {
-      setConnection(isRealtimeReady() ? "Live" : "Not live");
-    }
+    if (!isRealtimeReady()) setConnection("Not live");
     return true;
   } catch (error) {
     state.lastHealthError = error.message || "Health check failed";
@@ -3682,7 +3680,7 @@ function isRealtimeReady() {
 
 async function ensureRealtimeReady(label = "live features") {
   if (isRealtimeReady()) return true;
-  setConnection("Connecting");
+  setConnection("Not live");
   await checkServerHealth({ silent: true, requireLogin: false });
   if (!state.ws || state.ws.readyState === WebSocket.CLOSED || state.ws.readyState === WebSocket.CLOSING) {
     connectSocket();
@@ -3692,7 +3690,7 @@ async function ensureRealtimeReady(label = "live features") {
     if (isRealtimeReady()) return true;
     await sleep(120);
   }
-  const serverPart = state.lastHealthOkAt ? "The server API is running, but live WebSocket is still reconnecting." : "The server is still waking up or unreachable.";
+  const serverPart = state.lastHealthOkAt ? "Server API is reachable, but live mode is not connected." : "Server is still waking up or unreachable.";
   notify(`${serverPart} ${label} needs live mode.`);
   return false;
 }
@@ -3864,39 +3862,52 @@ function renderAll() {
 }
 
 function setupAdminCollapsibles() {
-  if (!els.adminView || !isOwner()) return;
-  els.adminView.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => {
-    if (panel.dataset.collapsibleReady === "1") return;
-    const title = panel.querySelector(":scope > h3, :scope > .panel-title-row h3");
-    if (!title) return;
-    const button = document.createElement("button");
+  const roots = [els.adminView, els.hmdView].filter(Boolean);
+  if (!roots.length || (!isOwner() && !isDev())) return;
+  roots.forEach((root) => {
+    if (root === els.adminView && !isOwner()) return;
+    if (root === els.hmdView && !isDev()) return;
+    root.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => ensurePanelCollapse(root, panel, index));
+  });
+}
+
+function ensurePanelCollapse(root, panel, index) {
+  const title = panel.querySelector(":scope > h3, :scope > .panel-title-row h3");
+  if (!title) return;
+  let button = panel.querySelector(":scope .collapse-toggle");
+  const key = `innerPanelCollapsed:${root.id || "panel"}:${index}:${title.textContent}`;
+  if (!button) {
+    button = document.createElement("button");
     button.className = "collapse-toggle";
     button.type = "button";
-    button.textContent = "Collapse";
-    button.addEventListener("click", () => {
-      const collapsed = !panel.classList.contains("admin-collapsed");
-      panel.classList.toggle("admin-collapsed", collapsed);
-      button.textContent = collapsed ? "Expand" : "Collapse";
-      try {
-        localStorage.setItem(`innerAdminPanelCollapsed:${index}:${title.textContent}`, collapsed ? "1" : "0");
-      } catch (error) {}
-    });
+    const row = title.closest(".panel-title-row");
+    if (row) row.append(button);
+    else title.insertAdjacentElement("afterend", button);
+  }
+  const sync = () => {
+    button.textContent = panel.classList.contains("admin-collapsed") ? "Expand" : "Collapse";
+    button.setAttribute("aria-expanded", panel.classList.contains("admin-collapsed") ? "false" : "true");
+  };
+  if (panel.dataset.collapsibleReady !== "1") {
     const saved = (() => {
       try {
-        return localStorage.getItem(`innerAdminPanelCollapsed:${index}:${title.textContent}`) === "1";
+        return localStorage.getItem(key) === "1";
       } catch (error) {
         return false;
       }
     })();
-    if (saved) {
-      panel.classList.add("admin-collapsed");
-      button.textContent = "Expand";
-    }
-    const row = title.closest(".panel-title-row");
-    if (row) row.append(button);
-    else title.insertAdjacentElement("afterend", button);
+    panel.classList.toggle("admin-collapsed", saved);
+    button.addEventListener("click", () => {
+      const collapsed = !panel.classList.contains("admin-collapsed");
+      panel.classList.toggle("admin-collapsed", collapsed);
+      try {
+        localStorage.setItem(key, collapsed ? "1" : "0");
+      } catch (error) {}
+      sync();
+    });
     panel.dataset.collapsibleReady = "1";
-  });
+  }
+  sync();
 }
 
 function renderCornerAd() {

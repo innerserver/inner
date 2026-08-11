@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-49-account-search-persistent-final" />
+    <link rel="stylesheet" href="/styles.css?v=inner-50-games-account-tab-final" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -368,15 +368,16 @@
           <div class="section-header">
             <div>
               <h2>Games</h2>
-              <p>ChessVerse launcher. Made by Yash Kotwani and Dev Shah.</p>
+              <p>Game/app launcher. ChessVerse stays here as one game link.</p>
             </div>
             <div class="button-row">
-              <button id="openChessButton" class="primary-button compact-button" type="button">Open Chess Site</button>
-              <button id="continueChessButton" class="secondary-button compact-button" type="button">Continue signup</button>
-              <button id="shareChessButton" class="ghost-light-button compact-button" type="button">Share to friends</button>
+              <button id="openChessButton" class="primary-button compact-button" type="button">Open selected</button>
+              <button id="continueChessButton" class="secondary-button compact-button" type="button">Open full tab</button>
+              <button id="shareChessButton" class="ghost-light-button compact-button" type="button">Share selected</button>
             </div>
           </div>
-          <p class="panel-note">Use Open ChessVerse or Continue signup for accounts. Browser security can block third-party signup cookies inside embedded apps.</p>
+          <div id="gameLauncherList" class="game-launcher-list"></div>
+          <p class="panel-note">Made by Yash Kotwani and Dev Shah. Browser security can block third-party logins inside embedded games, so use Open full tab when a site blocks the frame.</p>
           <iframe
             id="chessFrame"
             class="embedded-app-frame"
@@ -563,7 +564,8 @@
               <label>Signup mode<select id="signupMode"><option value="request">Request approval</option><option value="open">Open signup</option></select></label>
               <label class="switch-row"><input id="requireContact" type="checkbox" /><span>Require contact details</span></label>
               <label>Report emails<input id="reportEmails" maxlength="300" placeholder="admin@email.com, helper@email.com" /></label>
-              <label>Chess tab link<input id="chessUrlInput" maxlength="300" placeholder="https://chessverse.co.in/" /></label>
+              <label>Main game link<input id="chessUrlInput" maxlength="300" placeholder="https://chessverse.co.in/" /></label>
+              <label>Games links<textarea id="gameLinksInput" rows="4" maxlength="1600" placeholder="ChessVerse | https://chessverse.co.in/&#10;Cool Math | https://www.coolmathgames.com/"></textarea></label>
               <label class="switch-row"><input id="persistentDefaultEnabled" type="checkbox" checked /><span>Persistent login default on</span></label>
               <label>Persistent grades<input id="persistentGrades" maxlength="160" placeholder="9, 10, 11, staff" /></label>
               <label>Persistent roles/classes<input id="persistentRoles" maxlength="160" placeholder="member, moderator" /></label>
@@ -739,7 +741,7 @@
             <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>Backups</h3><button id="createBackupButton" class="secondary-button compact-button" type="button">Create backup</button></div><p class="panel-note">Backups save account data, messages, DMs, settings, and file records. Uploaded file contents stay in the data/uploads folder.</p><div id="backupList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Account requests</h3><p class="panel-note">Requests include browser location because users must turn on location for server allocation.</p><div id="accountRequestList" class="account-list"></div></div>
             <div id="accountManager" class="status-panel account-manager owner-only hidden"><div class="panel-title-row account-search-row"><h3>Accounts</h3><button id="showAllAccountsButton" class="secondary-button compact-button" type="button">Show all</button><select id="accountGradeFilter" class="compact-search" aria-label="Filter accounts by grade"><option value="">All grades</option><option value="6">Grade 6</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option><option value="none">No grade</option></select><input id="accountSearchInput" class="compact-search" maxlength="120" placeholder="Search username, display name, email, phone, IP, device, role" autocomplete="off" /></div><p class="panel-note">Admin/HMD/dev accounts show by default. Use grade filter, search, or Show all to display member accounts.</p><div id="accountList" class="account-list compact-account-list"></div></div>
-            <div id="accountDetailPanel" class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><div><h3 id="accountDetailTitle">Account details</h3><p id="accountDetailSubtitle" class="panel-note">Search and select a user to inspect account and browser activity.</p></div><div class="button-row"><button id="wipeAccountBrowserHistoryButton" class="danger-button compact-button" type="button">Wipe browser history</button><button id="closeAccountDetailButton" class="ghost-light-button compact-button" type="button">Close</button></div></div><div id="accountDetailBody" class="account-list compact-list"></div></div>
+            <div id="accountDetailPanel" class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><div><h3 id="accountDetailTitle">Account details</h3><p id="accountDetailSubtitle" class="panel-note">Search and select a user to inspect account and browser activity.</p></div><div class="button-row"><button id="openAccountDetailTabButton" class="secondary-button compact-button" type="button">Open detail tab</button><button id="wipeAccountBrowserHistoryButton" class="danger-button compact-button" type="button">Wipe browser history</button><button id="closeAccountDetailButton" class="ghost-light-button compact-button" type="button">Close</button></div></div><div id="accountDetailBody" class="account-list compact-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Live IP tracking</h3><p class="panel-note">Shows active sessions first, then latest login/IP data for accounts.</p><div id="liveIpList" class="account-list compact-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Reports</h3><div id="reportList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>Moderation logs</h3><button id="exportModerationLogsButton" class="secondary-button compact-button" type="button">Export</button></div><div id="moderationLogList" class="account-list"></div></div>
@@ -835,8 +837,8 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-49-account-search-persistent-final" defer></script>
-    <script src="/app.js?v=inner-49-account-search-persistent-final" defer></script>
-    <script src="/force-logout.js?v=inner-49-account-search-persistent-final" defer></script>
+    <script src="/session-guard.js?v=inner-50-games-account-tab-final" defer></script>
+    <script src="/app.js?v=inner-50-games-account-tab-final" defer></script>
+    <script src="/force-logout.js?v=inner-50-games-account-tab-final" defer></script>
   </body>
 </html>

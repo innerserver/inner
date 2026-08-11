@@ -25,6 +25,7 @@ const state = {
   logSearch: "",
   logDate: "",
   files: [],
+  selectedGameUrl: "",
   innerDocs: [],
   selectedInnerDocId: "",
   docsListCollapsed: false,
@@ -234,6 +235,7 @@ function cacheElements() {
     "publicBrowserFrame",
     "chessView",
     "chessFrame",
+    "gameLauncherList",
     "openChessButton",
     "continueChessButton",
     "shareChessButton",
@@ -369,6 +371,7 @@ function cacheElements() {
     "requireContact",
     "reportEmails",
     "chessUrlInput",
+    "gameLinksInput",
     "persistentDefaultEnabled",
     "persistentGrades",
     "persistentRoles",
@@ -391,6 +394,7 @@ function cacheElements() {
     "accountDetailTitle",
     "accountDetailSubtitle",
     "accountDetailBody",
+    "openAccountDetailTabButton",
     "wipeAccountBrowserHistoryButton",
     "closeAccountDetailButton",
     "currentPassword",
@@ -596,7 +600,10 @@ function bindEvents() {
   els.dmGroupForm.addEventListener("submit", createDmGroup);
   els.deleteDmGroupButton.addEventListener("click", deleteCurrentDmGroup);
   if (els.shareLinkForm) els.shareLinkForm.addEventListener("submit", shareLinkToFriends);
-  if (els.shareChessButton) els.shareChessButton.addEventListener("click", () => fillShareLink(currentChessUrl(), "ChessVerse", "app"));
+  if (els.shareChessButton) els.shareChessButton.addEventListener("click", () => {
+    const game = selectedGameLink();
+    fillShareLink(game.url, game.name || "Game", "app");
+  });
   if (els.openGoogleWorkspaceButton) els.openGoogleWorkspaceButton.addEventListener("click", () => openGoogleWorkspaceFullTab());
   if (els.newGoogleWorkspaceButton) els.newGoogleWorkspaceButton.addEventListener("click", () => openGoogleWorkspaceInApp(state.googleWorkspaceKind, true));
   if (els.shareGoogleWorkspaceButton) els.shareGoogleWorkspaceButton.addEventListener("click", () => shareGoogleWorkspace());
@@ -654,9 +661,9 @@ function bindEvents() {
     if (input) input.addEventListener("input", updateProfilePreview);
   });
   els.uploadForm.addEventListener("submit", uploadFile);
-  els.openChessButton.addEventListener("click", () => window.open(currentChessUrl(), "_blank", "noopener"));
+  els.openChessButton.addEventListener("click", () => openSelectedGameInFrame());
   els.continueChessButton.addEventListener("click", () => {
-    window.location.href = currentChessUrl();
+    window.open(selectedGameLink().url, "_blank", "noopener");
   });
   els.fileInput.addEventListener("change", () => {
     updateFilePickerSummary();
@@ -708,6 +715,7 @@ function bindEvents() {
     });
   }
   if (els.wipeAccountBrowserHistoryButton) els.wipeAccountBrowserHistoryButton.addEventListener("click", wipeSelectedAccountBrowserHistory);
+  if (els.openAccountDetailTabButton) els.openAccountDetailTabButton.addEventListener("click", openSelectedAccountDetailTab);
   els.featureLockForm.addEventListener("submit", saveFeatureLock);
   if (els.featureVisibilityForm) els.featureVisibilityForm.addEventListener("submit", saveFeatureVisibility);
   if (els.visibilityFeatureName) els.visibilityFeatureName.addEventListener("change", renderFeatureVisibility);
@@ -1610,6 +1618,7 @@ function serverSettingsPayload(extra = {}) {
     requireContact: els.requireContact.checked,
     reportEmails: els.reportEmails.value.split(",").map((entry) => entry.trim()).filter(Boolean),
     chessUrl: normalizeExternalUrl(els.chessUrlInput ? els.chessUrlInput.value : ""),
+    gameLinks: parseGameLinksInput(els.gameLinksInput ? els.gameLinksInput.value : ""),
     persistentLogin: {
       defaultEnabled: Boolean(els.persistentDefaultEnabled && els.persistentDefaultEnabled.checked),
       grades: splitUserList(els.persistentGrades ? els.persistentGrades.value : ""),
@@ -1618,6 +1627,37 @@ function serverSettingsPayload(extra = {}) {
     },
     ...extra,
   };
+}
+
+function parseGameLinksInput(value) {
+  return String(value || "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split("|");
+      const rawUrl = parts.length > 1 ? parts.pop() : line;
+      const url = normalizeExternalUrl(rawUrl);
+      const name = (parts.join("|").trim() || hostLabel(url) || "Game").slice(0, 80);
+      return { name, url };
+    })
+    .filter((entry) => entry.url)
+    .slice(0, 24);
+}
+
+function gameLinksInputValue(links) {
+  return (Array.isArray(links) ? links : [])
+    .map((entry) => `${entry.name || hostLabel(entry.url) || "Game"} | ${entry.url || ""}`)
+    .filter((line) => line.includes("http"))
+    .join("\n");
+}
+
+function hostLabel(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch (error) {
+    return "";
+  }
 }
 
 async function sendTestEmail() {
@@ -2246,6 +2286,56 @@ function normalizeExternalUrl(rawUrl) {
 
 function currentChessUrl() {
   return normalizeExternalUrl((state.settings && state.settings.chessUrl) || (els.chessUrlInput && els.chessUrlInput.value) || "https://chessverse.co.in/");
+}
+
+function gameLinks() {
+  const links = Array.isArray(state.settings.gameLinks) ? state.settings.gameLinks : [];
+  const normalized = links
+    .map((entry) => ({
+      name: String(entry && entry.name || "").trim().slice(0, 80),
+      url: normalizeExternalUrl(entry && entry.url),
+    }))
+    .filter((entry) => entry.name && entry.url);
+  const chess = { name: "ChessVerse", url: currentChessUrl() || "https://chessverse.co.in/" };
+  const merged = [chess, ...normalized];
+  const seen = new Set();
+  return merged.filter((entry) => {
+    const key = entry.url.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 24);
+}
+
+function selectedGameLink() {
+  const links = gameLinks();
+  return links.find((entry) => entry.url === state.selectedGameUrl) || links[0] || { name: "ChessVerse", url: "https://chessverse.co.in/" };
+}
+
+function openSelectedGameInFrame(url = selectedGameLink().url) {
+  const target = normalizeExternalUrl(url);
+  if (!target) return notify("Choose a valid game link");
+  state.selectedGameUrl = target;
+  if (els.chessFrame) els.chessFrame.src = target;
+  renderGames();
+  notify("Game opened");
+}
+
+function renderGames() {
+  if (!els.gameLauncherList) return;
+  const links = gameLinks();
+  if (!state.selectedGameUrl || !links.some((entry) => entry.url === state.selectedGameUrl)) {
+    state.selectedGameUrl = links[0] ? links[0].url : "";
+  }
+  els.gameLauncherList.replaceChildren();
+  links.forEach((game) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `game-link-button${game.url === state.selectedGameUrl ? " active" : ""}`;
+    button.textContent = game.name;
+    button.addEventListener("click", () => openSelectedGameInFrame(game.url));
+    els.gameLauncherList.append(button);
+  });
 }
 
 function openAdminBrowser(event) {
@@ -3425,6 +3515,7 @@ function renderAll() {
   renderProfile();
   renderStore();
   renderFiles();
+  renderGames();
   renderDocs();
   renderVoice();
   renderScreen();
@@ -5105,17 +5196,21 @@ function renderServer() {
   els.requireContact.checked = state.settings.requireContact !== false;
   els.reportEmails.value = Array.isArray(state.settings.reportEmails) ? state.settings.reportEmails.join(", ") : "";
   if (els.chessUrlInput) els.chessUrlInput.value = currentChessUrl();
+  if (els.gameLinksInput && document.activeElement !== els.gameLinksInput) {
+    els.gameLinksInput.value = gameLinksInputValue(state.settings.gameLinks || []);
+  }
   const persistent = state.settings.persistentLogin || {};
   if (els.persistentDefaultEnabled) els.persistentDefaultEnabled.checked = persistent.defaultEnabled !== false;
   if (els.persistentGrades && document.activeElement !== els.persistentGrades) els.persistentGrades.value = Array.isArray(persistent.grades) ? persistent.grades.join(", ") : "";
   if (els.persistentRoles && document.activeElement !== els.persistentRoles) els.persistentRoles.value = Array.isArray(persistent.roles) ? persistent.roles.join(", ") : "";
   if (els.persistentRooms && document.activeElement !== els.persistentRooms) els.persistentRooms.value = Array.isArray(persistent.rooms) ? persistent.rooms.join(", ") : "";
-  if (els.chessFrame && els.chessFrame.src !== currentChessUrl()) els.chessFrame.src = currentChessUrl();
+  renderGames();
+  if (els.chessFrame && !els.chessFrame.src) els.chessFrame.src = selectedGameLink().url;
   els.serverEnabled.checked = enabled;
   if (els.newAccountPersistent) els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
 
   const admin = isOwner();
-  [els.roomNameInput, els.signupMode, els.requireContact, els.reportEmails, els.chessUrlInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+  [els.roomNameInput, els.signupMode, els.requireContact, els.reportEmails, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
   });
@@ -5269,6 +5364,7 @@ function renderUsers() {
       updateUser(user.username, { allowPersistentLogin: !user.allowPersistentLogin })
     );
     const detailsButton = accountButton("Details", () => openAccountDetails(user.username));
+    const detailTabButton = accountButton("Open tab", () => openAccountDetailTab(user.username));
     const banFive = accountButton("Ban 5m", () => banUser(user.username, 5));
     const banShort = accountButton("Ban 15m", () => banUser(user.username, 15));
     const banHour = accountButton("Ban 1h", () => banUser(user.username, 60));
@@ -5281,7 +5377,7 @@ function renderUsers() {
     banDay.disabled = isMainAdmin;
     unban.disabled = isMainAdmin;
     remove.disabled = isMainAdmin || isCurrentUser;
-    actions.append(gradeSelect, gradeButton, roleButton, persistentButton, detailsButton, banFive, banShort, banHour, banDay, unban, remove);
+    actions.append(gradeSelect, gradeButton, roleButton, persistentButton, detailsButton, detailTabButton, banFive, banShort, banHour, banDay, unban, remove);
 
     item.append(head, meta, actions);
     els.accountList.append(item);
@@ -5345,6 +5441,16 @@ function openAccountDetails(username) {
   if (els.accountDetailPanel) els.accountDetailPanel.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
+function openAccountDetailTab(username) {
+  const target = String(username || state.selectedAccountDetails || "").trim();
+  if (!target) return notify("Choose or search an account first");
+  window.open(`/account-details.html?user=${encodeURIComponent(target)}`, "_blank", "noopener");
+}
+
+function openSelectedAccountDetailTab() {
+  openAccountDetailTab(state.selectedAccountDetails);
+}
+
 function renderAccountDetails() {
   if (!els.accountDetailPanel || !isOwner()) return;
   const username = state.selectedAccountDetails || "";
@@ -5354,10 +5460,12 @@ function renderAccountDetails() {
   if (els.accountDetailTitle) els.accountDetailTitle.textContent = `${user.username} details`;
   if (els.accountDetailSubtitle) els.accountDetailSubtitle.textContent = `${user.role || "member"}${user.grade ? ` - Grade ${user.grade}` : ""}`;
   if (els.wipeAccountBrowserHistoryButton) els.wipeAccountBrowserHistoryButton.disabled = !user;
+  if (els.openAccountDetailTabButton) els.openAccountDetailTabButton.disabled = !user;
   els.accountDetailBody.replaceChildren();
   const contact = typeof user.contact === "object" && user.contact ? user.contact : {};
+  const profile = state.profiles[user.username] || {};
   const identityLines = [
-    user.displayName ? `Name ${user.displayName}` : "",
+    user.displayName || profile.displayName ? `Name ${user.displayName || profile.displayName}` : "",
     `Username ${user.username}`,
     `Role ${user.role || "member"}`,
     user.grade ? `Grade ${user.grade}` : "No grade",

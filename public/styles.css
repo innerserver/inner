@@ -4095,3 +4095,76 @@ textarea {
   gap: 6px !important;
   min-height: 0 !important;
 }
+
+/* v50 games launcher + admin detail page. */
+.game-launcher-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.game-link-button {
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.game-link-button.active {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 65%, var(--surface));
+}
+
+.account-detail-shell {
+  max-width: 1120px;
+}
+
+.account-detail-page-list {
+  display: grid;
+  gap: 14px;
+}
+
+.detail-section {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.detail-section h2 {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+}
+
+.detail-line {
+  display: grid;
+  grid-template-columns: minmax(120px, 220px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 7px 0;
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.detail-line span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.detail-line strong {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .detail-line {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+}

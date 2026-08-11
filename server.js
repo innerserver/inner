@@ -683,6 +683,13 @@ async function ensureSettings() {
     next.chessUrl = "https://chessverse.co.in/";
     changed = true;
   }
+  if (!Array.isArray(next.gameLinks)) {
+    next.gameLinks = [{ name: "ChessVerse", url: "https://chessverse.co.in/" }];
+    changed = true;
+  } else {
+    next.gameLinks = sanitizeGameLinks(next.gameLinks);
+    changed = true;
+  }
   if (changed) {
     await writeJson(FILES.settings, {
       ...next,
@@ -2626,6 +2633,7 @@ async function routeApi(req, res, requestUrl) {
           ? settings.reportEmails.slice(0, 4)
           : REPORT_EMAILS,
       chessUrl: sanitizeExternalUrl(body.chessUrl) || sanitizeExternalUrl(settings.chessUrl) || "https://chessverse.co.in/",
+      gameLinks: sanitizeGameLinks(body.gameLinks !== undefined ? body.gameLinks : settings.gameLinks || []),
       moderationSettings: {
         ...(settings.moderationSettings || {}),
         ...(body.moderationSettings && typeof body.moderationSettings === "object" ? body.moderationSettings : {}),
@@ -4732,6 +4740,7 @@ function normalizeAccountRequestStatus(status) {
 function safeSettings(settings) {
   return {
     ...settings,
+    gameLinks: sanitizeGameLinks(settings.gameLinks || []),
     customizations: sanitizeCustomizations(settings.customizations || {}),
     serviceScale: sanitizeServiceScale(settings.serviceScale || {}),
     persistentLogin: sanitizePersistentLogin(settings.persistentLogin || {}),
@@ -4758,6 +4767,39 @@ function sanitizePersistentLogin(source = {}) {
     roles: cleanList(source.roles).filter((entry) => ["member", "moderator", "admin", "hmd", "dev"].includes(entry)),
     rooms: cleanList(source.rooms, 200),
   };
+}
+
+function sanitizeGameLinks(source = []) {
+  const entries = Array.isArray(source) ? source : [];
+  const fallback = [{ name: "ChessVerse", url: "https://chessverse.co.in/" }];
+  const cleaned = entries
+    .map((entry) => {
+      const raw = entry && typeof entry === "object" ? entry : {};
+      const url = sanitizeExternalUrl(raw.url || "");
+      const host = (() => {
+        try {
+          return new URL(url).hostname.replace(/^www\./, "");
+        } catch (error) {
+          return "";
+        }
+      })();
+      return {
+        name: String(raw.name || host || "Game").trim().slice(0, 80),
+        url,
+      };
+    })
+    .filter((entry) => entry.name && entry.url);
+  const withDefault = [
+    { name: "ChessVerse", url: "https://chessverse.co.in/" },
+    ...cleaned,
+  ];
+  const seen = new Set();
+  return withDefault.filter((entry) => {
+    const key = entry.url.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 24) || fallback;
 }
 
 function sanitizeBrowserPolicy(policy = {}) {

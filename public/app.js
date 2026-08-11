@@ -2700,7 +2700,7 @@ async function handleNotifications() {
 
 function connectSocket() {
   if (!window.location.host) {
-    setConnection("Not live");
+    setConnection("Realtime offline");
     return;
   }
   closeSocket();
@@ -2812,7 +2812,7 @@ async function checkServerHealth(options = {}) {
     return true;
   } catch (error) {
     state.lastHealthError = error.message || "Health check failed";
-    if (!isRealtimeReady()) setConnection("Not live");
+    if (!isRealtimeReady()) setConnection(state.lastHealthOkAt ? "Realtime offline" : "Offline");
     if (!options.silent) notify(state.lastHealthError);
     return false;
   }

@@ -3053,20 +3053,16 @@ async function saveUpload(req, res, user) {
   const useMongoGridFs = !useBackblaze && !useCloudinary && persistence.ready && (provider === "auto" || mongoUploadPreferred());
   const mustAvoidLocalDisk = cloudStorageRequired() && useCloudinary;
   if (backblazeUploadRequested() && !backblazeConfigured()) {
-    await addSystemLog("file.upload.blocked", user.username, { name: originalName, reason: "cloud storage missing" }, req);
-    return json(res, 503, { error: "Backblaze B2 is selected but not connected. Set INNER_B2_KEY_ID, INNER_B2_APPLICATION_KEY, and INNER_B2_BUCKET_NAME on Render." });
+    await addSystemLog("file.upload.fallback", user.username, { name: originalName, requestedProvider: "backblaze-b2", reason: "Backblaze env missing; using local disk fallback" }, req);
   }
   if (mongoUploadPreferred() && !persistence.ready) {
-    await addSystemLog("file.upload.blocked", user.username, { name: originalName, reason: "mongodb unavailable" }, req);
-    return json(res, 503, { error: "MongoDB/GridFS is selected but not connected. Remove INNER_UPLOAD_PROVIDER=mongodb or fix MONGODB_URI." });
+    await addSystemLog("file.upload.fallback", user.username, { name: originalName, requestedProvider: "mongodb-gridfs", reason: "MongoDB unavailable; using local disk fallback" }, req);
   }
   if (cloudinaryUploadPreferred() && !cloudinaryConfigured()) {
-    await addSystemLog("file.upload.blocked", user.username, { name: originalName, reason: "cloudinary unavailable" }, req);
-    return json(res, 503, { error: "Cloudinary is selected but not connected. Remove INNER_UPLOAD_PROVIDER=cloudinary or set Cloudinary env vars." });
+    await addSystemLog("file.upload.fallback", user.username, { name: originalName, requestedProvider: "cloudinary", reason: "Cloudinary env missing; using local disk fallback" }, req);
   }
   if (cloudStorageRequired() && !backblazeConfigured() && !cloudinaryConfigured() && !persistence.ready) {
-    await addSystemLog("file.upload.blocked", user.username, { name: originalName, reason: "cloud storage missing" }, req);
-    return json(res, 503, { error: "Cloud storage is not connected. Set Backblaze B2 env vars before uploads." });
+    await addSystemLog("file.upload.fallback", user.username, { name: originalName, reason: "cloud storage missing; using local disk fallback" }, req);
   }
 
   if (mustAvoidLocalDisk) {
@@ -3688,7 +3684,7 @@ function uploadMetadata(record) {
 }
 
 function cloudStorageRequired() {
-  return REQUIRE_CLOUD_STORAGE || backblazeUploadRequested() || cloudinaryUploadPreferred() || mongoUploadPreferred();
+  return Boolean((REQUIRE_CLOUD_STORAGE || backblazeUploadRequested() || cloudinaryUploadPreferred() || mongoUploadPreferred()) && (backblazeConfigured() || cloudinaryConfigured() || persistence.ready));
 }
 
 async function handleUpgrade(req, socket) {

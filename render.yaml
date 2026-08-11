@@ -17,9 +17,9 @@ services:
       - key: INNER_FORCE_HTTPS
         value: "true"
       - key: INNER_REQUIRE_CLOUD_STORAGE
-        value: "true"
+        value: "false"
       - key: INNER_UPLOAD_PROVIDER
-        value: "backblaze"
+        value: "auto"
       - key: INNER_B2_KEY_ID
         sync: false
       - key: INNER_B2_APPLICATION_KEY

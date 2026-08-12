@@ -1,8 +1,8 @@
 (() => {
   function normalizeStatus() {
     const status = document.getElementById("connectionStatus");
-    if (status && !/^(realtime live|server live|offline|realtime offline)$/i.test(status.textContent.trim())) {
-      status.textContent = "Realtime offline";
+    if (status && !/^live$/i.test(status.textContent.trim())) {
+      status.textContent = "Not live";
     }
     document.getElementById("serverPill")?.classList.add("hidden");
     document.getElementById("buildBadge")?.classList.add("hidden");

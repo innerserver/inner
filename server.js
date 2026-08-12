@@ -3180,9 +3180,11 @@ async function saveUpload(req, res, user) {
       inlineEnabled = false;
       inlineChunks = [];
     } catch (error) {
-      await fsp.rm(target, { force: true }).catch(() => {});
       await addSystemLog("file.upload.failed", user.username, { name: originalName, provider: "backblaze-b2", reason: error.message || "Backblaze upload failed" }, req);
-      return json(res, 503, { error: `Upload could not be saved to Backblaze B2. ${error.message || "Check B2 env vars."}` });
+      fileRecord.cloudStorage = "";
+      fileRecord.cloudStorageError = error.message || "Backblaze upload failed";
+      fileRecord.persistence = inlineEnabled ? "disk+inline" : "disk";
+      fileRecord.url = `/uploads/${encodeURIComponent(storedName)}`;
     }
   } else if (useCloudinary) {
     try {
@@ -3197,9 +3199,11 @@ async function saveUpload(req, res, user) {
       inlineEnabled = false;
       inlineChunks = [];
     } catch (error) {
-      await fsp.rm(target, { force: true }).catch(() => {});
       await addSystemLog("file.upload.failed", user.username, { name: originalName, provider: "cloudinary", reason: error.message || "Cloudinary upload failed" }, req);
-      return json(res, 503, { error: "Upload could not be saved to Cloudinary. Check CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET." });
+      fileRecord.cloudStorage = "";
+      fileRecord.cloudStorageError = error.message || "Cloudinary upload failed";
+      fileRecord.persistence = inlineEnabled ? "disk+inline" : "disk";
+      fileRecord.url = `/uploads/${encodeURIComponent(storedName)}`;
     }
   } else if (useMongoGridFs) {
     try {
@@ -3208,9 +3212,11 @@ async function saveUpload(req, res, user) {
       fileRecord.cloudFileId = String(cloudFile._id || "");
       fileRecord.persistence = "disk+mongodb-gridfs";
     } catch (error) {
-      await fsp.rm(target, { force: true }).catch(() => {});
       await addSystemLog("file.upload.failed", user.username, { name: originalName, reason: error.message || "Cloud upload failed" }, req);
-      return json(res, 503, { error: "Upload could not be saved to cloud storage. Check MONGODB_URI before users upload files." });
+      fileRecord.cloudStorage = "";
+      fileRecord.cloudStorageError = error.message || "MongoDB/GridFS upload failed";
+      fileRecord.persistence = inlineEnabled ? "disk+inline" : "disk";
+      fileRecord.url = `/uploads/${encodeURIComponent(storedName)}`;
     }
   } else if (cloudStorageRequired()) {
     await fsp.rm(target, { force: true }).catch(() => {});

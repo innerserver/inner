@@ -32,7 +32,7 @@
   function ensurePanel(panel, index) {
     const title = panel.querySelector("h3");
     if (!title) return;
-    let button = panel.querySelector(":scope > .collapse-toggle, :scope > .panel-title-row .collapse-toggle");
+    let button = panel.querySelector(".collapse-toggle");
     if (!button) {
       button = document.createElement("button");
       button.className = "collapse-toggle";

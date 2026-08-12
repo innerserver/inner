@@ -2700,11 +2700,11 @@ async function handleNotifications() {
 
 function connectSocket() {
   if (!window.location.host) {
-    setConnection("Realtime offline");
+    setConnection("Not live");
     return;
   }
   closeSocket();
-  if (state.lastHealthOkAt && Date.now() - state.lastHealthOkAt < 30000) setConnection("Server live");
+  if (state.lastHealthOkAt && Date.now() - state.lastHealthOkAt < 30000) setConnection("Live");
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
   state.ws = ws;
@@ -2713,7 +2713,7 @@ function connectSocket() {
     const wasReconnect = state.wsEverConnected;
     state.wsEverConnected = true;
     state.wsReconnectDelay = 1400;
-    setConnection("Realtime live");
+    setConnection("Live");
     sendWs({ type: "client:network", network: browserNetworkInfo() });
     flushWsOutbox();
     recoverRealtimeState(wasReconnect).catch(() => {});
@@ -2728,7 +2728,7 @@ function connectSocket() {
     if (state.ws !== ws) return;
     clearInterval(state.wsPingTimer);
     state.wsPingTimer = null;
-    checkServerHealth({ silent: true, requireLogin: false }).catch(() => setConnection("Realtime offline"));
+    checkServerHealth({ silent: true, requireLogin: false }).catch(() => setConnection("Not live"));
     if (state.loggedIn) {
       clearTimeout(state.reconnectTimer);
       const delay = Math.min(state.wsReconnectDelay || 1400, 12000);
@@ -2737,7 +2737,7 @@ function connectSocket() {
     }
   });
   ws.addEventListener("error", () => {
-    if (!state.lastHealthOkAt || Date.now() - state.lastHealthOkAt > 30000) setConnection("Realtime offline");
+    if (!state.lastHealthOkAt || Date.now() - state.lastHealthOkAt > 30000) setConnection("Not live");
   });
   ws.addEventListener("message", (event) => {
     try {
@@ -2808,11 +2808,11 @@ async function checkServerHealth(options = {}) {
     if (!response.ok) throw new Error(data.error || `Health failed (${response.status})`);
     state.lastHealthOkAt = Date.now();
     state.lastHealthError = "";
-    setConnection("Server live");
+    setConnection("Live");
     return true;
   } catch (error) {
     state.lastHealthError = error.message || "Health check failed";
-    if (!isRealtimeReady()) setConnection(state.lastHealthOkAt ? "Realtime offline" : "Offline");
+    if (!isRealtimeReady()) setConnection("Not live");
     if (!options.silent) notify(state.lastHealthError);
     return false;
   }
@@ -8299,19 +8299,11 @@ function canScheduleRoomFiles() {
 function setConnection(value) {
   if (!els.connectionStatus) return;
   const normalized = String(value || "").toLowerCase();
-  if (["live", "connected", "online", "realtime live"].includes(normalized)) {
-    els.connectionStatus.textContent = "Realtime live";
+  if ((normalized.includes("live") || normalized.includes("connected") || normalized.includes("online")) && !normalized.includes("offline") && !normalized.includes("not")) {
+    els.connectionStatus.textContent = "Live";
     return;
   }
-  if (["server live", "server online", "api live"].includes(normalized)) {
-    els.connectionStatus.textContent = "Server live";
-    return;
-  }
-  if (["offline", "signed out"].includes(normalized)) {
-    els.connectionStatus.textContent = "Offline";
-    return;
-  }
-  els.connectionStatus.textContent = "Realtime offline";
+  els.connectionStatus.textContent = "Not live";
 }
 
 function notify(message) {

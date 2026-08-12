@@ -818,7 +818,7 @@ async function routeApi(req, res, requestUrl) {
         device: currentLoginDevice,
         approximateLocation: approximateLocationFromIp(currentLoginIp),
         loggedInAt: loginAt,
-      }, ...previousHistory].slice(0, 10);
+      }, ...previousHistory];
       const previousCounts = users[userIndex].loginIpCounts && typeof users[userIndex].loginIpCounts === "object"
         ? users[userIndex].loginIpCounts
         : {};

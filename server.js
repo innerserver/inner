@@ -398,6 +398,7 @@ async function ensureStorage() {
     signupMode: DEFAULT_SIGNUP_MODE,
     requireContact: DEFAULT_REQUIRE_CONTACT,
     reportEmails: REPORT_EMAILS,
+    reportRetentionDays: 30,
     featureLocks: {},
     featureVisibility: {},
     paywalls: {},
@@ -657,6 +658,10 @@ async function ensureSettings() {
   }
   if (!Array.isArray(next.reportEmails)) {
     next.reportEmails = REPORT_EMAILS;
+    changed = true;
+  }
+  if (!Number.isFinite(Number(next.reportRetentionDays)) || Number(next.reportRetentionDays) < 1) {
+    next.reportRetentionDays = 30;
     changed = true;
   }
   if (typeof next.moderationSettings !== "object" || !next.moderationSettings || Array.isArray(next.moderationSettings)) {
@@ -1089,6 +1094,10 @@ async function routeApi(req, res, requestUrl) {
       await writeJson(FILES.users, users);
       broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     }
+    const visibleReports = canModerate(user) ? pruneReportsForSettings(reports, settings) : [];
+    if (canModerate(user) && visibleReports.length !== reports.length) {
+      await writeJson(FILES.reports, visibleReports);
+    }
     const accessibleRoomIds = new Set(rooms.filter((room) => canAccessRoom(room, user)).map((room) => room.id || "main"));
     const normalizedMessages = messages
       .map((message) => ({
@@ -1123,7 +1132,7 @@ async function routeApi(req, res, requestUrl) {
       profiles: safeProfiles(profiles, users, user),
       friends: safeFriendState(friends, user),
       invites: canManage(user) ? invites.slice(-100) : safeInvitesForUser(invites, user),
-      reports,
+      reports: safeActiveReports(visibleReports, settings),
       liveIpTracking: canOwn(user) ? liveIpTracking(users) : [],
       readReceipts: safeReadReceipts(readReceipts, user, { messages: normalizedMessages, dms: visibleDms, dmGroups }),
       moderationLogs: moderationLogs.slice(-250),
@@ -1479,7 +1488,8 @@ async function routeApi(req, res, requestUrl) {
 
   if (req.method === "POST" && pathname === "/api/reports") {
     const body = await readJsonBody(req);
-    const [reports, messages, dms, users] = await Promise.all([
+    const [settings, reports, messages, dms, users] = await Promise.all([
+      readJson(FILES.settings, {}),
       readJson(FILES.reports, []),
       readJson(FILES.messages, []),
       readJson(FILES.dms, []),
@@ -1504,8 +1514,8 @@ async function routeApi(req, res, requestUrl) {
       createdAt: new Date().toISOString(),
     };
     if (!report.reason) return json(res, 400, { error: "Report reason is required" });
-    reports.unshift(report);
-    await writeJson(FILES.reports, reports);
+    const nextReports = pruneReportsForSettings([report, ...reports], settings);
+    await writeJson(FILES.reports, nextReports);
     await addModerationLog(user.username, "report:create", `${report.targetType}:${report.targetId}`, report.reason);
     await notifyAdminEmails("Inner report", [
       `${user.username} reported ${report.targetType}:${report.targetId}`,
@@ -1515,14 +1525,14 @@ async function routeApi(req, res, requestUrl) {
       `Message: ${report.targetText || "(not found)"}`,
       `Reason: ${report.reason}`,
     ].join("\n"));
-    broadcastManagers({ type: "reports:update", reports: safeActiveReports(reports) });
+    broadcastManagers({ type: "reports:update", reports: safeActiveReports(nextReports, settings) });
     return json(res, 201, { report });
   }
 
   if (req.method === "POST" && pathname === "/api/reports/update") {
     if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
     const body = await readJsonBody(req);
-    const reports = await readJson(FILES.reports, []);
+    const [settings, reports] = await Promise.all([readJson(FILES.settings, {}), readJson(FILES.reports, [])]);
     const index = reports.findIndex((entry) => entry.id === String(body.id || ""));
     if (index === -1) return json(res, 404, { error: "Report not found" });
     reports[index] = {
@@ -1534,7 +1544,7 @@ async function routeApi(req, res, requestUrl) {
     };
     await writeJson(FILES.reports, reports);
     await addModerationLog(user.username, "report:update", reports[index].targetId, reports[index].status);
-    const activeReports = safeActiveReports(reports);
+    const activeReports = safeActiveReports(pruneReportsForSettings(reports, settings), settings);
     broadcastManagers({ type: "reports:update", reports: activeReports });
     return json(res, 200, { reports: activeReports });
   }
@@ -1591,6 +1601,17 @@ async function routeApi(req, res, requestUrl) {
     if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
     const body = await readJsonBody(req);
     if (String(body.confirm || "").toUpperCase() !== "WIPE") return json(res, 400, { error: "Type WIPE to clear reports" });
+    const targetUsername = normalizeUsername(body.username || "");
+    if (targetUsername) {
+      const reports = await readJson(FILES.reports, []);
+      const next = reports.filter((report) => !reportTouchesUser(report, targetUsername));
+      await writeJson(FILES.reports, next);
+      await addSystemLog("reports.user.wiped", user.username, { username: targetUsername, count: reports.length - next.length }, req);
+      const settings = await readJson(FILES.settings, {});
+      const activeReports = safeActiveReports(next, settings);
+      broadcastManagers({ type: "reports:update", reports: activeReports });
+      return json(res, 200, { reports: activeReports });
+    }
     await writeJson(FILES.reports, []);
     await addSystemLog("reports.wiped", user.username, {}, req);
     broadcastManagers({ type: "reports:update", reports: [] });
@@ -2637,6 +2658,7 @@ async function routeApi(req, res, requestUrl) {
         : Array.isArray(settings.reportEmails)
           ? settings.reportEmails.slice(0, 4)
           : REPORT_EMAILS,
+      reportRetentionDays: Math.max(1, Math.min(3650, Number(body.reportRetentionDays || settings.reportRetentionDays || 30))),
       chessUrl: sanitizeExternalUrl(body.chessUrl) || sanitizeExternalUrl(settings.chessUrl) || "https://chessverse.co.in/",
       gameLinks: sanitizeGameLinks(body.gameLinks !== undefined ? body.gameLinks : settings.gameLinks || []),
       moderationSettings: {
@@ -4825,10 +4847,33 @@ async function requestLoginStatus(usernameValue, passwordValue) {
   return null;
 }
 
-function safeActiveReports(reports) {
-  return (reports || [])
+function reportRetentionMs(settings) {
+  const days = Math.max(1, Math.min(3650, Number(settings && settings.reportRetentionDays || 30)));
+  return days * 24 * 60 * 60 * 1000;
+}
+
+function pruneReportsForSettings(reports, settings) {
+  const cutoff = Date.now() - reportRetentionMs(settings);
+  return (reports || []).filter((report) => {
+    const createdAt = Date.parse(report && report.createdAt);
+    return !Number.isFinite(createdAt) || createdAt >= cutoff;
+  });
+}
+
+function safeActiveReports(reports, settings = {}) {
+  return pruneReportsForSettings(reports, settings)
     .filter((report) => !["done", "closed", "resolved", "dismissed"].includes(String(report.status || "").toLowerCase()))
     .slice(0, 250);
+}
+
+function reportTouchesUser(report, username) {
+  const target = String(username || "").toLowerCase();
+  if (!target || !report) return false;
+  return [
+    report.reporter,
+    report.targetSender,
+    report.updatedBy,
+  ].some((value) => String(value || "").toLowerCase() === target);
 }
 
 function userContactSnapshot(users, username, viewer = null) {
@@ -4952,6 +4997,7 @@ function safeSettings(settings) {
     featureVisibility: sanitizeFeatureVisibility(settings.featureVisibility || {}),
     paywalls: sanitizePaywalls(settings.paywalls || {}),
     browserPolicy: sanitizeBrowserPolicy(settings.browserPolicy || {}),
+    reportRetentionDays: Math.max(1, Math.min(3650, Number(settings.reportRetentionDays || 30))),
     shutdownMode: settings.serverEnabled === false,
     shutdownAt: settings.serverEnabled === false ? String(settings.shutdownAt || "") : "",
     shutdownBy: settings.serverEnabled === false ? String(settings.shutdownBy || "") : "",

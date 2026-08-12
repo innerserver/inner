@@ -372,6 +372,7 @@ function cacheElements() {
     "signupMode",
     "requireContact",
     "reportEmails",
+    "reportRetentionDays",
     "chessUrlInput",
     "gameLinksInput",
     "persistentDefaultEnabled",
@@ -1626,6 +1627,7 @@ function serverSettingsPayload(extra = {}) {
     signupMode: els.signupMode.value,
     requireContact: els.requireContact.checked,
     reportEmails: els.reportEmails.value.split(",").map((entry) => entry.trim()).filter(Boolean),
+    reportRetentionDays: Math.max(1, Math.min(3650, Number(els.reportRetentionDays ? els.reportRetentionDays.value : state.settings.reportRetentionDays || 30))),
     chessUrl: normalizeExternalUrl(els.chessUrlInput ? els.chessUrlInput.value : ""),
     gameLinks: parseGameLinksInput(els.gameLinksInput ? els.gameLinksInput.value : ""),
     persistentLogin: {
@@ -2769,9 +2771,10 @@ function handleSocketMessage(message) {
     return;
   }
 
-  if (message.type === "reports:update" && isOwner()) {
+  if (message.type === "reports:update" && isModerator()) {
     state.reports = message.reports || [];
     renderReports();
+    renderDashboard();
     return;
   }
 
@@ -3697,6 +3700,13 @@ function renderDashboard() {
     metricCard("Friends", (state.friends.friends || []).length, "Accepted connections"),
     metricCard("Online", state.presence.length || state.peers.size + 1, "Live presence")
   );
+  const activeReportCount = activeReports().length;
+  if (isModerator() && activeReportCount) {
+    els.dashboardGrid.prepend(adminCard("Moderation alert", `${activeReportCount} active report${activeReportCount === 1 ? "" : "s"}`, [
+      "Open the Reports panel to review, mark seen, or close them.",
+      `Reports are kept for ${Math.max(1, Number(state.settings.reportRetentionDays || 30))} day(s).`,
+    ]));
+  }
   const gradeReminder = yearlyGradeReminder();
   if (gradeReminder) {
     els.dashboardGrid.prepend(adminCard("Grade check", "Update profile", [gradeReminder]));
@@ -5255,6 +5265,7 @@ function renderServer() {
   els.signupMode.value = state.settings.signupMode || "request";
   els.requireContact.checked = state.settings.requireContact !== false;
   els.reportEmails.value = Array.isArray(state.settings.reportEmails) ? state.settings.reportEmails.join(", ") : "";
+  if (els.reportRetentionDays) els.reportRetentionDays.value = String(Math.max(1, Math.min(3650, Number(state.settings.reportRetentionDays || 30))));
   if (els.chessUrlInput) els.chessUrlInput.value = currentChessUrl();
   if (els.gameLinksInput && document.activeElement !== els.gameLinksInput) {
     els.gameLinksInput.value = gameLinksInputValue(state.settings.gameLinks || []);
@@ -5270,7 +5281,7 @@ function renderServer() {
   if (els.newAccountPersistent) els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
 
   const admin = isOwner();
-  [els.roomNameInput, els.signupMode, els.requireContact, els.reportEmails, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+  [els.roomNameInput, els.signupMode, els.requireContact, els.reportEmails, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
   });
@@ -5551,6 +5562,29 @@ function renderAccountDetails() {
   els.accountDetailBody.append(adminCard("Access and device", user.role || "member", accessLines));
 
   const history = browserHistoryForUser(user.username);
+  const userReports = reportsForUser(user.username);
+  const reportLines = [
+    `Total reports involving this account ${userReports.length}`,
+    `Active reports ${userReports.filter((report) => !reportClosed(report)).length}`,
+    userReports[0] ? `Latest ${formatDate(userReports[0].createdAt)}` : "No reports saved for this account",
+  ];
+  const reportCard = adminCard("Reports involving account", String(userReports.length), reportLines);
+  if (userReports.length) {
+    const actions = document.createElement("div");
+    actions.className = "account-actions";
+    actions.append(accountButton("Wipe this user's reports", () => wipeReportsForAccount(user.username)));
+    reportCard.append(actions);
+  }
+  els.accountDetailBody.append(reportCard);
+  userReports.slice(0, 8).forEach((report) => {
+    els.accountDetailBody.append(adminCard(`${report.status || "open"} report`, report.targetType || "message", [
+      `Reported by ${report.reporter || "unknown"}`,
+      report.targetSender ? `Message from ${report.targetSender}` : "Message sender unknown",
+      report.reason ? `Reason ${report.reason}` : "",
+      report.targetText ? `Message ${report.targetText}` : "",
+      `Created ${formatDate(report.createdAt)}`,
+    ].filter(Boolean)));
+  });
   if (!history.length) {
     els.accountDetailBody.append(adminCard("Recent browser/search history", "Empty", ["No Inner Browser opens logged for this account."]));
     return;
@@ -5592,6 +5626,40 @@ async function wipeSelectedAccountBrowserHistory() {
     renderLogs();
     renderAccountDetails();
     notify("Browser history wiped");
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+function activeReports() {
+  return (state.reports || []).filter((report) => !reportClosed(report));
+}
+
+function reportClosed(report) {
+  return ["done", "closed", "resolved", "dismissed"].includes(String(report && report.status || "").toLowerCase());
+}
+
+function reportsForUser(username) {
+  const target = String(username || "").toLowerCase();
+  if (!target) return [];
+  return (state.reports || [])
+    .filter((report) => [report.reporter, report.targetSender, report.updatedBy].some((value) => String(value || "").toLowerCase() === target))
+    .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0));
+}
+
+async function wipeReportsForAccount(username) {
+  if (!isOwner()) return notify("Admin access required");
+  if (!window.confirm(`Wipe all reports involving ${username}?`)) return;
+  try {
+    const data = await api("/api/wipe/reports", {
+      method: "POST",
+      json: { confirm: "WIPE", username },
+    });
+    state.reports = data.reports || [];
+    renderReports();
+    renderAccountDetails();
+    renderDashboard();
+    notify("Account reports wiped");
   } catch (error) {
     notify(error.message);
   }
@@ -5946,11 +6014,11 @@ function renderAccountRequests() {
 function renderReports() {
   if (els.reportList && isOwner()) {
     els.reportList.replaceChildren();
-    const activeReports = (state.reports || []).filter((report) => !["done", "closed", "resolved", "dismissed"].includes(String(report.status || "").toLowerCase()));
-    if (!activeReports.length) {
+    const reports = activeReports();
+    if (!reports.length) {
       els.reportList.append(emptyBlock("No reports"));
     } else {
-      activeReports.slice(0, 100).forEach((report) => {
+      reports.slice(0, 100).forEach((report) => {
         const card = adminCard(`${report.targetType} ${report.targetId}`, report.status, [
           `Reported by ${report.reporter}`,
           contactLine("Reporter", report.reporterContact),
@@ -7810,6 +7878,10 @@ function isOwner() {
 
 function isDev() {
   return state.user && ["admin", "hmd", "dev"].includes(state.user.role);
+}
+
+function isModerator() {
+  return state.user && ["moderator", "admin", "hmd", "dev"].includes(state.user.role);
 }
 
 function setConnection(value) {

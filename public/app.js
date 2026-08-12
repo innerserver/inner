@@ -3702,10 +3702,13 @@ function renderDashboard() {
   );
   const activeReportCount = activeReports().length;
   if (isModerator() && activeReportCount) {
-    els.dashboardGrid.prepend(adminCard("Moderation alert", `${activeReportCount} active report${activeReportCount === 1 ? "" : "s"}`, [
+    const alert = adminCard("Moderation alert", `${activeReportCount} active report${activeReportCount === 1 ? "" : "s"}`, [
       "Open the Reports panel to review, mark seen, or close them.",
       `Reports are kept for ${Math.max(1, Number(state.settings.reportRetentionDays || 30))} day(s).`,
-    ]));
+    ]);
+    alert.classList.add("report-dashboard-alert");
+    alert.setAttribute("role", "alert");
+    els.dashboardGrid.prepend(alert);
   }
   const gradeReminder = yearlyGradeReminder();
   if (gradeReminder) {
@@ -5553,6 +5556,7 @@ function renderAccountDetails() {
     `Persistent reason ${persistentReasonForUser(user)}`,
     `Per-account override ${user.allowPersistentLogin ? "on" : "off"}`,
     user.lastLoginAt ? `Last login ${formatDate(user.lastLoginAt)}` : "No login recorded",
+    user.mostLoggedInIp ? `Most used login IP ${user.mostLoggedInIp}` : "No repeated login IP recorded",
     user.lastLoginIp ? `Latest IP ${user.lastLoginIp}` : "No IP recorded",
     user.lastLoginDevice ? `Latest device ${user.lastLoginDevice}` : "No device recorded",
     user.lastLoginApproximateLocation ? `Approx location ${formatApproxLocation(user.lastLoginApproximateLocation)}` : "",
@@ -5560,6 +5564,7 @@ function renderAccountDetails() {
     user.banReason ? `Ban reason ${user.banReason}` : "",
   ];
   els.accountDetailBody.append(adminCard("Access and device", user.role || "member", accessLines));
+  els.accountDetailBody.append(loginHistoryCard(user));
 
   const history = browserHistoryForUser(user.username);
   const userReports = reportsForUser(user.username);
@@ -5609,6 +5614,30 @@ function browserHistoryForUser(username) {
     .filter((log) => String(log.actor || "").toLowerCase() === current && String(log.action || "") === "browser.open")
     .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0))
     .slice(0, 25);
+}
+
+function loginHistoryCard(user) {
+  const history = Array.isArray(user.loginHistory) ? user.loginHistory.slice(0, 10) : [];
+  const card = document.createElement("article");
+  card.className = "account-card";
+  const details = document.createElement("details");
+  details.className = "login-history-details";
+  const summary = document.createElement("summary");
+  summary.textContent = history.length ? `Last ${history.length} login IPs and devices` : "Last 10 login IPs and devices";
+  details.append(summary);
+  if (!history.length) {
+    details.append(textNode("No previous login history has been recorded yet."));
+  } else {
+    const list = document.createElement("div");
+    list.className = "account-meta";
+    history.forEach((entry) => {
+      const location = entry.approximateLocation ? ` - ${formatApproxLocation(entry.approximateLocation)}` : "";
+      list.append(textNode(`${formatDate(entry.loggedInAt)} - ${entry.ip || "IP unknown"} - ${entry.device || "Device unknown"}${location}`));
+    });
+    details.append(list);
+  }
+  card.append(details);
+  return card;
 }
 
 async function wipeSelectedAccountBrowserHistory() {
@@ -5990,7 +6019,7 @@ function renderAccountRequests() {
       : "No location";
     const card = adminCard(request.username, status, [
       request.displayName ? `Name ${request.displayName}` : "",
-      `Requested type ${request.requestedRole || "member"}`,
+      `Requested type ${requestedRoleLabel(request.requestedRole)}`,
       request.grade ? `Grade ${request.grade}` : "",
       request.contact ? `Contact ${request.contact}` : "",
       request.note,
@@ -6009,6 +6038,10 @@ function renderAccountRequests() {
     card.append(actions);
     els.accountRequestList.append(card);
   });
+}
+
+function requestedRoleLabel(role) {
+  return String(role || "member").toLowerCase() === "moderator" ? "Teacher / moderator" : "Student / member";
 }
 
 function renderReports() {

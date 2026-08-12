@@ -1222,6 +1222,38 @@ textarea:focus {
   border-radius: var(--radius);
 }
 
+.report-dashboard-alert {
+  background: #fff0f0;
+  border: 2px solid #b42318;
+  color: #7a160f;
+  font-weight: 800;
+}
+
+.report-dashboard-alert .tag {
+  background: #b42318;
+  border-color: #b42318;
+  color: #fff;
+  font-weight: 900;
+}
+
+[data-theme="dark"] .report-dashboard-alert,
+body.dark .report-dashboard-alert {
+  background: #4a1515;
+  border-color: #ff786d;
+  color: #ffe2df;
+}
+
+.login-history-details {
+  display: grid;
+  gap: 10px;
+}
+
+.login-history-details summary,
+.detail-login-history summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
 .scale-row {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) minmax(150px, 260px) 58px;

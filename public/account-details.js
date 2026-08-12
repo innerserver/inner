@@ -49,6 +49,19 @@
       .slice(0, 60);
   }
 
+  function loginHistorySection(user) {
+    const history = Array.isArray(user.loginHistory) ? user.loginHistory.slice(0, 10) : [];
+    const rows = history.length
+      ? history.map((entry) => [
+          line("Time", formatDate(entry.loggedInAt)),
+          line("IP", entry.ip),
+          line("Device", entry.device),
+          line("Approx location", formatApprox(entry.approximateLocation)),
+        ].join(""))
+      : [line("History", "No previous login history has been recorded yet.")];
+    return `<details class="detail-login-history"><summary>Last ${history.length || 10} login IPs and devices</summary>${section("", rows)}</details>`;
+  }
+
   if (!username) {
     body.textContent = "No username was provided.";
     return;
@@ -82,12 +95,14 @@
       section("Latest login and device", [
         line("Persistent login", user.allowPersistentLogin ? "Allowed" : "Off"),
         line("Last login", formatDate(user.lastLoginAt)),
+        line("Most used login IP", user.mostLoggedInIp),
         line("Latest IP", user.lastLoginIp || user.sourceIp),
         line("Latest device", user.lastLoginDevice || user.sourceDevice),
         line("Approx location", formatApprox(user.lastLoginApproximateLocation || user.approximateLocation)),
         line("Banned until", formatDate(user.bannedUntil)),
         line("Ban reason", user.banReason),
       ]),
+      loginHistorySection(user),
       section("Browser/search history", history.length
         ? history.map((entry) => {
             const details = entry.details || {};

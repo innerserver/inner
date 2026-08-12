@@ -811,12 +811,27 @@ async function routeApi(req, res, requestUrl) {
       Boolean(previousLoginDevice && previousLoginDevice !== currentLoginDevice);
     const userIndex = users.findIndex((entry) => entry.username.toLowerCase() === user.username.toLowerCase());
     if (userIndex !== -1) {
+      const loginAt = new Date().toISOString();
+      const previousHistory = Array.isArray(users[userIndex].loginHistory) ? users[userIndex].loginHistory : [];
+      const loginHistory = [{
+        ip: currentLoginIp,
+        device: currentLoginDevice,
+        approximateLocation: approximateLocationFromIp(currentLoginIp),
+        loggedInAt: loginAt,
+      }, ...previousHistory].slice(0, 10);
+      const previousCounts = users[userIndex].loginIpCounts && typeof users[userIndex].loginIpCounts === "object"
+        ? users[userIndex].loginIpCounts
+        : {};
+      const loginIpCounts = { ...previousCounts };
+      if (currentLoginIp) loginIpCounts[currentLoginIp] = Math.max(0, Number(loginIpCounts[currentLoginIp]) || 0) + 1;
       users[userIndex] = {
         ...users[userIndex],
-        lastLoginAt: new Date().toISOString(),
+        lastLoginAt: loginAt,
         lastLoginIp: currentLoginIp,
         lastLoginDevice: currentLoginDevice,
         lastLoginApproximateLocation: approximateLocationFromIp(currentLoginIp),
+        loginHistory,
+        loginIpCounts,
       };
       await writeJson(FILES.users, users);
     }
@@ -4278,8 +4293,19 @@ function safeUser(user, viewer = null) {
     safe.lastLoginApproximateLocation = user.lastLoginApproximateLocation || null;
     safe.sourceIp = user.sourceIp || "";
     safe.sourceDevice = user.sourceDevice || "";
+    safe.loginHistory = Array.isArray(user.loginHistory) ? user.loginHistory.slice(0, 10) : [];
+    safe.mostLoggedInIp = mostLoggedInIp(user.loginIpCounts, safe.loginHistory);
   }
   return safe;
+}
+
+function mostLoggedInIp(counts, history) {
+  const entries = counts && typeof counts === "object" ? Object.entries(counts) : [];
+  if (entries.length) {
+    entries.sort((left, right) => Number(right[1] || 0) - Number(left[1] || 0));
+    return String(entries[0][0] || "");
+  }
+  return history && history[0] ? String(history[0].ip || "") : "";
 }
 
 function publicUser(user, profile = {}) {
@@ -4775,7 +4801,9 @@ function sanitizeAccountRequest(request) {
 }
 
 function normalizePublicRequestedRole(role) {
-  const value = normalizeRole(role || "member");
+  const raw = String(role || "member").toLowerCase();
+  if (raw === "teacher") return "moderator";
+  const value = normalizeRole(raw);
   return value === "moderator" ? "moderator" : "member";
 }
 

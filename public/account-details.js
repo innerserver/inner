@@ -30,14 +30,6 @@
     return Number.isFinite(time) ? new Date(time).toLocaleString() : "";
   }
 
-  function formatBytes(bytes) {
-    const value = Number(bytes || 0);
-    if (value >= 1024 * 1024 * 1024) return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;
-    if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
-    if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
-    return `${value} B`;
-  }
-
   function formatApprox(location) {
     if (!location) return "";
     if (location.note) return location.note;
@@ -57,13 +49,6 @@
       .slice(0, 60);
   }
 
-  function filesForUser(files, target) {
-    const current = String(target || "").toLowerCase();
-    return (files || [])
-      .filter((file) => String(file.user || "").toLowerCase() === current)
-      .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0));
-  }
-
   if (!username) {
     body.textContent = "No username was provided.";
     return;
@@ -79,13 +64,11 @@
     const profile = data.profiles && data.profiles[user.username] ? data.profiles[user.username] : {};
     const contact = user.contact && typeof user.contact === "object" ? user.contact : {};
     const history = browserHistoryForUser(data.logs || [], user.username);
-    const uploadedFiles = filesForUser(data.files || [], user.username);
 
     title.textContent = `${user.username} details`;
     subtitle.textContent = `${user.role || "member"}${user.grade || profile.grade ? ` - Grade ${user.grade || profile.grade}` : ""}`;
     body.innerHTML = [
       section("Identity and contact", [
-        line("Legal name", [user.firstName, user.lastName].filter(Boolean).join(" ")),
         line("Display name", user.displayName || profile.displayName),
         line("Username", user.username),
         line("Role", user.role),
@@ -95,8 +78,6 @@
         line("Contact note", typeof user.contact === "string" ? user.contact : contact.contact),
         line("Created", formatDate(user.createdAt)),
         line("Created by", user.createdBy),
-        line("Password", `${user.passwordStatus || (user.passwordSet ? "hashed" : "missing")} - plaintext is not stored`),
-        line("Last password reset", formatDate(user.lastPasswordResetAt)),
       ]),
       section("Latest login and device", [
         line("Persistent login", user.allowPersistentLogin ? "Allowed" : "Off"),
@@ -107,19 +88,6 @@
         line("Banned until", formatDate(user.bannedUntil)),
         line("Ban reason", user.banReason),
       ]),
-      section("Uploaded files", uploadedFiles.length
-        ? uploadedFiles.slice(0, 60).map((file) => [
-            line("File", file.originalName || file.storedName || "Upload"),
-            line("Type", `${file.kind || "file"} / ${file.category || "document"}`),
-            line("Size", formatBytes(file.size)),
-            line("Visibility", file.private ? "Private" : "Public"),
-            line("Room", file.roomName),
-            line("Release", formatDate(file.releaseAt)),
-            line("Uploaded", formatDate(file.createdAt)),
-            line("Storage", file.persistence || file.cloudStorage),
-            file.url ? `<div class="detail-line"><span>Open</span><strong><a href="${escapeHtml(file.url)}" target="_blank" rel="noopener">Open/download file</a></strong></div>` : "",
-          ].join(""))
-        : [line("Files", "No uploaded files saved for this account.")]),
       section("Browser/search history", history.length
         ? history.map((entry) => {
             const details = entry.details || {};

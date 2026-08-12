@@ -1,0 +1,48 @@
+{
+  "serverEnabled": true,
+  "roomName": "Inner",
+  "signupMode": "open",
+  "requireContact": false,
+  "reportEmails": [],
+  "featureLocks": {},
+  "featureVisibility": {},
+  "paywalls": {},
+  "shutdownAt": "",
+  "shutdownBy": "",
+  "updatedAt": "2026-08-10T17:10:55.297Z",
+  "moderationSettings": {
+    "emailReports": true,
+    "trackIp": true,
+    "trackDevice": true,
+    "updatedAt": "2026-08-10T17:10:55.297Z",
+    "updatedBy": "system"
+  },
+  "customizations": {
+    "appName": "",
+    "connectedLabel": "",
+    "disconnectedLabel": "",
+    "serverOnLabel": "",
+    "serverOffLabel": "",
+    "versionLabel": "",
+    "notice": "",
+    "accent": "",
+    "density": "comfortable",
+    "rounded": true,
+    "customCss": "",
+    "updatedAt": "",
+    "updatedBy": ""
+  },
+  "serviceScale": {
+    "messages": 100,
+    "dms": 100,
+    "uploads": 100,
+    "voice": 100,
+    "screen": 100,
+    "notifications": 100,
+    "moderation": 100,
+    "realtime": 100,
+    "domain": 100
+  },
+  "chessUrl": "https://chessverse.co.in/",
+  "updatedBy": "system"
+}

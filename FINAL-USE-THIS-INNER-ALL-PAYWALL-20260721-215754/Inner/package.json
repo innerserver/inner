@@ -1,0 +1,17 @@
+{
+  "name": "inner",
+  "version": "2.0.1",
+  "private": true,
+  "description": "Private workspace app with messages, DMs, rooms, uploads, screen sharing, admin controls, backups, and VPN profile settings.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "mongodb": "^7.2.0",
+    "nodemailer": "^6.10.0"
+  },
+  "engines": {
+    "node": "20.x"
+  }
+}

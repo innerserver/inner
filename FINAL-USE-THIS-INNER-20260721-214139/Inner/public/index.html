@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Inner</title>
+    <meta name="theme-color" content="#f7f7f4" />
+    <meta name="application-name" content="Inner" />
+    <meta name="apple-mobile-web-app-title" content="Inner" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css?v=inner-19-mobile-admin-paywall" />
+  </head>
+  <body>
+    <div id="loginView" class="login-shell">
+      <div class="login-stack">
+        <form id="loginForm" class="login-panel">
+          <div class="brand-row">
+            <span class="brand-mark" aria-hidden="true"><span class="brand-glyph"></span></span>
+            <div>
+              <h1>Inner</h1>
+              <p>Private workspace login</p>
+            </div>
+          </div>
+          <label>
+            Username
+            <input id="loginUsername" name="username" autocomplete="username" required />
+          </label>
+          <label>
+            Password
+            <input id="loginPassword" name="password" type="password" autocomplete="current-password" required />
+          </label>
+          <button class="primary-button" type="submit">Sign in</button>
+          <p id="loginError" class="form-error" role="alert"></p>
+        </form>
+
+        <form id="accountRequestForm" class="login-panel request-panel">
+          <div>
+            <h2>Request account</h2>
+            <p>Turn on location for server allocation. Admins can view this request.</p>
+          </div>
+          <label>Username<input id="requestUsername" autocomplete="username" placeholder="your-name" required /></label>
+          <label>Display name<input id="requestDisplayName" autocomplete="name" /></label>
+          <label>Contact<input id="requestContact" autocomplete="email" placeholder="email or phone" /></label>
+          <label>Password<input id="requestPassword" type="password" autocomplete="new-password" placeholder="used after approval" required /></label>
+          <label>Note<textarea id="requestNote" rows="3" maxlength="600" placeholder="why you need access"></textarea></label>
+          <button id="submitAccountRequestButton" class="secondary-button" type="submit">Share location and request</button>
+          <p id="accountRequestStatus" class="inline-status"></p>
+        </form>
+
+        <form id="signupForm" class="login-panel request-panel">
+          <div>
+            <h2>Open signup</h2>
+            <p>If admins turn on open signup, you can create a member account here. Location helps server allocation; if it is blocked, admins still see IP/device details.</p>
+          </div>
+          <label>Username<input id="signupUsername" autocomplete="username" placeholder="your-name" /></label>
+          <label>Display name<input id="signupDisplayName" autocomplete="name" /></label>
+          <label>Contact<input id="signupContact" autocomplete="email" placeholder="email or phone" /></label>
+          <label>Password<input id="signupPassword" type="password" autocomplete="new-password" /></label>
+          <button id="signupButton" class="secondary-button" type="submit">Create member account</button>
+          <p id="signupStatus" class="inline-status"></p>
+        </form>
+      </div>
+    </div>
+
+    <div id="appView" class="app hidden">
+      <aside class="sidebar">
+        <div class="brand-row app-brand">
+          <span class="brand-mark" aria-hidden="true"><span class="brand-glyph"></span></span>
+          <div>
+            <h1 id="roomName">Inner</h1>
+            <span id="serverPill" class="status-pill">Checking</span>
+          </div>
+        </div>
+
+        <nav class="nav-list" aria-label="Main">
+          <button class="nav-button active" type="button" data-view="dashboard">Dashboard</button>
+          <button class="nav-button" type="button" data-view="messages">Messages</button>
+          <button class="nav-button" type="button" data-view="dms">DMs</button>
+          <button class="nav-button" type="button" data-view="friends">Friends</button>
+          <button class="nav-button" type="button" data-view="profile">Profile</button>
+          <button class="nav-button" type="button" data-view="store">Store</button>
+          <button class="nav-button" type="button" data-view="files">Files</button>
+          <button class="nav-button" type="button" data-view="chess">Chess</button>
+          <button class="nav-button" type="button" data-view="voice">Voice</button>
+          <button class="nav-button" type="button" data-view="screen">Screen</button>
+          <button id="adminNavButton" class="nav-button owner-only hidden" type="button" data-view="admin">Admin</button>
+          <button id="hmdNavButton" class="nav-button dev-only hidden" type="button" data-view="hmd">HMD</button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div>
+            <span class="muted-label">Signed in</span>
+            <strong id="currentUser">-</strong>
+          </div>
+          <button id="logoutButton" class="ghost-button" type="button">Log out</button>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <span class="muted-label">Connection</span>
+            <strong id="connectionStatus">Offline</strong>
+            <span class="build-badge">NEW BUILD 2026-07-21</span>
+          </div>
+          <div class="topbar-metrics">
+            <span><b id="messageCount">0</b> messages</span>
+            <span><b id="fileCount">0</b> files</span>
+            <span><b id="peerCount">0</b> online</span>
+          </div>
+          <div class="topbar-actions">
+            <button id="notificationsButton" class="ghost-light-button" type="button">Enable alerts</button>
+            <button id="installButton" class="ghost-light-button" type="button">Install app</button>
+          </div>
+        </header>
+        <div id="siteNotice" class="site-notice hidden"></div>
+
+        <section id="dashboardView" class="view active">
+          <div class="section-header">
+            <div>
+              <h2>Dashboard</h2>
+              <p id="dashboardState">Workspace overview</p>
+            </div>
+          </div>
+          <div id="dashboardAnnouncementList" class="announcement-list"></div>
+          <div id="phoneInstallGuide" class="phone-guide status-panel">
+            <div>
+              <h3>Put Inner on your phone</h3>
+              <p class="panel-note">iPhone: open Inner in Safari, tap Share, then Add to Home Screen. Android: open Inner in Chrome, tap Install app or Add to Home screen. Keep location allowed for account requests and live server allocation.</p>
+            </div>
+            <button id="phoneInstallGuideButton" class="secondary-button compact-button" type="button">Install app</button>
+          </div>
+          <div id="dashboardGrid" class="file-grid"></div>
+          <div class="settings-grid">
+            <div class="status-panel"><h3>Online</h3><div id="presenceList" class="account-list"></div></div>
+            <div class="status-panel"><h3>Unread and mentions</h3><div id="mentionList" class="account-list"></div></div>
+          </div>
+        </section>
+
+        <section id="messagesView" class="view">
+          <div class="section-header">
+            <div>
+              <h2>Messages</h2>
+              <p id="messageState">Live room</p>
+            </div>
+            <label class="compact-label">
+              Room
+              <select id="roomSelect"></select>
+            </label>
+          </div>
+          <form id="inviteJoinForm" class="upload-bar invite-join-bar">
+            <input id="inviteCodeInput" maxlength="80" placeholder="Paste room invite code" autocomplete="off" />
+            <button id="joinInviteButton" class="secondary-button" type="submit">Join invite</button>
+          </form>
+          <div id="messageList" class="message-list" aria-live="polite"></div>
+          <button id="messageJumpBottomButton" class="jump-bottom-button hidden" type="button">Jump to bottom</button>
+          <form id="messageForm" class="composer">
+            <input id="messageInput" maxlength="2000" placeholder="Write a message" autocomplete="off" />
+            <input id="messageAttachment" type="file" accept="image/*,video/*,audio/*" />
+            <input id="messageSelfieInput" class="hidden" type="file" accept="image/*" capture="user" />
+            <button id="messageSelfieButton" class="secondary-button" type="button">Selfie</button>
+            <button id="sendMessageButton" class="primary-button" type="submit">Send</button>
+          </form>
+        </section>
+
+        <section id="dmsView" class="view">
+          <div class="section-header">
+            <div>
+              <h2>DMs</h2>
+              <p id="dmState">Direct messages are not visible to anyone but you</p>
+            </div>
+            <label class="compact-label">
+              Account
+              <select id="dmPeerSelect"></select>
+            </label>
+          </div>
+          <form id="dmGroupForm" class="upload-bar">
+            <input id="dmGroupName" maxlength="80" placeholder="Group name" autocomplete="off" />
+            <div id="dmGroupMembers" class="member-picker" role="group" aria-label="Group members"></div>
+            <button id="createDmGroupButton" class="secondary-button" type="submit">Create group</button>
+            <button id="deleteDmGroupButton" class="danger-button hidden" type="button">Delete group</button>
+          </form>
+          <div id="dmCallPanel" class="dm-call-panel">
+            <div class="panel-title-row">
+              <div>
+                <h3>DM call</h3>
+                <p id="dmCallState" class="panel-note">Choose a DM or group to start a call</p>
+              </div>
+              <div class="button-row">
+                <button id="dmVoiceCallButton" class="primary-button" type="button">Voice call</button>
+                <button id="dmVideoCallButton" class="secondary-button" type="button">Video call</button>
+                <button id="dmShareScreenButton" class="secondary-button" type="button">Share screen</button>
+                <button id="dmStopScreenButton" class="danger-button" type="button" disabled>Stop share</button>
+                <button id="dmLeaveCallButton" class="danger-button" type="button" disabled>Leave</button>
+                <button id="dmAnswerCallButton" class="primary-button hidden" type="button">Answer</button>
+                <button id="dmDeclineCallButton" class="ghost-light-button hidden" type="button">Decline</button>
+              </div>
+            </div>
+            <div class="dm-call-grid">
+              <article class="call-tile local-call-tile">
+                <video id="dmLocalCallPreview" autoplay playsinline muted></video>
+                <strong>You</strong>
+              </article>
+              <div id="dmRemoteCallList" class="call-grid remote-call-grid"></div>
+              <article class="call-tile dm-screen-tile">
+                <video id="dmScreenVideo" autoplay playsinline muted></video>
+                <div id="dmScreenEmpty" class="empty-state-inline">No DM screen share</div>
+                <strong>Screen</strong>
+              </article>
+            </div>
+          </div>
+          <div id="dmList" class="message-list" aria-live="polite"></div>
+          <button id="dmJumpBottomButton" class="jump-bottom-button hidden" type="button">Jump to bottom</button>
+          <form id="dmForm" class="composer">
+            <input id="dmInput" maxlength="2000" placeholder="Write a direct message" autocomplete="off" />
+            <input id="dmAttachment" type="file" accept="image/*,video/*,audio/*" />
+            <input id="dmSelfieInput" class="hidden" type="file" accept="image/*" capture="user" />
+            <button id="dmSelfieButton" class="secondary-button" type="button">Selfie</button>
+            <button id="sendDmButton" class="primary-button" type="submit">Send</button>
+          </form>
+        </section>
+
+        <section id="friendsView" class="view">
+          <div class="section-header">
+            <div>
+              <h2>Friends</h2>
+              <p id="friendState">Requests and friend list</p>
+            </div>
+          </div>
+          <form id="friendRequestForm" class="upload-bar">
+            <select id="friendUserSelect" aria-label="User"></select>
+            <button id="sendFriendRequestButton" class="primary-button" type="submit">Add friend</button>
+          </form>
+          <div class="settings-grid">
+            <div class="status-panel"><h3>Friends</h3><div id="friendList" class="account-list"></div></div>
+            <div class="status-panel"><h3>Requests</h3><div id="friendRequestList" class="account-list"></div></div>
+          </div>
+        </section>
+
+        <section id="profileView" class="view">
+          <div class="section-header">
+            <div>
+              <h2>Profile</h2>
+              <p id="profileState">Status, bio, and theme</p>
+            </div>
+          </div>
+          <form id="profileForm" class="panel-form wide-panel">
+            <label>Display name<input id="profileDisplayName" maxlength="80" autocomplete="off" /></label>
+            <label>Avatar URL<input id="profileAvatarUrl" placeholder="https://..." autocomplete="off" /></label>
+            <label>Banner URL<input id="profileBannerUrl" placeholder="https://..." autocomplete="off" /></label>
+            <label>Badges<input id="profileBadges" maxlength="180" placeholder="Helpful, Funny, Supportive" autocomplete="off" /></label>
+            <label>Status<select id="profileStatus"><option value="online">Online</option><option value="idle">Idle</option><option value="busy">Busy</option><option value="invisible">Invisible</option></select></label>
+            <label>Custom status<input id="profileCustomStatus" maxlength="80" autocomplete="off" /></label>
+            <label>Theme<select id="profileTheme"><option value="system">System</option><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option></select></label>
+            <label>Bio<textarea id="profileBio" rows="4" maxlength="500"></textarea></label>
+            <label class="switch-row"><input id="profileInvisible" type="checkbox" /><span>Invisible mode</span></label>
+            <button id="saveProfileButton" class="primary-button" type="submit">Save profile</button>
+          </form>
+        </section>
+
+        <section id="filesView" class="view">
+          <div class="section-header">
+            <div>
+              <h2>Files</h2>
+              <p>Video, audio, documents, MUN, and important documents</p>
+            </div>
+          </div>
+          <form id="uploadForm" class="upload-bar">
+            <input id="fileInput" class="file-input" type="file" multiple />
+            <label class="file-picker-button" for="fileInput">Choose files</label>
+            <span id="filePickerSummary" class="file-picker-summary">No files selected</span>
+            <select id="fileCategory" aria-label="File category">
+              <option value="image">Photo</option>
+              <option value="document">Document</option>
+              <option value="video">Video</option>
+              <option value="audio">Audio</option>
+              <option value="mun">MUN</option>
+              <option value="important">Important</option>
+            </select>
+            <label class="switch-row upload-private-toggle"><input id="privateUpload" type="checkbox" /><span>Private</span></label>
+            <button id="uploadButton" class="primary-button" type="submit">Upload</button>
+          </form>
+          <div id="uploadQueue" class="account-list"></div>
+          <div id="uploadStatus" class="inline-status"></div>
+          <div id="fileList" class="file-grid"></div>
+        </section>
+
+        <section id="chessView" class="view embedded-app-view">
+          <div class="section-header">
+            <div>
+              <h2>Chess</h2>
+              <p>Made by Yash Kotwani and Dev Shah</p>
+            </div>
+            <div class="button-row">
+              <button id="openChessButton" class="primary-button compact-button" type="button">Open Chess Site</button>
+              <button id="continueChessButton" class="secondary-button compact-button" type="button">Continue signup</button>
+            </div>
+          </div>
+          <p class="panel-note">Use Open ChessVerse or Continue signup for accounts. Browser security can block third-party signup cookies inside embedded apps.</p>
+          <iframe
+            id="chessFrame"
+            class="embedded-app-frame"
+            src="https://chessverse.co.in/"
+            title="Chessverse"
+            allow="fullscreen; clipboard-read; clipboard-write; autoplay; gamepad"
+            referrerpolicy="strict-origin-when-cross-origin"
+          ></iframe>
+        </section>
+
+        <section id="storeView" class="view">
+          <div class="section-header">
+            <div>
+              <h2>Store</h2>
+              <p>Paid items and payment requests</p>
+            </div>
+          </div>
+          <div id="storeList" class="file-grid"></div>
+          <div class="status-panel wide-panel">
+            <h3>Your orders</h3>
+            <div id="orderList" class="account-list"></div>
+          </div>
+        </section>
+
+        <section id="screenView" class="view">
+          <div class="section-header">
+            <div>
+              <h2>Screen</h2>
+              <p id="screenStatus">No active share</p>
+            </div>
+            <div class="button-row">
+              <button id="startShareButton" class="primary-button" type="button">Start share</button>
+              <button id="stopShareButton" class="danger-button" type="button" disabled>Stop</button>
+            </div>
+          </div>
+
+          <div class="screen-layout">
+            <div class="screen-stage">
+              <video id="remoteVideo" autoplay playsinline muted></video>
+              <div id="emptyScreen" class="empty-state">Waiting for a shared screen</div>
+            </div>
+            <aside class="screen-side">
+              <div>
+                <h3>Local preview</h3>
+                <video id="localVideo" autoplay playsinline muted></video>
+              </div>
+              <div>
+                <h3>Online peers</h3>
+                <div id="peerList" class="peer-list"></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="voiceView" class="view">
+          <div class="section-header">
+            <div>
+              <h2>Voice</h2>
+              <p id="voiceState">Voice rooms and calls</p>
+            </div>
+            <label class="compact-label">
+              Room
+              <select id="voiceRoomSelect"></select>
+            </label>
+          </div>
+          <div class="topbar-actions">
+            <button id="joinVoiceButton" class="primary-button" type="button">Join voice</button>
+            <button id="joinVideoButton" class="secondary-button" type="button">Join video</button>
+            <button id="leaveVoiceButton" class="danger-button" type="button" disabled>Leave</button>
+            <button id="muteVoiceButton" class="ghost-light-button" type="button">Mute</button>
+            <button id="deafenVoiceButton" class="ghost-light-button" type="button">Deafen</button>
+            <button id="cameraVoiceButton" class="ghost-light-button" type="button">Camera off</button>
+          </div>
+          <div class="call-grid">
+            <article class="call-tile local-call-tile">
+              <video id="localCallPreview" autoplay playsinline muted></video>
+              <strong>You</strong>
+            </article>
+            <div id="remoteAudioList" class="call-grid remote-call-grid"></div>
+          </div>
+          <div class="soundboard-panel">
+            <button class="ghost-light-button compact-button" type="button" data-soundboard="chime">Chime</button>
+            <button class="ghost-light-button compact-button" type="button" data-soundboard="ping">Ping</button>
+            <button class="ghost-light-button compact-button" type="button" data-soundboard="pop">Pop</button>
+            <button class="ghost-light-button compact-button" type="button" data-soundboard="ring">Ring</button>
+          </div>
+          <div id="voicePeerList" class="account-list"></div>
+        </section>
+
+        <section id="adminView" class="view">
+          <div class="section-header">
+            <div>
+              <h2>Admin</h2>
+              <p id="serverStateText">Active</p>
+            </div>
+          </div>
+
+          <div class="settings-grid admin-grid">
+            <form id="serverForm" class="panel-form">
+              <h3>Server</h3>
+              <label>Room name<input id="roomNameInput" maxlength="80" /></label>
+              <label>Signup mode<select id="signupMode"><option value="request">Request approval</option><option value="open">Open signup</option></select></label>
+              <label class="switch-row"><input id="requireContact" type="checkbox" /><span>Require contact details</span></label>
+              <label>Report emails<input id="reportEmails" maxlength="300" placeholder="admin@email.com, helper@email.com" /></label>
+              <label>Chess tab link<input id="chessUrlInput" maxlength="300" placeholder="https://chessverse.co.in/" /></label>
+              <button id="testEmailButton" class="secondary-button" type="button">Send test email</button>
+              <p id="emailStatusText" class="panel-note">Email status is checking.</p>
+              <label class="switch-row"><input id="serverEnabled" type="checkbox" /><span>Server enabled</span></label>
+              <button id="saveServerButton" class="primary-button" type="submit">Save server</button>
+              <div class="button-row">
+                <button id="shutdownServerButton" class="danger-button" type="button">Shutdown</button>
+                <button id="restartServerButton" class="secondary-button" type="button">Restart</button>
+              </div>
+              <p class="panel-note">Shutdown mode kicks members out and blocks logins except admin, admin2, hmd, dev, and other admin/HMD/dev roles.</p>
+            </form>
+
+            <form id="vpnForm" class="panel-form">
+              <h3>VPN profile</h3>
+              <label>Username<input id="vpnUsername" autocomplete="off" /></label>
+              <label>Password<input id="vpnPassword" type="password" autocomplete="new-password" placeholder="Leave blank to keep" /></label>
+              <label>Location<select id="vpnLocation"></select></label>
+              <label class="switch-row"><input id="vpnEnabled" type="checkbox" /><span>VPN enabled</span></label>
+              <button id="saveVpnButton" class="primary-button" type="submit">Save VPN</button>
+            </form>
+
+            <div class="status-panel">
+              <h3>VPN status</h3>
+              <span class="muted-label">Current location</span><strong id="vpnLocationStatus">-</strong>
+              <span class="muted-label">Profile user</span><strong id="vpnUserStatus">-</strong>
+              <span class="muted-label">Password</span><strong id="vpnPasswordStatus">Not set</strong>
+              <span id="vpnState" class="inline-status">Profile mode</span>
+            </div>
+
+            <form id="passwordForm" class="panel-form">
+              <h3>Account password</h3>
+              <label>Current password<input id="currentPassword" type="password" autocomplete="current-password" /></label>
+              <label>New password<input id="nextPassword" type="password" autocomplete="new-password" /></label>
+              <button class="secondary-button" type="submit">Change password</button>
+            </form>
+
+            <form id="ownerPasswordForm" class="panel-form owner-only hidden">
+              <h3>Account passwords</h3>
+              <p class="panel-note">Admins can reset any account password here, including admin and admin2.</p>
+              <label>User<select id="resetUser"></select></label>
+              <label>New password<input id="resetPassword" type="password" autocomplete="new-password" /></label>
+              <button id="resetPasswordButton" class="secondary-button" type="submit">Reset password</button>
+            </form>
+
+            <form id="createAccountForm" class="panel-form owner-only hidden">
+              <h3>Create account</h3>
+              <label>Username<input id="newAccountUsername" autocomplete="off" placeholder="letters, numbers, dot, dash, underscore" /></label>
+              <label>Password<input id="newAccountPassword" type="password" autocomplete="new-password" /></label>
+              <label>Access<select id="newAccountRole"><option value="member">Member</option><option value="moderator">Moderator</option><option value="admin">Admin</option><option value="hmd">HMD</option><option value="dev">Dev</option></select></label>
+              <label class="switch-row"><input id="newAccountPersistent" type="checkbox" /><span>Allow persistent login</span></label>
+              <button id="createAccountButton" class="primary-button" type="submit">Create account</button>
+            </form>
+
+            <form id="featureLockForm" class="panel-form owner-only hidden">
+              <h3>Feature locks</h3>
+              <label>Feature<select id="featureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option></select></label>
+              <label>Minutes<input id="featureMinutes" type="number" min="0" max="525600" value="60" /></label>
+              <label>Reason<input id="featureReason" maxlength="160" placeholder="optional" /></label>
+              <button id="saveFeatureLockButton" class="primary-button" type="submit">Set lock</button>
+              <p class="panel-note">Use 0 minutes to turn a feature back on.</p>
+            </form>
+
+            <form id="featureVisibilityForm" class="panel-form owner-only hidden">
+              <h3>Hidden tabs</h3>
+              <p class="panel-note">Hardcoded owner controls for the admin account. Hidden tabs disappear from member sidebars.</p>
+              <label>Feature<select id="visibilityFeatureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option><option value="store">Store</option><option value="chess">Chess</option></select></label>
+              <label class="switch-row"><input id="visibilityHidden" type="checkbox" /><span>Hide from normal users</span></label>
+              <label>Allowed users<input id="visibilityAllowedUsers" maxlength="300" placeholder="username1, username2" /></label>
+              <button id="saveFeatureVisibilityButton" class="primary-button" type="submit">Save hidden tab</button>
+            </form>
+
+            <form id="paywallForm" class="panel-form owner-only hidden">
+              <h3>Paywall</h3>
+              <p class="panel-note">Choose a Store item as the pass. Mark the user's order paid to unlock the feature.</p>
+              <label>Feature<select id="paywallFeatureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="store">Store</option><option value="chess">Chess</option></select></label>
+              <label>Store item<select id="paywallItemId"></select></label>
+              <label class="switch-row"><input id="paywallEnabled" type="checkbox" /><span>Enable paywall</span></label>
+              <label>Message<input id="paywallMessage" maxlength="220" placeholder="Buy the access pass in Store to unlock this." /></label>
+              <button id="savePaywallButton" class="primary-button" type="submit">Save paywall</button>
+            </form>
+
+            <form id="roomForm" class="panel-form owner-only hidden">
+              <h3>Side rooms</h3>
+              <label>Room name<input id="newRoomName" maxlength="80" placeholder="Study group" /></label>
+              <label>Icon<input id="newRoomIcon" maxlength="12" placeholder="#" /></label>
+              <label>Category<input id="newRoomCategory" maxlength="80" placeholder="General" /></label>
+              <label>Password optional<input id="newRoomPassword" type="password" autocomplete="new-password" placeholder="Leave blank for no password" /></label>
+              <label>Theme<select id="newRoomTheme"><option value="system">System</option><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option></select></label>
+              <label class="switch-row"><input id="newRoomPrivate" type="checkbox" /><span>Private room</span></label>
+              <label class="switch-row"><input id="newRoomInviteOnly" type="checkbox" /><span>Invite-only</span></label>
+              <button id="createRoomButton" class="primary-button" type="submit">Create room</button>
+            </form>
+
+            <form id="quickEditForm" class="panel-form owner-only hidden wide-panel">
+              <h3>Quick edit studio</h3>
+              <p class="panel-note">Free in-app changes. No API key needed.</p>
+              <label>App name<input id="quickAppName" maxlength="60" placeholder="Inner" /></label>
+              <label>Notice banner<input id="quickNotice" maxlength="240" placeholder="Announcement for everyone" /></label>
+              <label>Accent color<input id="quickAccent" type="color" value="#245c4f" /></label>
+              <label>Density<select id="quickDensity"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
+              <label class="switch-row"><input id="quickRounded" type="checkbox" checked /><span>Rounded controls</span></label>
+              <label>Custom CSS<textarea id="quickCustomCss" rows="5" maxlength="8000" placeholder=".nav-button { font-weight: 900; }"></textarea></label>
+              <button id="saveQuickEditButton" class="primary-button" type="submit">Save quick edit</button>
+            </form>
+
+            <form id="announcementForm" class="panel-form owner-only hidden wide-panel">
+              <h3>Announcements</h3>
+              <p class="panel-note">Post a dashboard announcement for everyone or only one room.</p>
+              <label>Title<input id="announcementTitle" maxlength="100" placeholder="Quick update" /></label>
+              <label>Message<textarea id="announcementMessage" rows="4" maxlength="1200" placeholder="What should people see on the dashboard?"></textarea></label>
+              <label>Send to<select id="announcementScope"><option value="all">Whole platform</option><option value="room">Specific room</option></select></label>
+              <label id="announcementRoomLabel">Room<select id="announcementRoom"></select></label>
+              <button id="sendAnnouncementButton" class="primary-button" type="submit">Send announcement</button>
+            </form>
+
+            <form id="storeItemForm" class="panel-form owner-only hidden">
+              <h3>Paid item</h3>
+              <label>Name<input id="storeItemName" maxlength="80" placeholder="Access pass" /></label>
+              <label>Price<input id="storeItemPrice" type="number" min="0" step="0.01" placeholder="10.00" /></label>
+              <label>Currency<select id="storeItemCurrency"><option value="USD">USD</option><option value="INR">INR</option><option value="EUR">EUR</option><option value="GBP">GBP</option></select></label>
+              <label>Payment link<input id="storeItemPaymentLink" placeholder="https://..." /></label>
+              <label>Description<textarea id="storeItemDescription" rows="3" maxlength="500"></textarea></label>
+              <button id="createStoreItemButton" class="primary-button" type="submit">Create item</button>
+            </form>
+
+            <form id="aiForm" class="panel-form owner-only hidden wide-panel">
+              <h3>AI helper</h3>
+              <p id="aiState" class="panel-note">Ask for small safe changes. Add an API key below or start Inner with OPENAI_API_KEY set.</p>
+              <label>Change request<textarea id="aiPrompt" rows="4" maxlength="2000" placeholder="Make the file cards more compact"></textarea></label>
+              <button id="askAiButton" class="primary-button" type="submit">Ask AI</button>
+            </form>
+
+            <form id="aiKeyForm" class="panel-form owner-only hidden">
+              <h3>AI key</h3>
+              <label>OpenAI API key<input id="aiApiKey" type="password" autocomplete="off" placeholder="sk-..." /></label>
+              <button id="saveAiKeyButton" class="primary-button" type="submit">Save key</button>
+              <button id="clearAiKeyButton" class="secondary-button" type="button">Clear saved key</button>
+              <p class="panel-note">The key is saved only on the server in the data folder and is never shown back in the browser.</p>
+            </form>
+
+            <form id="adminAutomodForm" class="panel-form owner-only hidden">
+              <h3>AI moderator</h3>
+              <p class="panel-note">This is the moderation toggle. It blocks muted words and rate-limit spam now; OpenAI-powered suggestions use the AI key above.</p>
+              <label class="switch-row"><input id="adminAutomodEnabled" type="checkbox" /><span>Enabled</span></label>
+              <label>Spam window seconds<input id="adminAutomodWindow" type="number" min="2" max="120" /></label>
+              <label>Max messages<input id="adminAutomodMax" type="number" min="2" max="50" /></label>
+              <label>Muted words<textarea id="adminAutomodWords" rows="3" placeholder="one per line"></textarea></label>
+              <button id="saveAdminAutomodButton" class="primary-button" type="submit">Save AI moderator</button>
+            </form>
+
+            <div class="status-panel owner-only hidden"><h3>Active locks</h3><div id="featureLockList" class="account-list"></div></div>
+            <div class="status-panel owner-only hidden"><h3>Hidden feature rules</h3><div id="featureVisibilityList" class="account-list"></div></div>
+            <div class="status-panel owner-only hidden"><h3>Paywall rules</h3><div id="paywallList" class="account-list"></div></div>
+            <div class="status-panel owner-only hidden"><h3>Room manager</h3><div id="roomManagerList" class="account-list"></div></div>
+            <div class="status-panel owner-only hidden wide-panel"><h3>Announcement history</h3><div id="announcementList" class="account-list"></div></div>
+            <div class="status-panel owner-only hidden wide-panel"><h3>Monitored DMs</h3><label class="compact-label">Filter<select id="adminDmFilter"></select></label><div id="adminDmList" class="message-list compact-list"></div></div>
+            <div class="status-panel owner-only hidden wide-panel"><h3>Read receipts</h3><div id="adminReadReceiptList" class="account-list compact-list"></div></div>
+            <div class="status-panel owner-only hidden wide-panel"><h3>Store manager</h3><div id="adminStoreList" class="account-list"></div></div>
+            <div class="status-panel owner-only hidden wide-panel"><h3>Payment orders</h3><div id="adminOrderList" class="account-list"></div></div>
+            <div class="status-panel owner-only hidden wide-panel"><h3>AI requests</h3><div id="aiResponseList" class="account-list"></div></div>
+            <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>Backups</h3><button id="createBackupButton" class="secondary-button compact-button" type="button">Create backup</button></div><p class="panel-note">Backups save account data, messages, DMs, settings, and file records. Uploaded file contents stay in the data/uploads folder.</p><div id="backupList" class="account-list"></div></div>
+            <div class="status-panel owner-only hidden wide-panel"><h3>Account requests</h3><p class="panel-note">Requests include browser location because users must turn on location for server allocation.</p><div id="accountRequestList" class="account-list"></div></div>
+            <div id="accountManager" class="status-panel account-manager owner-only hidden"><div class="panel-title-row"><h3>Accounts</h3><input id="accountSearchInput" class="compact-search" maxlength="80" placeholder="Search account" autocomplete="off" /></div><div id="accountList" class="account-list"></div></div>
+            <div class="status-panel owner-only hidden wide-panel"><h3>Live IP tracking</h3><p class="panel-note">Shows active sessions first, then latest login/IP data for accounts.</p><div id="liveIpList" class="account-list compact-list"></div></div>
+            <div class="status-panel owner-only hidden wide-panel"><h3>Reports</h3><div id="reportList" class="account-list"></div></div>
+            <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>Moderation logs</h3><button id="exportModerationLogsButton" class="secondary-button compact-button" type="button">Export</button></div><div id="moderationLogList" class="account-list"></div></div>
+            <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>Wipe utilities</h3></div><div class="button-row"><button id="wipeLogsButton" class="danger-button compact-button" type="button">Wipe logs</button><button id="wipeReportsButton" class="danger-button compact-button" type="button">Clear reports</button><button id="wipeUploadsButton" class="danger-button compact-button" type="button">Clear uploads</button><button id="wipeRoomsButton" class="danger-button compact-button" type="button">Reset rooms</button></div><p class="panel-note">Room reset creates a backup first.</p></div>
+            <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>System logs</h3><button id="exportLogsButton" class="secondary-button compact-button" type="button">Export</button></div><div class="log-filter-row"><input id="logSearchInput" class="compact-search" maxlength="120" placeholder="Search account, action, IP, details" autocomplete="off" /><input id="logDateInput" class="compact-search" type="date" /></div><div id="logList" class="account-list compact-list"></div></div>
+            <form id="serviceScaleForm" class="panel-form owner-only hidden wide-panel">
+              <h3>Service scaling</h3>
+              <p class="panel-note">Tune capacity targets for each service. Messages affect rate limits; uploads affect max file size. Other services are saved for rollout and monitoring.</p>
+              <div id="serviceScaleList" class="account-list"></div>
+              <button id="saveServiceScaleButton" class="primary-button" type="submit">Save scaling</button>
+            </form>
+            <div class="status-panel owner-only hidden wide-panel">
+              <h3>Admin browser</h3>
+              <p class="panel-note">Open sites from inside the admin panel when the site allows embedding. If a site blocks embedded browsers, Inner will hand it to a full browser tab.</p>
+              <form id="adminBrowserForm" class="upload-bar invite-join-bar">
+                <input id="adminBrowserUrl" placeholder="https://example.com" autocomplete="off" />
+                <button id="adminBrowserOpenButton" class="secondary-button" type="submit">Open</button>
+              </form>
+              <div class="button-row"><button id="adminBrowserNewTabButton" class="ghost-light-button compact-button" type="button">Open full tab</button></div>
+              <p id="adminBrowserStatus" class="inline-status"></p>
+              <iframe id="adminBrowserFrame" class="admin-browser-frame" title="Admin browser"></iframe>
+            </div>
+          </div>
+        </section>
+
+        <section id="hmdView" class="view">
+          <div class="section-header">
+            <div>
+              <h2>HMD</h2>
+              <p id="hmdState">Developer and system control</p>
+            </div>
+          </div>
+          <div id="hmdMetricGrid" class="file-grid"></div>
+          <div class="settings-grid admin-grid">
+            <form id="devConfigForm" class="panel-form">
+              <h3>Emergency controls</h3>
+              <label class="switch-row"><input id="devEmergencyMode" type="checkbox" /><span>Emergency mode</span></label>
+              <label class="switch-row"><input id="devMetricsEnabled" type="checkbox" /><span>Metrics enabled</span></label>
+              <label>Theme engine<select id="devTheme"><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option></select></label>
+              <button id="saveDevConfigButton" class="primary-button" type="submit">Save HMD</button>
+            </form>
+            <form id="botForm" class="panel-form">
+              <h3>Bots</h3>
+              <label>Name<input id="botName" maxlength="80" placeholder="Helper bot" /></label>
+              <label>Description<textarea id="botDescription" rows="3" maxlength="300"></textarea></label>
+              <label class="switch-row"><input id="botEnabled" type="checkbox" checked /><span>Enabled</span></label>
+              <button id="createBotButton" class="primary-button" type="submit">Create bot</button>
+            </form>
+            <form id="pluginForm" class="panel-form">
+              <h3>Plugins</h3>
+              <label>Name<input id="pluginName" maxlength="80" placeholder="Moderation hook" /></label>
+              <label>Hook<input id="pluginHook" maxlength="80" placeholder="message" /></label>
+              <label>Notes<textarea id="pluginNotes" rows="3" maxlength="500"></textarea></label>
+              <label class="switch-row"><input id="pluginEnabled" type="checkbox" checked /><span>Enabled</span></label>
+              <button id="createPluginButton" class="primary-button" type="submit">Create plugin</button>
+            </form>
+            <form id="automodForm" class="panel-form">
+              <h3>Auto moderation</h3>
+              <label class="switch-row"><input id="automodEnabled" type="checkbox" /><span>Enabled</span></label>
+              <label>Spam window seconds<input id="automodWindow" type="number" min="2" max="120" /></label>
+              <label>Max messages<input id="automodMax" type="number" min="2" max="50" /></label>
+              <label>Muted words<textarea id="automodWords" rows="3" placeholder="one per line"></textarea></label>
+              <button id="saveAutomodButton" class="primary-button" type="submit">Save automod</button>
+            </form>
+            <div class="status-panel wide-panel"><h3>Live database viewer</h3><div id="databaseList" class="account-list"></div></div>
+            <div class="status-panel wide-panel"><h3>Storage manager</h3><div id="storageList" class="account-list"></div></div>
+            <div class="status-panel wide-panel"><h3>Localhost tools</h3><div id="localhostToolList" class="account-list"></div></div>
+            <div class="status-panel wide-panel"><h3>Bot accounts</h3><div id="botList" class="account-list"></div></div>
+            <div class="status-panel wide-panel"><h3>Plugin hooks</h3><div id="pluginList" class="account-list"></div></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+    <script src="/session-guard.js?v=inner-19-mobile-admin-paywall" defer></script>
+    <script src="/app.js?v=inner-19-mobile-admin-paywall" defer></script>
+    <script src="/force-logout.js?v=inner-19-mobile-admin-paywall" defer></script>
+  </body>
+</html>

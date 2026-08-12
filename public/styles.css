@@ -86,18 +86,6 @@ body[data-theme="glass"] {
     linear-gradient(135deg, #102023 0%, #1d2933 52%, #1b1830 100%);
 }
 
-body[data-theme="bd-somani"] {
-  --bg: #f6f4ed;
-  --surface: #ffffff;
-  --surface-muted: #ebe6d8;
-  --ink: #13233a;
-  --muted: #667085;
-  --line: #ddd3bd;
-  --accent: #9a1f2f;
-  --accent-soft: #f7e7e9;
-  --danger: #9a1f2f;
-}
-
 body[data-theme="custom"] {
   --bg: var(--custom-bg, #f7f7f4);
   --surface: var(--custom-surface, #ffffff);
@@ -189,7 +177,6 @@ select:disabled {
   display: grid;
   place-items: center;
   padding: 24px;
-  overflow-y: auto;
 }
 
 .login-stack {
@@ -208,35 +195,6 @@ select:disabled {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
-}
-
-body.account-entry-page {
-  min-height: 100vh;
-  overflow-y: auto;
-}
-
-body.account-entry-page .login-shell {
-  min-height: 100vh;
-  place-items: start center;
-  padding: 16px;
-}
-
-body.account-entry-page .login-stack {
-  width: min(620px, 100%);
-  grid-template-columns: 1fr;
-}
-
-body.account-entry-page #loginForm {
-  display: none;
-}
-
-body.account-entry-page .login-panel {
-  gap: 12px;
-  padding: 18px;
-}
-
-body.account-entry-page .request-panel p {
-  font-size: 0.95rem;
 }
 
 .request-panel h2,
@@ -739,34 +697,6 @@ textarea:focus {
 .upload-bar {
   grid-template-columns: auto minmax(160px, 1fr) minmax(150px, 210px) auto auto;
   align-items: center;
-}
-
-.file-release-controls {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(170px, 240px);
-  gap: 10px;
-  position: relative;
-  z-index: 3;
-  width: 100%;
-}
-
-.file-release-controls label {
-  display: grid;
-  gap: 5px;
-  font-size: 0.78rem;
-  font-weight: 900;
-  color: var(--muted);
-  text-transform: uppercase;
-}
-
-.file-release-controls select,
-.file-release-controls input {
-  min-height: 40px;
-  width: 100%;
-  min-width: 0;
-  text-transform: none;
-  color: var(--ink);
 }
 
 .share-link-form {
@@ -1412,27 +1342,6 @@ textarea:focus {
   color: var(--surface);
 }
 
-.workspace-extension-card {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-
-.workspace-extension-card h3,
-.workspace-extension-card p {
-  margin: 0;
-}
-
-.workspace-extension-card p {
-  margin-top: 4px;
-  color: var(--muted);
-}
-
 .account-head,
 .account-actions {
   display: flex;
@@ -1988,7 +1897,6 @@ select[multiple] {
   .login-stack,
   .composer,
   .upload-bar,
-  .file-release-controls,
   .log-filter-row,
   .scale-row,
   .call-grid,
@@ -4161,9 +4069,6 @@ textarea {
 
 /* v48 admin room/workspace cleanup. */
 .collapse-toggle {
-  display: inline-flex !important;
-  align-items: center;
-  justify-content: center;
   justify-self: end;
   width: fit-content;
   padding: 8px 12px;
@@ -4182,13 +4087,7 @@ textarea {
   margin-bottom: 4px;
 }
 
-.panel-title-row .collapse-toggle {
-  margin-left: auto;
-  flex: 0 0 auto;
-}
-
-.admin-collapsed > :not(h3):not(.panel-title-row):not(.collapse-toggle),
-.admin-collapsed > .panel-title-row > :not(h3):not(.collapse-toggle) {
+.admin-collapsed > :not(h3):not(.panel-title-row):not(.collapse-toggle) {
   display: none !important;
 }
 
@@ -4224,113 +4123,11 @@ textarea {
 
 .account-detail-shell {
   max-width: 1120px;
-  min-height: 100dvh;
-  overflow: visible;
-}
-
-body.standalone-page {
-  min-height: 100dvh;
-  overflow-y: auto;
-}
-
-body.standalone-page .tutorial-shell {
-  height: auto;
-  max-height: none;
-  overflow: visible;
 }
 
 .account-detail-page-list {
   display: grid;
   gap: 14px;
-  overflow: visible;
-}
-
-/* v56: Games and secret-game admin scrolling. */
-#chessView.view.active {
-  height: auto !important;
-  min-height: 0 !important;
-  overflow-y: auto !important;
-  display: grid !important;
-  grid-template-rows: auto auto minmax(420px, 1fr) !important;
-  align-content: start;
-}
-
-#chessView .section-header {
-  min-width: 0;
-}
-
-#chessView .game-launcher-list {
-  max-height: 132px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-#chessView .embedded-app-frame {
-  min-height: 520px;
-  height: min(70dvh, 760px);
-  flex: initial;
-}
-
-#serverForm {
-  min-height: 0;
-}
-
-#gameLinksInput {
-  min-height: 150px;
-  max-height: 34dvh;
-  overflow-y: auto;
-  resize: vertical;
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
-  line-height: 1.35;
-}
-
-@media (max-width: 920px) {
-  #chessView.view.active {
-    height: calc(100dvh - 58px) !important;
-    grid-template-rows: auto auto minmax(360px, 1fr) !important;
-    overflow-y: auto !important;
-  }
-
-  #chessView .section-header {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
-  }
-
-  #chessView .section-header .button-row {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  #chessView .section-header .button-row button {
-    min-width: 0;
-    white-space: normal;
-  }
-
-  #chessView .game-launcher-list {
-    max-height: 116px;
-  }
-
-  #chessView .embedded-app-frame {
-    min-height: 420px;
-    height: 58dvh;
-  }
-
-  #gameLinksInput {
-    min-height: 130px;
-    max-height: 42dvh;
-  }
-
-  .workspace-extension-card {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .workspace-extension-card .button-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 .detail-section {
@@ -4369,158 +4166,5 @@ body.standalone-page .tutorial-shell {
   .detail-line {
     grid-template-columns: minmax(0, 1fr);
     gap: 3px;
-  }
-}
-
-/* v62: file release picker and browser scrolling fixes. */
-#filesView.view.active {
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-}
-
-#uploadForm.upload-bar {
-  overflow: visible !important;
-  align-items: stretch;
-}
-
-#uploadForm .file-release-controls {
-  grid-column: 1 / -1 !important;
-  display: grid;
-  grid-template-columns: minmax(190px, 1fr) minmax(220px, 320px);
-  gap: 10px;
-  margin-top: 2px;
-  padding: 10px;
-  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
-  border-radius: var(--radius);
-  background: var(--surface-muted);
-  position: relative;
-  z-index: 12;
-}
-
-#uploadForm .file-release-controls.hidden {
-  display: none !important;
-}
-
-#uploadForm #fileReleaseAt {
-  appearance: auto;
-  -webkit-appearance: auto;
-}
-
-#browserView.view.active {
-  display: grid !important;
-  grid-template-rows: auto auto auto minmax(0, 1fr) !important;
-  height: calc(100dvh - 68px) !important;
-  min-height: 0 !important;
-  overflow: hidden !important;
-}
-
-#browserView .section-header,
-#browserView .public-browser-bar,
-#browserView .public-browser-share-bar,
-#browserView .panel-note {
-  min-width: 0;
-}
-
-#browserView .embedded-app-frame {
-  display: block;
-  width: 100%;
-  height: 100% !important;
-  min-height: 420px;
-  overflow: auto;
-}
-
-#adminBrowserFrame.admin-browser-frame {
-  display: block;
-  height: min(68dvh, 720px);
-  min-height: 430px;
-  overflow: auto;
-}
-
-.account-detail-password-note {
-  color: var(--muted);
-  font-size: 0.9rem;
-  font-weight: 800;
-}
-
-@media (max-width: 920px) {
-  #uploadForm.upload-bar {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-
-  #uploadForm .file-release-controls {
-    grid-template-columns: minmax(0, 1fr) !important;
-    padding: 8px;
-  }
-
-  #browserView.view.active {
-    grid-template-rows: auto auto auto minmax(0, 1fr) !important;
-    height: calc(100dvh - 136px) !important;
-    padding: 10px !important;
-  }
-
-  #browserView .public-browser-bar,
-  #browserView .public-browser-share-bar {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-
-  #browserView .embedded-app-frame {
-    min-height: 0 !important;
-  }
-
-  #adminBrowserFrame.admin-browser-frame {
-    height: 58dvh;
-    min-height: 360px;
-  }
-}
-
-/* v65: iPhone upload release controls and toast polish. */
-#uploadForm #fileReleaseRoom,
-#uploadForm #fileReleaseAt {
-  box-sizing: border-box;
-  max-width: 100%;
-}
-
-/* v73: only one connection status is shown. */
-#serverPill,
-#buildBadge {
-  display: none !important;
-}
-
-@media (max-width: 920px) {
-  #filesView.view.active {
-    padding-bottom: 110px !important;
-  }
-
-  #uploadForm .file-picker-summary {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  #uploadForm #fileReleaseAt {
-    display: block !important;
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-    height: 46px !important;
-    min-height: 46px !important;
-    padding: 8px 10px !important;
-    line-height: 1.2 !important;
-    font-size: 0.95rem !important;
-    overflow: hidden !important;
-  }
-
-  .toast {
-    left: 14px !important;
-    right: 14px !important;
-    bottom: max(14px, env(safe-area-inset-bottom)) !important;
-    width: auto !important;
-    max-width: none !important;
-    padding: 12px 14px !important;
-    font-size: 0.95rem !important;
-    line-height: 1.25 !important;
-    overflow-wrap: anywhere;
   }
 }

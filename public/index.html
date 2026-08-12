@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-78-recovery" />
+    <link rel="stylesheet" href="/styles.css?v=inner-79-freeze-fix" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -42,11 +42,7 @@
             <p>When your browser asks for location, choose Always allow. Inner uses it for server allocation, and admins can view the request details.</p>
           </div>
           <label>Username<input id="requestUsername" autocomplete="username" placeholder="your-name" required /></label>
-          <div class="split-fields">
-            <label>First name<input id="requestFirstName" autocomplete="given-name" required /></label>
-            <label>Surname<input id="requestLastName" autocomplete="family-name" required /></label>
-          </div>
-          <label>Display name<input id="requestDisplayName" autocomplete="name" placeholder="optional nickname" /></label>
+          <label>Display name<input id="requestDisplayName" autocomplete="name" /></label>
           <div class="split-fields">
             <label>Email<input id="requestEmail" type="email" autocomplete="email" placeholder="you@example.com" /></label>
             <label>Phone<input id="requestPhone" type="tel" autocomplete="tel" placeholder="+1 555 000 0000" /></label>
@@ -66,11 +62,7 @@
             <p>When your browser asks for location, choose Always allow. Open signup creates a normal member account and stores contact details for admins.</p>
           </div>
           <label>Username<input id="signupUsername" autocomplete="username" placeholder="your-name" /></label>
-          <div class="split-fields">
-            <label>First name<input id="signupFirstName" autocomplete="given-name" required /></label>
-            <label>Surname<input id="signupLastName" autocomplete="family-name" required /></label>
-          </div>
-          <label>Display name<input id="signupDisplayName" autocomplete="name" placeholder="optional nickname" /></label>
+          <label>Display name<input id="signupDisplayName" autocomplete="name" /></label>
           <div class="split-fields">
             <label>Email<input id="signupEmail" type="email" autocomplete="email" placeholder="you@example.com" /></label>
             <label>Phone<input id="signupPhone" type="tel" autocomplete="tel" placeholder="+1 555 000 0000" /></label>
@@ -193,9 +185,8 @@
               Room
               <select id="roomSelect"></select>
             </label>
-            <button id="toggleInviteJoinButton" class="secondary-button compact-button hidden" type="button">Enter invite code</button>
           </div>
-          <form id="inviteJoinForm" class="upload-bar invite-join-bar hidden">
+          <form id="inviteJoinForm" class="upload-bar invite-join-bar">
             <input id="inviteCodeInput" maxlength="80" placeholder="Paste room invite code" autocomplete="off" />
             <button id="joinInviteButton" class="secondary-button" type="submit">Join invite</button>
           </form>
@@ -333,7 +324,7 @@
             <label>Status<select id="profileStatus"><option value="online">Online</option><option value="idle">Idle</option><option value="busy">Busy</option><option value="invisible">Invisible</option></select></label>
             <label>Custom status<input id="profileCustomStatus" maxlength="80" autocomplete="off" /></label>
             <label>Grade<select id="profileGrade"><option value="">Choose grade</option><option value="6">Grade 6</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
-            <label>Theme<select id="profileTheme"><option value="system">Light</option><option value="midnight">Night</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="bd-somani">BD Somani</option><option value="custom">Custom</option></select></label>
+            <label>Theme<select id="profileTheme"><option value="system">Light</option><option value="midnight">Night</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="custom">Custom</option></select></label>
             <div id="customThemeFields" class="theme-editor">
               <label>Background<input id="profileThemeBg" type="color" value="#f7f7f4" /></label>
               <label>Cards<input id="profileThemeSurface" type="color" value="#ffffff" /></label>
@@ -367,14 +358,6 @@
             </select>
             <label class="switch-row upload-private-toggle"><input id="privateUpload" type="checkbox" /><span>Private</span></label>
             <button id="uploadButton" class="primary-button" type="submit">Upload</button>
-            <div id="fileReleaseControls" class="file-release-controls hidden">
-              <label>Release to
-                <select id="fileReleaseRoom"></select>
-              </label>
-              <label>Release at
-                <input id="fileReleaseAt" type="datetime-local" />
-              </label>
-            </div>
           </form>
           <div id="uploadQueue" class="account-list"></div>
           <div id="uploadStatus" class="inline-status"></div>
@@ -467,17 +450,6 @@
             <button id="googleSheetsModeButton" class="secondary-button compact-button" type="button" data-google-kind="sheets">Sheets</button>
           </div>
           <p id="googleWorkspaceNote" class="panel-note google-embed-note">Docs is selected. If Google blocks sign-in or editing inside the frame, use Open full tab or install the helper extension from extensions/inner-google-helper.</p>
-          <div class="workspace-extension-card">
-            <div>
-              <h3>Chrome extension</h3>
-              <p>Use the helper extension for the reliable Google flow: Docs, Slides, and Sheets open in real Chrome tabs, then links can be shared back into Inner.</p>
-            </div>
-            <div class="button-row">
-              <a class="primary-button compact-button" href="/downloads/inner-google-helper-chrome-store.zip" download>Download extension ZIP</a>
-              <a id="googleExtensionStoreLink" class="secondary-button compact-button" href="https://chrome.google.com/webstore/devconsole" target="_blank" rel="noopener">Chrome Web Store</a>
-              <a class="secondary-button compact-button" href="/downloads/INNER_GOOGLE_HELPER_INSTALL.html" target="_blank" rel="noopener">Install / publish guide</a>
-            </div>
-          </div>
           <iframe
             id="googleWorkspaceFrame"
             class="embedded-app-frame google-app-frame"
@@ -583,10 +555,6 @@
               <h2>Admin</h2>
               <p id="serverStateText">Active</p>
             </div>
-            <div class="button-row">
-              <button id="collapseAdminPanelsButton" class="secondary-button compact-button" type="button">Collapse all</button>
-              <button id="expandAdminPanelsButton" class="ghost-light-button compact-button" type="button">Expand all</button>
-            </div>
           </div>
 
           <div class="settings-grid admin-grid">
@@ -596,16 +564,12 @@
               <label>Signup mode<select id="signupMode"><option value="request">Request approval</option><option value="open">Open signup</option></select></label>
               <label class="switch-row"><input id="requireContact" type="checkbox" /><span>Require contact details</span></label>
               <label>Report emails<input id="reportEmails" maxlength="300" placeholder="admin@email.com, helper@email.com" /></label>
-              <div class="split-fields">
-                <label>Pending requests show days<input id="requestPendingDays" type="number" min="1" max="90" value="7" /></label>
-                <label>Approved requests show hours<input id="requestApprovedHours" type="number" min="1" max="720" value="48" /></label>
-              </div>
-              <label>Denied login message hours<input id="requestDeclinedLoginHours" type="number" min="1" max="168" value="12" /></label>
-              <label>Chrome Web Store extension link<input id="googleExtensionStoreUrlInput" maxlength="500" placeholder="Paste approved Chrome Web Store URL after publishing" /></label>
-              <label class="switch-row"><input id="persistentDefaultEnabled" type="checkbox" checked /><span>Keep users logged in by default</span></label>
-              <label>Keep logged in for grades<input id="persistentGrades" maxlength="160" placeholder="8a, 8b, 9, staff" /></label>
-              <label>Keep logged in for roles/classes<input id="persistentRoles" maxlength="160" placeholder="member, moderator" /></label>
-              <label>Keep logged in for room memberships<input id="persistentRooms" maxlength="300" placeholder="optional room names or room ids" /></label>
+              <label>Main game link<input id="chessUrlInput" maxlength="300" placeholder="https://chessverse.co.in/" /></label>
+              <label>Games links<textarea id="gameLinksInput" rows="4" maxlength="1600" placeholder="ChessVerse | https://chessverse.co.in/&#10;Cool Math | https://www.coolmathgames.com/"></textarea></label>
+              <label class="switch-row"><input id="persistentDefaultEnabled" type="checkbox" checked /><span>Persistent login default on</span></label>
+              <label>Persistent grades<input id="persistentGrades" maxlength="160" placeholder="9, 10, 11, staff" /></label>
+              <label>Persistent roles/classes<input id="persistentRoles" maxlength="160" placeholder="member, moderator" /></label>
+              <label>Persistent rooms<input id="persistentRooms" maxlength="300" placeholder="room names or room ids, comma separated" /></label>
               <button id="testEmailButton" class="secondary-button" type="button">Send test email</button>
               <p id="emailStatusText" class="panel-note">Email status is checking.</p>
               <label class="switch-row"><input id="serverEnabled" type="checkbox" /><span>Server enabled</span></label>
@@ -615,15 +579,6 @@
                 <button id="restartServerButton" class="secondary-button" type="button">Restart</button>
               </div>
               <p class="panel-note">Shutdown mode kicks members out and blocks logins except admin, admin2, hmd, dev, and other admin/HMD/dev roles.</p>
-            </form>
-
-            <form id="secretGamesForm" class="panel-form owner-only hidden wide-panel">
-              <h3>Secret Games</h3>
-              <p class="panel-note">This controls the Games tab contents. Hide the whole Games tab in Hidden tabs. Use this panel to choose exactly which accounts can see each game.</p>
-              <label>Main fallback game<input id="chessUrlInput" maxlength="300" placeholder="https://chessverse.co.in/" /></label>
-              <label>Game access list<textarea id="gameLinksInput" rows="8" maxlength="2200" placeholder="ChessVerse | https://chessverse.co.in/ | admin, dev&#10;Cool Math | https://www.coolmathgames.com/&#10;Game name | https://site.com/ | username1, username2"></textarea></label>
-              <p class="panel-note">Format: Game name | URL | allowed usernames. Blank usernames means everyone with the Games tab can see it. Filled usernames means only those accounts can see that game.</p>
-              <button id="saveSecretGamesButton" class="primary-button" type="submit">Save secret games</button>
             </form>
 
             <form id="vpnForm" class="panel-form">
@@ -652,24 +607,16 @@
 
             <form id="ownerPasswordForm" class="panel-form owner-only hidden">
               <h3>Account passwords</h3>
-              <p class="panel-note">Admins can search username, email, phone, name, or grade, then reset the selected account. Passwords stay hashed; generated temporary passwords are shown only here.</p>
-              <label>Find account<input id="resetAccountSearch" maxlength="120" autocomplete="off" placeholder="username, email, phone, grade, name" /></label>
+              <p class="panel-note">Admins can reset any account password here, including admin and admin2.</p>
               <label>User<select id="resetUser"></select></label>
               <label>New password<input id="resetPassword" type="password" autocomplete="new-password" /></label>
-              <div class="button-row">
-                <button id="generateResetPasswordButton" class="secondary-button" type="button">Generate temp</button>
-                <button id="resetPasswordButton" class="secondary-button" type="submit">Reset password</button>
-              </div>
-              <div id="resetPasswordResult" class="inline-status"></div>
+              <button id="resetPasswordButton" class="secondary-button" type="submit">Reset password</button>
             </form>
 
             <form id="createAccountForm" class="panel-form owner-only hidden">
               <h3>Create account</h3>
               <label>Username<input id="newAccountUsername" autocomplete="off" placeholder="letters, numbers, dot, dash, underscore" /></label>
               <label>Password<input id="newAccountPassword" type="password" autocomplete="new-password" /></label>
-              <label>Email<input id="newAccountEmail" type="email" autocomplete="off" placeholder="student@example.com" /></label>
-              <label>Phone<input id="newAccountPhone" type="tel" autocomplete="off" placeholder="+91..." /></label>
-              <label>Grade/class<select id="newAccountGrade"></select></label>
               <label>Access<select id="newAccountRole"><option value="member">Member</option><option value="moderator">Moderator</option><option value="admin">Admin</option><option value="hmd">HMD</option><option value="dev">Dev</option></select></label>
               <label class="switch-row"><input id="newAccountPersistent" type="checkbox" /><span>Allow persistent login</span></label>
               <button id="createAccountButton" class="primary-button" type="submit">Create account</button>
@@ -686,7 +633,7 @@
 
             <form id="featureVisibilityForm" class="panel-form owner-only hidden">
               <h3>Hidden tabs</h3>
-              <p class="panel-note">Hide whole tabs from everyone except your owner admin and the usernames you allow. Choose Games here to hide the whole Games tab; use the Secret Games panel to hide only certain games.</p>
+              <p class="panel-note">Hardcoded owner controls for the admin account. Hidden tabs disappear from member sidebars.</p>
               <label>Feature<select id="visibilityFeatureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="docs">Google Workspace</option><option value="browser">Browser</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option><option value="store">Store</option><option value="chess">Games</option><option value="domain">Domain</option><option value="admin">Admin</option><option value="hmd">HMD</option></select></label>
               <label class="switch-row"><input id="visibilityHidden" type="checkbox" /><span>Hide from normal users</span></label>
               <label>Allowed users<input id="visibilityAllowedUsers" maxlength="300" placeholder="username1, username2" /></label>
@@ -709,7 +656,7 @@
               <label>Icon<input id="newRoomIcon" maxlength="12" placeholder="#" /></label>
               <label>Category<input id="newRoomCategory" maxlength="80" placeholder="General" /></label>
               <label>Password optional<input id="newRoomPassword" type="password" autocomplete="new-password" placeholder="Leave blank for no password" /></label>
-              <label>Theme<select id="newRoomTheme"><option value="system">System</option><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="bd-somani">BD Somani</option></select></label>
+              <label>Theme<select id="newRoomTheme"><option value="system">System</option><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option></select></label>
               <label class="switch-row"><input id="newRoomPrivate" type="checkbox" /><span>Private room</span></label>
               <label class="switch-row"><input id="newRoomInviteOnly" type="checkbox" /><span>Invite-only</span></label>
               <button id="createRoomButton" class="primary-button" type="submit">Create room</button>
@@ -719,6 +666,8 @@
               <h3>Quick edit studio</h3>
               <p class="panel-note">Free in-app changes. No API key needed.</p>
               <label>App name<input id="quickAppName" maxlength="60" placeholder="Inner" /></label>
+              <label>Connected text<input id="quickConnectedLabel" maxlength="40" placeholder="Live" /></label>
+              <label>Disconnected text<input id="quickDisconnectedLabel" maxlength="40" placeholder="Not live" /></label>
               <label>Server-on label<input id="quickServerOnLabel" maxlength="40" placeholder="Server on" /></label>
               <label>Server-off label<input id="quickServerOffLabel" maxlength="40" placeholder="Server off" /></label>
               <label>Version badge optional<input id="quickVersionLabel" maxlength="80" placeholder="v1.0.0, August update, etc." /></label>
@@ -800,7 +749,7 @@
             <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>System logs</h3><button id="exportLogsButton" class="secondary-button compact-button" type="button">Export</button></div><div class="log-filter-row"><input id="logSearchInput" class="compact-search" maxlength="120" placeholder="Search account, action, IP, details" autocomplete="off" /><input id="logDateInput" class="compact-search" type="date" /></div><div id="logList" class="account-list compact-list"></div></div>
             <form id="serviceScaleForm" class="panel-form owner-only hidden wide-panel">
               <h3>Service scaling</h3>
-              <p class="panel-note">Tune capacity targets for each service. Estimates are planning numbers only; Render/Backblaze B2/Resend/TURN bills depend on your actual provider plans and usage.</p>
+              <p class="panel-note">Tune capacity targets for each service. Estimates are planning numbers only; Render/Cloudinary/Resend/TURN bills depend on your actual provider plans and usage.</p>
               <div id="serviceScaleList" class="account-list"></div>
               <div id="serviceScaleCostSummary" class="cost-summary"></div>
               <button id="saveServiceScaleButton" class="primary-button" type="submit">Save scaling</button>
@@ -833,10 +782,6 @@
               <h2>HMD</h2>
               <p id="hmdState">Developer and system control</p>
             </div>
-            <div class="button-row">
-              <button id="collapseHmdPanelsButton" class="secondary-button compact-button" type="button">Collapse all</button>
-              <button id="expandHmdPanelsButton" class="ghost-light-button compact-button" type="button">Expand all</button>
-            </div>
           </div>
           <div id="hmdMetricGrid" class="file-grid"></div>
           <div class="settings-grid admin-grid">
@@ -844,7 +789,7 @@
               <h3>Emergency controls</h3>
               <label class="switch-row"><input id="devEmergencyMode" type="checkbox" /><span>Emergency mode</span></label>
               <label class="switch-row"><input id="devMetricsEnabled" type="checkbox" /><span>Metrics enabled</span></label>
-              <label>Theme engine<select id="devTheme"><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="bd-somani">BD Somani</option></select></label>
+              <label>Theme engine<select id="devTheme"><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option></select></label>
               <button id="saveDevConfigButton" class="primary-button" type="submit">Save HMD</button>
             </form>
             <div class="status-panel wide-panel">
@@ -892,11 +837,10 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-78-recovery" defer></script>
-    <script src="/status-guard.js?v=inner-78-recovery" defer></script>
-    <script src="/ui-boot.js?v=inner-78-recovery" defer></script>
-    <script src="/app.js?v=inner-78-recovery" defer></script>
-    <script src="/force-logout.js?v=inner-59-google-store-link-final" defer></script>
+    <script src="/session-guard.js?v=inner-79-freeze-fix" defer></script>
+    <script src="/status-guard.js?v=inner-79-freeze-fix" defer></script>
+    <script src="/ui-boot.js?v=inner-79-freeze-fix" defer></script>
+    <script src="/app.js?v=inner-79-freeze-fix" defer></script>
+    <script src="/force-logout.js?v=inner-79-freeze-fix" defer></script>
   </body>
 </html>
-

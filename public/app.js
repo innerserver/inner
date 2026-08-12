@@ -6,7 +6,6 @@ const state = {
   selectedRoomId: "main",
   messages: [],
   pendingSends: [],
-  messageSending: false,
   replyToMessage: null,
   dms: [],
   pendingDms: [],
@@ -70,12 +69,6 @@ const state = {
   aiConfigured: false,
   ws: null,
   reconnectTimer: null,
-  healthTimer: null,
-  pollTimer: null,
-  pollInFlight: false,
-  wsReconnectDelay: 1400,
-  lastHealthOkAt: 0,
-  lastHealthError: "",
   wsPingTimer: null,
   wsOutbox: [],
   wsEverConnected: false,
@@ -129,16 +122,10 @@ const viewRoutes = {
 const els = {};
 
 document.addEventListener("DOMContentLoaded", () => {
-  try {
-    state.notificationsEnabled = getStoredFlag("innerNotifications");
-    restoreUiState();
-    cacheElements();
-    hydrateGradeSelects();
-    bindEvents();
-  } catch (error) {
-    console.error("Inner boot setup failed", error);
-    if (els.toast) notify("Some controls are still loading. Refresh if a button does not respond.");
-  }
+  state.notificationsEnabled = getStoredFlag("innerNotifications");
+  restoreUiState();
+  cacheElements();
+  bindEvents();
   refreshSignupStatus().catch(() => {});
   loadState().catch((error) => showLogin(error.status === 401 ? "" : error.message));
 });
@@ -156,8 +143,6 @@ function cacheElements() {
     "signupEntryButton",
     "accountRequestForm",
     "requestUsername",
-    "requestFirstName",
-    "requestLastName",
     "requestDisplayName",
     "requestEmail",
     "requestPhone",
@@ -170,8 +155,6 @@ function cacheElements() {
     "accountRequestStatus",
     "signupForm",
     "signupUsername",
-    "signupFirstName",
-    "signupLastName",
     "signupDisplayName",
     "signupEmail",
     "signupPhone",
@@ -216,7 +199,6 @@ function cacheElements() {
     "googleWorkspaceView",
     "googleWorkspaceFrame",
     "googleWorkspaceNote",
-    "googleExtensionStoreLink",
     "openGoogleWorkspaceButton",
     "newGoogleWorkspaceButton",
     "shareGoogleWorkspaceButton",
@@ -262,16 +244,11 @@ function cacheElements() {
     "domainView",
     "adminView",
     "hmdView",
-    "collapseAdminPanelsButton",
-    "expandAdminPanelsButton",
-    "collapseHmdPanelsButton",
-    "expandHmdPanelsButton",
     "domainNavButton",
     "adminNavButton",
     "hmdNavButton",
     "messageState",
     "roomSelect",
-    "toggleInviteJoinButton",
     "inviteJoinForm",
     "inviteCodeInput",
     "joinInviteButton",
@@ -354,9 +331,6 @@ function cacheElements() {
     "fileCategory",
     "privateUpload",
     "uploadButton",
-    "fileReleaseControls",
-    "fileReleaseRoom",
-    "fileReleaseAt",
     "uploadQueue",
     "uploadStatus",
     "fileList",
@@ -392,18 +366,12 @@ function cacheElements() {
     "vpnPasswordStatus",
     "serverStateText",
     "serverForm",
-    "secretGamesForm",
     "roomNameInput",
     "signupMode",
     "requireContact",
     "reportEmails",
-    "requestPendingDays",
-    "requestApprovedHours",
-    "requestDeclinedLoginHours",
-    "googleExtensionStoreUrlInput",
     "chessUrlInput",
     "gameLinksInput",
-    "saveSecretGamesButton",
     "persistentDefaultEnabled",
     "persistentGrades",
     "persistentRoles",
@@ -437,9 +405,6 @@ function cacheElements() {
     "newAccountUsername",
     "newAccountPassword",
     "newAccountRole",
-    "newAccountEmail",
-    "newAccountPhone",
-    "newAccountGrade",
     "newAccountPersistent",
     "createAccountButton",
     "featureLockForm",
@@ -463,6 +428,8 @@ function cacheElements() {
     "paywallList",
     "quickEditForm",
     "quickAppName",
+    "quickConnectedLabel",
+    "quickDisconnectedLabel",
     "quickServerOnLabel",
     "quickServerOffLabel",
     "quickVersionLabel",
@@ -607,7 +574,6 @@ function bindEvents() {
     updateControls();
   });
   els.inviteJoinForm.addEventListener("submit", joinInvite);
-  if (els.toggleInviteJoinButton) els.toggleInviteJoinButton.addEventListener("click", toggleInviteJoin);
   els.messageForm.addEventListener("submit", sendMessage);
   els.messageList.addEventListener("scroll", () => {
     updateJumpButton(els.messageList, els.messageJumpBottomButton);
@@ -717,26 +683,17 @@ function bindEvents() {
   els.stopShareButton.addEventListener("click", stopShare);
   els.vpnForm.addEventListener("submit", saveVpn);
   els.serverForm.addEventListener("submit", saveServer);
-  if (els.secretGamesForm) els.secretGamesForm.addEventListener("submit", saveSecretGames);
   els.testEmailButton.addEventListener("click", sendTestEmail);
   els.shutdownServerButton.addEventListener("click", () => setServerPower(false));
   els.restartServerButton.addEventListener("click", () => setServerPower(true));
   els.passwordForm.addEventListener("submit", changePassword);
   els.ownerPasswordForm.addEventListener("submit", resetUserPassword);
-  if (els.resetAccountSearch) els.resetAccountSearch.addEventListener("input", renderPasswordResetOptions);
-  if (els.generateResetPasswordButton) els.generateResetPasswordButton.addEventListener("click", generateResetPassword);
   els.createAccountForm.addEventListener("submit", createAccount);
   els.accountSearchInput.addEventListener("input", () => {
     state.accountSearch = els.accountSearchInput.value.trim().toLowerCase();
     state.accountShowAll = false;
     state.selectedAccountDetails = "";
     renderUsers();
-  });
-  els.accountSearchInput.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter") return;
-    event.preventDefault();
-    if (!state.selectedAccountDetails) renderUsers();
-    openSelectedAccountDetailTab();
   });
   if (els.accountGradeFilter) {
     els.accountGradeFilter.addEventListener("change", () => {
@@ -822,10 +779,6 @@ function bindEvents() {
   document.querySelectorAll("[data-soundboard]").forEach((button) => {
     button.addEventListener("click", () => playSoundboard(button.dataset.soundboard, { broadcast: true }));
   });
-  if (els.collapseAdminPanelsButton) els.collapseAdminPanelsButton.addEventListener("click", () => setPanelGroupCollapsed(els.adminView, true));
-  if (els.expandAdminPanelsButton) els.expandAdminPanelsButton.addEventListener("click", () => setPanelGroupCollapsed(els.adminView, false));
-  if (els.collapseHmdPanelsButton) els.collapseHmdPanelsButton.addEventListener("click", () => setPanelGroupCollapsed(els.hmdView, true));
-  if (els.expandHmdPanelsButton) els.expandHmdPanelsButton.addEventListener("click", () => setPanelGroupCollapsed(els.hmdView, false));
 
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
@@ -882,8 +835,6 @@ async function submitAccountRequest(event) {
       method: "POST",
       json: {
         username: els.requestUsername.value.trim(),
-        firstName: els.requestFirstName ? els.requestFirstName.value.trim() : "",
-        lastName: els.requestLastName ? els.requestLastName.value.trim() : "",
         displayName: els.requestDisplayName.value.trim(),
         email: els.requestEmail ? els.requestEmail.value.trim() : "",
         phone: els.requestPhone ? els.requestPhone.value.trim() : "",
@@ -915,8 +866,6 @@ async function handleSignup(event) {
       method: "POST",
       json: {
         username: els.signupUsername.value.trim(),
-        firstName: els.signupFirstName ? els.signupFirstName.value.trim() : "",
-        lastName: els.signupLastName ? els.signupLastName.value.trim() : "",
         displayName: els.signupDisplayName.value.trim(),
         email: els.signupEmail ? els.signupEmail.value.trim() : "",
         phone: els.signupPhone ? els.signupPhone.value.trim() : "",
@@ -951,14 +900,12 @@ async function refreshSignupStatus() {
   } else if (els.signupStatus) {
     els.signupStatus.textContent = "Open signup is on.";
   }
-  if (isAccountEntryRoute() && els.loginView) els.loginView.classList.add("signup-expanded");
   syncSignupModePanels(data.signupMode || state.settings.signupMode || "request");
 }
 
 function syncSignupModePanels(mode) {
   const open = String(mode || "request") === "open";
   const expanded = Boolean(els.loginView && els.loginView.classList.contains("signup-expanded"));
-  document.body.classList.toggle("account-entry-page", expanded);
   syncSignupEntryLabel(mode);
   if (els.accountRequestForm) els.accountRequestForm.classList.toggle("hidden", !expanded || open);
   if (els.signupForm) els.signupForm.classList.toggle("hidden", !expanded || !open);
@@ -972,12 +919,6 @@ function syncSignupEntryLabel(mode) {
 }
 
 function openSignupChoice() {
-  if (!isAccountEntryRoute()) {
-    const targetUrl = `${location.origin}/?account=1`;
-    const opened = window.open(targetUrl, "_blank", "noopener");
-    if (opened) return;
-    history.pushState({}, "", "/?account=1");
-  }
   if (els.loginView) els.loginView.classList.add("signup-expanded");
   syncSignupModePanels(state.settings.signupMode || "request");
   refreshSignupStatus().catch(() => syncSignupModePanels(state.settings.signupMode || "request"));
@@ -987,13 +928,7 @@ function openSignupChoice() {
 
 function closeSignupChoice() {
   if (els.loginView) els.loginView.classList.remove("signup-expanded");
-  document.body.classList.remove("account-entry-page");
-  if (isAccountEntryRoute()) history.pushState({}, "", "/");
   syncSignupModePanels(state.settings.signupMode || "request");
-}
-
-function isAccountEntryRoute() {
-  return new URLSearchParams(location.search).get("account") === "1";
 }
 
 function getAccountRequestLocation() {
@@ -1029,8 +964,6 @@ function fallbackAccountLocation(reason) {
 async function handleLogout() {
   state.loggedIn = false;
   leaveVoice();
-  stopHealthMonitor();
-  stopStatePoller();
   closeSocket();
   stopShare({ silent: true });
   await api("/api/logout", { method: "POST" }).catch(() => {});
@@ -1087,8 +1020,6 @@ async function loadState() {
   showApp();
   showView(state.activeView, { updateHistory: false });
   renderAll();
-  startHealthMonitor();
-  startStatePoller();
   connectSocket();
   flushPendingSends();
   joinInviteFromUrl();
@@ -1099,21 +1030,11 @@ function showLogin(message = "") {
   state.loggedIn = false;
   applyProfileTheme("system");
   els.loginView.classList.remove("hidden");
-  if (isAccountEntryRoute()) {
-    els.loginView.classList.add("signup-expanded");
-    syncSignupModePanels(state.settings.signupMode || "request");
-  } else {
-    closeSignupChoice();
-  }
+  closeSignupChoice();
   els.appView.classList.add("hidden");
   els.loginError.textContent = message;
-  stopHealthMonitor();
-  stopStatePoller();
-  setConnection("Offline");
-  const focusTarget = isAccountEntryRoute()
-    ? (String(state.settings.signupMode || "request") === "open" ? els.signupUsername : els.requestUsername)
-    : els.loginPassword;
-  setTimeout(() => focusTarget && focusTarget.focus(), 0);
+  setConnection("Not live");
+  setTimeout(() => els.loginPassword.focus(), 0);
 }
 
 function showApp() {
@@ -1158,13 +1079,11 @@ function showView(viewName, options = {}) {
 
 async function sendMessage(event) {
   event.preventDefault();
-  if (state.messageSending) return;
   const text = els.messageInput.value.trim();
   const file = els.messageAttachment.files[0];
   if (!text && !file) return;
 
   try {
-    state.messageSending = true;
     els.sendMessageButton.disabled = true;
     const attachment = file ? await uploadChatAttachment(file) : null;
     queueOutgoingMessage({
@@ -1182,7 +1101,6 @@ async function sendMessage(event) {
   } catch (error) {
     notify(error.message);
   } finally {
-    state.messageSending = false;
     updateControls();
   }
 }
@@ -1530,7 +1448,6 @@ async function uploadFile(event) {
 
   try {
     els.uploadButton.disabled = true;
-    const releaseOptions = currentFileReleaseOptions();
     state.uploadQueue = files.map((file) => ({ name: file.name, progress: "Queued" }));
     renderUploadQueue();
     for (let index = 0; index < files.length; index += 1) {
@@ -1538,12 +1455,11 @@ async function uploadFile(event) {
       state.uploadQueue[index].progress = "Uploading";
       els.uploadStatus.textContent = `Uploading ${file.name}`;
       renderUploadQueue();
-      await uploadOneFile(file, els.fileCategory.value, { private: els.privateUpload.checked, ...releaseOptions });
+      await uploadOneFile(file, els.fileCategory.value, { private: els.privateUpload.checked });
       state.uploadQueue[index].progress = "Done";
       renderUploadQueue();
     }
     els.fileInput.value = "";
-    if (els.fileReleaseAt) els.fileReleaseAt.value = "";
     updateFilePickerSummary();
     els.uploadStatus.textContent = "";
     notify(files.length === 1 ? "File uploaded" : "Files uploaded");
@@ -1566,22 +1482,6 @@ async function uploadChatAttachment(file) {
   return uploadOneFile(file, file.type.startsWith("image/") ? "image" : file.type.startsWith("audio/") ? "audio" : "video", { private: false });
 }
 
-function currentFileReleaseOptions() {
-  if (!canScheduleRoomFiles()) return {};
-  const roomId = String(els.fileReleaseRoom ? els.fileReleaseRoom.value : "").trim();
-  const releaseAt = localDateTimeToIso(els.fileReleaseAt ? els.fileReleaseAt.value : "");
-  return {
-    roomId,
-    releaseAt,
-  };
-}
-
-function localDateTimeToIso(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toISOString() : "";
-}
-
 async function uploadOneFile(file, category, options = {}) {
   if (state.uploadConfig && state.uploadConfig.directCloudinary) {
     return uploadOneFileDirectCloudinary(file, category, options);
@@ -1590,13 +1490,10 @@ async function uploadOneFile(file, category, options = {}) {
     method: "POST",
     credentials: "same-origin",
     headers: {
-      "x-inner-csrf": "1",
       "x-file-name": encodeURIComponent(file.name),
       "x-file-type": file.type || "application/octet-stream",
       "x-file-category": category || "document",
       "x-file-private": options.private ? "1" : "0",
-      "x-file-room": encodeURIComponent(options.roomId || ""),
-      "x-file-release-at": encodeURIComponent(options.releaseAt || ""),
     },
     body: file,
   });
@@ -1616,8 +1513,6 @@ async function uploadOneFileDirectCloudinary(file, category, options = {}) {
       mimeType: file.type || "application/octet-stream",
       category: category || "document",
       private: Boolean(options.private),
-      roomId: options.roomId || "",
-      releaseAt: options.releaseAt || "",
       size: file.size,
     },
   });
@@ -1720,26 +1615,6 @@ async function saveServer(event) {
   }
 }
 
-async function saveSecretGames(event) {
-  event.preventDefault();
-  if (!isOwner()) return notify("Hardcoded admin owner access required");
-  try {
-    els.saveSecretGamesButton.disabled = true;
-    const data = await api("/api/settings", {
-      method: "POST",
-      json: serverSettingsPayload(),
-    });
-    state.settings = data.settings || state.settings;
-    renderServer();
-    renderGames();
-    notify("Secret games saved");
-  } catch (error) {
-    notify(error.message);
-  } finally {
-    els.saveSecretGamesButton.disabled = false;
-  }
-}
-
 function serverSettingsPayload(extra = {}) {
   return {
     roomName: els.roomNameInput.value.trim(),
@@ -1747,12 +1622,6 @@ function serverSettingsPayload(extra = {}) {
     signupMode: els.signupMode.value,
     requireContact: els.requireContact.checked,
     reportEmails: els.reportEmails.value.split(",").map((entry) => entry.trim()).filter(Boolean),
-    accountRequestRetention: {
-      pendingDays: Number(els.requestPendingDays ? els.requestPendingDays.value || 7 : 7),
-      approvedHours: Number(els.requestApprovedHours ? els.requestApprovedHours.value || 48 : 48),
-      declinedLoginHours: Number(els.requestDeclinedLoginHours ? els.requestDeclinedLoginHours.value || 12 : 12),
-    },
-    googleExtensionStoreUrl: normalizeExternalUrl(els.googleExtensionStoreUrlInput ? els.googleExtensionStoreUrlInput.value : ""),
     chessUrl: normalizeExternalUrl(els.chessUrlInput ? els.chessUrlInput.value : ""),
     gameLinks: parseGameLinksInput(els.gameLinksInput ? els.gameLinksInput.value : ""),
     persistentLogin: {
@@ -1772,11 +1641,10 @@ function parseGameLinksInput(value) {
     .filter(Boolean)
     .map((line) => {
       const parts = line.split("|");
-      const allowedRaw = parts.length > 2 ? parts.pop() : "";
       const rawUrl = parts.length > 1 ? parts.pop() : line;
       const url = normalizeExternalUrl(rawUrl);
       const name = (parts.join("|").trim() || hostLabel(url) || "Game").slice(0, 80);
-      return { name, url, allowedUsers: splitUserList(allowedRaw) };
+      return { name, url };
     })
     .filter((entry) => entry.url)
     .slice(0, 24);
@@ -1784,10 +1652,7 @@ function parseGameLinksInput(value) {
 
 function gameLinksInputValue(links) {
   return (Array.isArray(links) ? links : [])
-    .map((entry) => {
-      const allowed = Array.isArray(entry.allowedUsers) && entry.allowedUsers.length ? ` | ${entry.allowedUsers.join(", ")}` : "";
-      return `${entry.name || hostLabel(entry.url) || "Game"} | ${entry.url || ""}${allowed}`;
-    })
+    .map((entry) => `${entry.name || hostLabel(entry.url) || "Game"} | ${entry.url || ""}`)
     .filter((line) => line.includes("http"))
     .join("\n");
 }
@@ -1833,8 +1698,8 @@ async function saveQuickEdit(event) {
         ...serverSettingsPayload(),
         customizations: {
           appName: els.quickAppName.value,
-          connectedLabel: "",
-          disconnectedLabel: "",
+          connectedLabel: els.quickConnectedLabel.value,
+          disconnectedLabel: els.quickDisconnectedLabel.value,
           serverOnLabel: els.quickServerOnLabel.value,
           serverOffLabel: els.quickServerOffLabel.value,
           versionLabel: els.quickVersionLabel.value,
@@ -1990,76 +1855,20 @@ async function resetUserPassword(event) {
   if (!isOwner()) return notify("Admin access required");
 
   try {
-    const selectedUsername = els.resetUser ? els.resetUser.value : "";
-    const tempPassword = els.resetPassword ? els.resetPassword.value : "";
     const data = await api("/api/users/reset-password", {
       method: "POST",
       json: {
-        username: selectedUsername,
-        nextPassword: tempPassword,
+        username: els.resetUser.value,
+        nextPassword: els.resetPassword.value,
       },
     });
     state.users = data.users || state.users;
-    if (els.resetPasswordResult) {
-      els.resetPasswordResult.textContent = `Temporary password for ${selectedUsername}: ${tempPassword}`;
-    }
     els.resetPassword.value = "";
     renderUsers();
     notify("Password reset");
   } catch (error) {
     notify(error.message);
   }
-}
-
-function renderPasswordResetOptions() {
-  if (!els.resetUser) return;
-  const previous = els.resetUser.value;
-  const term = String(els.resetAccountSearch ? els.resetAccountSearch.value : "").trim().toLowerCase();
-  const users = (state.users || [])
-    .filter((user) => !term || userMatchesAccountSearch(user, term))
-    .sort((a, b) => String(a.username || "").localeCompare(String(b.username || "")));
-  els.resetUser.replaceChildren(
-    ...users.map((user) => {
-      const contact = typeof user.contact === "object" && user.contact ? user.contact : {};
-      const option = document.createElement("option");
-      option.value = user.username;
-      option.textContent = [
-        `${user.username} (${user.role || "member"})`,
-        user.grade ? `grade ${user.grade}` : "",
-        user.email || contact.email || "",
-        user.phone || contact.phone || "",
-      ].filter(Boolean).join(" - ");
-      return option;
-    })
-  );
-  if (users.some((user) => user.username === previous)) {
-    els.resetUser.value = previous;
-  }
-  if (els.resetPasswordButton) els.resetPasswordButton.disabled = users.length === 0;
-  if (els.resetPasswordResult && term && !users.length) {
-    els.resetPasswordResult.textContent = "No account matches that reset search.";
-  }
-}
-
-function generateResetPassword() {
-  if (!els.resetPassword) return;
-  const password = generateTemporaryPassword();
-  els.resetPassword.value = password;
-  if (els.resetPasswordResult) {
-    const username = els.resetUser && els.resetUser.value ? els.resetUser.value : "selected account";
-    els.resetPasswordResult.textContent = `Generated temp password for ${username}: ${password}`;
-  }
-}
-
-function generateTemporaryPassword() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  const bytes = new Uint8Array(14);
-  if (window.crypto && window.crypto.getRandomValues) {
-    window.crypto.getRandomValues(bytes);
-  } else {
-    for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
-  }
-  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 }
 
 async function createAccount(event) {
@@ -2073,23 +1882,15 @@ async function createAccount(event) {
         username: els.newAccountUsername.value,
         password: els.newAccountPassword.value,
         role: els.newAccountRole.value,
-        email: els.newAccountEmail ? els.newAccountEmail.value : "",
-        phone: els.newAccountPhone ? els.newAccountPhone.value : "",
-        grade: els.newAccountGrade ? els.newAccountGrade.value : "",
         allowPersistentLogin: els.newAccountPersistent.checked || effectivePersistentDefaultForNewAccount(),
       },
     });
     state.users = data.users || state.users;
-    if (data.rooms) state.rooms = data.rooms;
     els.newAccountUsername.value = "";
     els.newAccountPassword.value = "";
-    if (els.newAccountEmail) els.newAccountEmail.value = "";
-    if (els.newAccountPhone) els.newAccountPhone.value = "";
-    if (els.newAccountGrade) els.newAccountGrade.value = "";
     els.newAccountRole.value = "member";
     els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
     renderUsers();
-    renderRooms();
     notify("Account created");
   } catch (error) {
     notify(error.message);
@@ -2242,14 +2043,6 @@ async function joinInvite(event) {
   await joinInviteCode(els.inviteCodeInput.value);
 }
 
-function toggleInviteJoin(forceOpen) {
-  if (!els.inviteJoinForm) return;
-  const open = typeof forceOpen === "boolean" ? forceOpen : els.inviteJoinForm.classList.contains("hidden");
-  els.inviteJoinForm.classList.toggle("hidden", !open);
-  if (els.toggleInviteJoinButton) els.toggleInviteJoinButton.textContent = open ? "Hide code" : "Enter invite code";
-  if (open && els.inviteCodeInput) els.inviteCodeInput.focus();
-}
-
 async function joinInviteCode(rawCode, options = {}) {
   const code = String(rawCode || "").trim();
   if (!code) return notify("Paste an invite code first");
@@ -2259,7 +2052,6 @@ async function joinInviteCode(rawCode, options = {}) {
     state.rooms = data.rooms || state.rooms;
     state.selectedRoomId = data.room ? data.room.id : state.selectedRoomId;
     els.inviteCodeInput.value = "";
-    toggleInviteJoin(false);
     renderRooms();
     renderRoomManager();
     renderMessages();
@@ -2523,27 +2315,17 @@ function gameLinks() {
     .map((entry) => ({
       name: String(entry && entry.name || "").trim().slice(0, 80),
       url: normalizeExternalUrl(entry && entry.url),
-      allowedUsers: splitUserList(entry && entry.allowedUsers),
     }))
     .filter((entry) => entry.name && entry.url);
-  const chess = { name: "ChessVerse", url: currentChessUrl() || "https://chessverse.co.in/", allowedUsers: [] };
-  const merged = normalized.length ? normalized : [chess];
+  const chess = { name: "ChessVerse", url: currentChessUrl() || "https://chessverse.co.in/" };
+  const merged = [chess, ...normalized];
   const seen = new Set();
   return merged.filter((entry) => {
     const key = entry.url.toLowerCase();
     if (seen.has(key)) return false;
     seen.add(key);
-    return canUseGame(entry);
+    return true;
   }).slice(0, 24);
-}
-
-function canUseGame(game) {
-  if (!game) return false;
-  if (isOwner()) return true;
-  const allowed = splitUserList(game.allowedUsers);
-  if (!allowed.length) return true;
-  const username = String(state.user && state.user.username || "").toLowerCase();
-  return allowed.includes(username);
 }
 
 function selectedGameLink() {
@@ -2554,7 +2336,6 @@ function selectedGameLink() {
 function openSelectedGameInFrame(url = selectedGameLink().url) {
   const target = normalizeExternalUrl(url);
   if (!target) return notify("Choose a valid game link");
-  if (!gameLinks().some((entry) => entry.url === target)) return notify("This game is not available for your account");
   state.selectedGameUrl = target;
   if (els.chessFrame) els.chessFrame.src = target;
   renderGames();
@@ -2568,11 +2349,6 @@ function renderGames() {
     state.selectedGameUrl = links[0] ? links[0].url : "";
   }
   els.gameLauncherList.replaceChildren();
-  if (!links.length) {
-    els.gameLauncherList.append(emptyBlock("No games are assigned to your account yet."));
-    if (els.chessFrame) els.chessFrame.removeAttribute("src");
-    return;
-  }
   links.forEach((game) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -2704,7 +2480,6 @@ function connectSocket() {
     return;
   }
   closeSocket();
-  if (state.lastHealthOkAt && Date.now() - state.lastHealthOkAt < 30000) setConnection("Live");
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
   state.ws = ws;
@@ -2712,7 +2487,6 @@ function connectSocket() {
   ws.addEventListener("open", () => {
     const wasReconnect = state.wsEverConnected;
     state.wsEverConnected = true;
-    state.wsReconnectDelay = 1400;
     setConnection("Live");
     sendWs({ type: "client:network", network: browserNetworkInfo() });
     flushWsOutbox();
@@ -2728,17 +2502,13 @@ function connectSocket() {
     if (state.ws !== ws) return;
     clearInterval(state.wsPingTimer);
     state.wsPingTimer = null;
-    checkServerHealth({ silent: true, requireLogin: false }).catch(() => setConnection("Not live"));
+    setConnection("Not live");
     if (state.loggedIn) {
       clearTimeout(state.reconnectTimer);
-      const delay = Math.min(state.wsReconnectDelay || 1400, 12000);
-      state.wsReconnectDelay = Math.min(Math.round(delay * 1.45), 12000);
-      state.reconnectTimer = setTimeout(connectSocket, delay);
+      state.reconnectTimer = setTimeout(connectSocket, 1600);
     }
   });
-  ws.addEventListener("error", () => {
-    if (!state.lastHealthOkAt || Date.now() - state.lastHealthOkAt > 30000) setConnection("Not live");
-  });
+  ws.addEventListener("error", () => setConnection("Not live"));
   ws.addEventListener("message", (event) => {
     try {
       handleSocketMessage(JSON.parse(event.data));
@@ -2762,60 +2532,6 @@ function closeSocket() {
   state.voicePeers = [];
   state.peerLocations.clear();
   renderPeers();
-}
-
-function startHealthMonitor() {
-  stopHealthMonitor();
-  checkServerHealth({ silent: true });
-  state.healthTimer = window.setInterval(() => checkServerHealth({ silent: true }), 12000);
-}
-
-function stopHealthMonitor() {
-  clearInterval(state.healthTimer);
-  state.healthTimer = null;
-}
-
-function startStatePoller() {
-  stopStatePoller();
-  state.pollTimer = window.setInterval(() => {
-    if (!state.loggedIn || isRealtimeReady() || state.pollInFlight) return;
-    state.pollInFlight = true;
-    refreshStateFromServer({ quiet: true })
-      .catch((error) => {
-        state.lastHealthError = error.message || "State refresh failed";
-      })
-      .finally(() => {
-        state.pollInFlight = false;
-      });
-  }, 5500);
-}
-
-function stopStatePoller() {
-  clearInterval(state.pollTimer);
-  state.pollTimer = null;
-  state.pollInFlight = false;
-}
-
-async function checkServerHealth(options = {}) {
-  if (!state.loggedIn && options.requireLogin !== false) return false;
-  try {
-    const response = await fetch("/api/health", {
-      credentials: "same-origin",
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `Health failed (${response.status})`);
-    state.lastHealthOkAt = Date.now();
-    state.lastHealthError = "";
-    setConnection("Live");
-    return true;
-  } catch (error) {
-    state.lastHealthError = error.message || "Health check failed";
-    if (!isRealtimeReady()) setConnection("Not live");
-    if (!options.silent) notify(state.lastHealthError);
-    return false;
-  }
 }
 
 function handleSocketMessage(message) {
@@ -2901,7 +2617,6 @@ function handleSocketMessage(message) {
     renderRooms();
     renderRoomManager();
     renderAnnouncements();
-    renderFileReleaseControls();
     return;
   }
 
@@ -2945,13 +2660,6 @@ function handleSocketMessage(message) {
 
   if (message.type === "file:new") {
     addFile(message.file);
-    return;
-  }
-
-  if (message.type === "files:update") {
-    state.files = message.files || state.files;
-    renderShell();
-    renderFiles();
     return;
   }
 
@@ -3007,7 +2715,7 @@ function handleSocketMessage(message) {
   }
 
   if (message.type === "state:update") {
-    state.settings = { ...state.settings, ...(message.settings || {}) };
+    state.settings = message.settings;
     if (!state.settings.serverEnabled && !isOwner()) {
       leaveVoice();
       stopShare({ silent: true });
@@ -3695,7 +3403,7 @@ function isRealtimeReady() {
 
 async function ensureRealtimeReady(label = "live features") {
   if (isRealtimeReady()) return true;
-  const serverOk = await checkServerHealth({ silent: true, requireLogin: false });
+  setConnection("Not live");
   if (!state.ws || state.ws.readyState === WebSocket.CLOSED || state.ws.readyState === WebSocket.CLOSING) {
     connectSocket();
   }
@@ -3704,8 +3412,7 @@ async function ensureRealtimeReady(label = "live features") {
     if (isRealtimeReady()) return true;
     await sleep(120);
   }
-  const serverPart = serverOk || state.lastHealthOkAt ? "Server is live, but realtime is still connecting." : "Server is still waking up or unreachable.";
-  notify(`${serverPart} ${label} needs live mode.`);
+  notify(`Live connection is still reconnecting. ${label} needs the server opened from its live URL.`);
   return false;
 }
 
@@ -3761,7 +3468,7 @@ async function recoverRealtimeState(wasReconnect) {
   }
 }
 
-async function refreshStateFromServer(options = {}) {
+async function refreshStateFromServer() {
   const data = await api("/api/state");
   state.settings = data.settings || state.settings;
   state.rooms = data.rooms || state.rooms;
@@ -3769,25 +3476,11 @@ async function refreshStateFromServer(options = {}) {
   state.dms = data.dms || state.dms;
   state.dmGroups = data.dmGroups || state.dmGroups;
   state.files = data.files || state.files;
-  state.innerDocs = data.innerDocs || state.innerDocs;
-  state.accountRequests = data.accountRequests || state.accountRequests;
-  state.users = data.users || state.users;
   state.people = data.people || state.people;
-  state.friends = data.friends || state.friends;
-  state.invites = data.invites || state.invites;
-  state.reports = data.reports || state.reports;
-  state.logs = data.logs || state.logs;
-  state.liveIpTracking = data.liveIpTracking || state.liveIpTracking;
   state.presence = data.presence || state.presence;
   state.voiceRooms = data.voiceRooms || state.voiceRooms;
   state.readReceipts = data.readReceipts || state.readReceipts;
-  state.announcements = data.announcements || state.announcements;
-  state.store = data.store || state.store;
-  state.uploadConfig = data.uploadConfig || state.uploadConfig;
-  if (data.rtcConfig && Array.isArray(data.rtcConfig.iceServers)) rtcConfig = data.rtcConfig;
-  applyCustomizations();
   renderAll();
-  if (!options.quiet && !isRealtimeReady()) notify("Updated from server fallback");
 }
 
 let typingTimer = null;
@@ -3833,122 +3526,81 @@ function clearRemoteVideo(roomId = "") {
 }
 
 function renderAll() {
-  [
-    ["shell", renderShell],
-    ["dashboard", renderDashboard],
-    ["rooms", renderRooms],
-    ["messages", renderMessages],
-    ["dms", renderDms],
-    ["dm call", renderDmCall],
-    ["friends", renderFriends],
-    ["profile", renderProfile],
-    ["store", renderStore],
-    ["files", renderFiles],
-    ["games", renderGames],
-    ["docs", renderDocs],
-    ["voice", renderVoice],
-    ["screen", renderScreen],
-    ["vpn", renderVpn],
-    ["server", renderServer],
-    ["email status", renderEmailStatus],
-    ["quick edit", renderQuickEdit],
-    ["users", renderUsers],
-    ["feature locks", renderFeatureLocks],
-    ["feature visibility", renderFeatureVisibility],
-    ["paywalls", renderPaywalls],
-    ["room manager", renderRoomManager],
-    ["announcements", renderAnnouncements],
-    ["service scale", renderServiceScale],
-    ["browser policy", renderBrowserPolicy],
-    ["admin dms", renderAdminDms],
-    ["admin read receipts", renderAdminReadReceipts],
-    ["admin store", renderAdminStore],
-    ["ai requests", renderAiRequests],
-    ["backups", renderBackups],
-    ["admin automod", renderAdminAutomod],
-    ["account requests", renderAccountRequests],
-    ["live ip", renderLiveIpTracking],
-    ["reports", renderReports],
-    ["logs", renderLogs],
-    ["hmd", renderHmd],
-    ["corner ad", renderCornerAd],
-    ["controls", updateControls],
-    ["collapsibles", setupAdminCollapsibles],
-  ].forEach(([name, render]) => safeRender(name, render));
-}
-
-function safeRender(name, render) {
-  try {
-    render();
-  } catch (error) {
-    console.error(`Inner render failed: ${name}`, error);
-  }
+  renderShell();
+  renderDashboard();
+  renderRooms();
+  renderMessages();
+  renderDms();
+  renderDmCall();
+  renderFriends();
+  renderProfile();
+  renderStore();
+  renderFiles();
+  renderGames();
+  renderDocs();
+  renderVoice();
+  renderScreen();
+  renderVpn();
+  renderServer();
+  renderEmailStatus();
+  renderQuickEdit();
+  renderUsers();
+  renderFeatureLocks();
+  renderFeatureVisibility();
+  renderPaywalls();
+  renderRoomManager();
+  renderAnnouncements();
+  renderServiceScale();
+  renderBrowserPolicy();
+  renderAdminDms();
+  renderAdminReadReceipts();
+  renderAdminStore();
+  renderAiRequests();
+  renderBackups();
+  renderAdminAutomod();
+  renderAccountRequests();
+  renderLiveIpTracking();
+  renderReports();
+  renderLogs();
+  renderHmd();
+  renderCornerAd();
+  updateControls();
+  setupAdminCollapsibles();
 }
 
 function setupAdminCollapsibles() {
-  const roots = [els.adminView, els.hmdView].filter(Boolean);
-  if (!roots.length || (!isOwner() && !isDev())) return;
-  roots.forEach((root) => {
-    if (root === els.adminView && !isOwner()) return;
-    if (root === els.hmdView && !isDev()) return;
-    root.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => ensurePanelCollapse(root, panel, index));
-  });
-}
-
-function ensurePanelCollapse(root, panel, index) {
-  const title = panel.querySelector("h3");
-  if (!title) return;
-  let button = panel.querySelector(".collapse-toggle");
-  const key = `innerPanelCollapsed:${root.id || "panel"}:${index}:${title.textContent}`;
-  if (!button) {
-    button = document.createElement("button");
+  if (!els.adminView || !isOwner()) return;
+  els.adminView.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => {
+    if (panel.dataset.collapsibleReady === "1") return;
+    const title = panel.querySelector("h3");
+    if (!title) return;
+    const button = document.createElement("button");
     button.className = "collapse-toggle";
     button.type = "button";
-    const row = title.closest(".panel-title-row");
-    if (row) row.append(button);
-    else title.insertAdjacentElement("afterend", button);
-  }
-  const sync = () => {
-    button.textContent = panel.classList.contains("admin-collapsed") ? "Expand" : "Collapse";
-    button.setAttribute("aria-expanded", panel.classList.contains("admin-collapsed") ? "false" : "true");
-  };
-  if (panel.dataset.collapsibleReady !== "1") {
+    button.textContent = "Collapse";
+    button.addEventListener("click", () => {
+      const collapsed = !panel.classList.contains("admin-collapsed");
+      panel.classList.toggle("admin-collapsed", collapsed);
+      if (button.textContent !== (collapsed ? "Expand" : "Collapse")) button.textContent = collapsed ? "Expand" : "Collapse";
+      try {
+        localStorage.setItem(`innerAdminPanelCollapsed:${index}:${title.textContent}`, collapsed ? "1" : "0");
+      } catch (error) {}
+    });
     const saved = (() => {
       try {
-        return localStorage.getItem(key) === "1";
+        return localStorage.getItem(`innerAdminPanelCollapsed:${index}:${title.textContent}`) === "1";
       } catch (error) {
         return false;
       }
     })();
-    panel.classList.toggle("admin-collapsed", saved);
-    button.addEventListener("click", () => {
-      const collapsed = !panel.classList.contains("admin-collapsed");
-      panel.classList.toggle("admin-collapsed", collapsed);
-      try {
-        localStorage.setItem(key, collapsed ? "1" : "0");
-      } catch (error) {}
-      sync();
-    });
-    panel.dataset.collapsibleReady = "1";
-  }
-  sync();
-}
-
-function setPanelGroupCollapsed(root, collapsed) {
-  if (!root) return;
-  setupAdminCollapsibles();
-  root.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => {
-    const title = panel.querySelector("h3");
-    if (!title) return;
-    panel.classList.toggle("admin-collapsed", Boolean(collapsed));
-    const button = panel.querySelector(".collapse-toggle");
-    if (button) {
-      button.textContent = collapsed ? "Expand" : "Collapse";
-      button.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    if (saved) {
+      panel.classList.add("admin-collapsed");
+      button.textContent = "Expand";
     }
-    try {
-      localStorage.setItem(`innerPanelCollapsed:${root.id || "panel"}:${index}:${title.textContent}`, collapsed ? "1" : "0");
-    } catch (error) {}
+    const row = title.closest(".panel-title-row");
+    if (row) row.append(button);
+    else title.insertAdjacentElement("afterend", button);
+    panel.dataset.collapsibleReady = "1";
   });
 }
 
@@ -3976,11 +3628,14 @@ function renderCornerAd() {
 
 function renderShell() {
   const enabled = Boolean(state.settings.serverEnabled);
+  const custom = state.settings.customizations || {};
   els.roomName.textContent = (state.settings.customizations && state.settings.customizations.appName) || state.settings.roomName || "Inner";
-  if (els.serverPill) els.serverPill.classList.add("hidden");
+  els.serverPill.textContent = enabled ? (custom.serverOnLabel || "Server on") : (custom.serverOffLabel || "Server off");
+  els.serverPill.classList.toggle("on", enabled);
+  els.serverPill.classList.toggle("off", !enabled);
   if (els.buildBadge) {
-    els.buildBadge.textContent = "";
-    els.buildBadge.classList.add("hidden");
+    els.buildBadge.textContent = custom.versionLabel || "";
+    els.buildBadge.classList.toggle("hidden", !custom.versionLabel);
   }
   els.currentUser.textContent = state.user ? `${state.user.username} (${state.user.role})` : "-";
   els.messageCount.textContent = String(state.messages.length);
@@ -4138,16 +3793,10 @@ function onboardingStorageKey() {
 
 function onboardingDismissed() {
   try {
-    const value = localStorage.getItem(onboardingStorageKey());
-    if (value === "manual") return false;
-    return value === "dismissed" || onboardingAutoLimitReached();
+    return localStorage.getItem(onboardingStorageKey()) === "dismissed";
   } catch (error) {
-    return onboardingAutoLimitReached();
+    return false;
   }
-}
-
-function onboardingAutoLimitReached() {
-  return Number(state.user && state.user.loginCount ? state.user.loginCount : 0) > 5;
 }
 
 function dismissOnboarding() {
@@ -4161,7 +3810,7 @@ function dismissOnboarding() {
 
 function showOnboarding() {
   try {
-    localStorage.setItem(onboardingStorageKey(), "manual");
+    localStorage.removeItem(onboardingStorageKey());
   } catch (error) {
     // Onboarding still works without local storage.
   }
@@ -4911,7 +4560,7 @@ function renderProfile() {
 function applyProfileTheme(themeOverride = "") {
   const profile = state.user ? state.profiles[state.user.username] || {} : {};
   const theme = themeOverride || profile.theme || "system";
-  const normalized = ["midnight", "ocean", "forest", "rose", "slate", "glass", "bd-somani", "custom"].includes(theme) ? theme : "";
+  const normalized = ["midnight", "ocean", "forest", "rose", "slate", "glass", "custom"].includes(theme) ? theme : "";
   document.body.dataset.theme = normalized;
   const editorTheme = els.profileThemeBg && els.profileTheme && els.profileTheme.value === "custom" ? currentProfileThemeEditor() : null;
   applyCustomThemeVariables(normalized === "custom" ? editorTheme || profile.customTheme : null);
@@ -4978,8 +4627,8 @@ function applyCustomizations() {
   if (els.roomName) els.roomName.textContent = appName;
   document.title = appName;
   if (els.buildBadge) {
-    els.buildBadge.textContent = "";
-    els.buildBadge.classList.add("hidden");
+    els.buildBadge.textContent = custom.versionLabel || "";
+    els.buildBadge.classList.toggle("hidden", !custom.versionLabel);
   }
   if (els.siteNotice) {
     els.siteNotice.textContent = custom.notice || "";
@@ -5230,7 +4879,6 @@ async function deleteInnerDoc() {
 
 function renderFiles() {
   els.fileList.replaceChildren();
-  renderFileReleaseControls();
 
   if (!state.files.length) {
     els.fileList.append(emptyBlock("No files uploaded"));
@@ -5253,11 +4901,6 @@ function renderFiles() {
     meta.className = "file-meta";
     meta.append(textNode(`${file.kind} - ${formatBytes(file.size)}`), textNode(`Uploaded by ${file.user}`), textNode(formatDate(file.createdAt)));
     if (file.private) meta.append(textNode("Visible only to uploader and admins"));
-    if (file.roomName) meta.append(textNode(`Room: ${file.roomName}`));
-    if (file.releaseAt) {
-      const future = new Date(file.releaseAt).getTime() > Date.now();
-      meta.append(textNode(`${future ? "Releases" : "Released"} ${formatDate(file.releaseAt)}`));
-    }
     if (isOwner()) {
       meta.append(textNode(`From ${file.sourceIp || "unknown"}`));
       if (file.sourceAgent) meta.append(textNode(file.sourceAgent));
@@ -5573,16 +5216,6 @@ function renderServer() {
   els.signupMode.value = state.settings.signupMode || "request";
   els.requireContact.checked = state.settings.requireContact !== false;
   els.reportEmails.value = Array.isArray(state.settings.reportEmails) ? state.settings.reportEmails.join(", ") : "";
-  const requestRetention = state.settings.accountRequestRetention || {};
-  if (els.requestPendingDays) els.requestPendingDays.value = requestRetention.pendingDays || 7;
-  if (els.requestApprovedHours) els.requestApprovedHours.value = requestRetention.approvedHours || 48;
-  if (els.requestDeclinedLoginHours) els.requestDeclinedLoginHours.value = requestRetention.declinedLoginHours || 12;
-  if (els.googleExtensionStoreUrlInput) els.googleExtensionStoreUrlInput.value = state.settings.googleExtensionStoreUrl || "";
-  if (els.googleExtensionStoreLink) {
-    const storeUrl = normalizeExternalUrl(state.settings.googleExtensionStoreUrl || "");
-    els.googleExtensionStoreLink.href = storeUrl || "https://chrome.google.com/webstore/devconsole";
-    els.googleExtensionStoreLink.textContent = storeUrl ? "Open Chrome Web Store listing" : "Publish in Chrome Web Store";
-  }
   if (els.chessUrlInput) els.chessUrlInput.value = currentChessUrl();
   if (els.gameLinksInput && document.activeElement !== els.gameLinksInput) {
     els.gameLinksInput.value = gameLinksInputValue(state.settings.gameLinks || []);
@@ -5598,11 +5231,7 @@ function renderServer() {
   if (els.newAccountPersistent) els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
 
   const admin = isOwner();
-  [els.roomNameInput, els.signupMode, els.requireContact, els.reportEmails, els.requestPendingDays, els.requestApprovedHours, els.requestDeclinedLoginHours, els.googleExtensionStoreUrlInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
-    if (!input) return;
-    input.disabled = !admin;
-  });
-  [els.chessUrlInput, els.gameLinksInput, els.saveSecretGamesButton].forEach((input) => {
+  [els.roomNameInput, els.signupMode, els.requireContact, els.reportEmails, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
   });
@@ -5648,6 +5277,8 @@ function renderQuickEdit() {
   if (!admin) return;
   const custom = state.settings.customizations || {};
   els.quickAppName.value = custom.appName || "";
+  els.quickConnectedLabel.value = custom.connectedLabel || "";
+  els.quickDisconnectedLabel.value = custom.disconnectedLabel || "";
   els.quickServerOnLabel.value = custom.serverOnLabel || "";
   els.quickServerOffLabel.value = custom.serverOffLabel || "";
   els.quickVersionLabel.value = custom.versionLabel || "";
@@ -5663,8 +5294,7 @@ function renderQuickEdit() {
 function renderUsers() {
   if (!els.ownerPasswordForm) return;
   const admin = isOwner();
-  [els.ownerPasswordForm, els.createAccountForm, els.accountManager, els.featureLockForm, els.roomForm, els.secretGamesForm].forEach((element) => {
-    if (!element) return;
+  [els.ownerPasswordForm, els.createAccountForm, els.accountManager, els.featureLockForm, els.roomForm].forEach((element) => {
     element.classList.toggle("hidden", !admin);
   });
   if (!admin) return;
@@ -5675,7 +5305,15 @@ function renderUsers() {
     els.accountGradeFilter.value = state.accountGradeFilter || "";
   }
 
-  renderPasswordResetOptions();
+  els.resetUser.replaceChildren(
+    ...state.users.map((user) => {
+      const option = document.createElement("option");
+      option.value = user.username;
+      option.textContent = `${user.username} (${user.role})`;
+      return option;
+    })
+  );
+  els.resetPasswordButton.disabled = state.users.length === 0;
 
   els.accountList.replaceChildren();
   const visibleUsers = filterUsersForAdmin(state.users);
@@ -5746,8 +5384,8 @@ function renderUsers() {
     const persistentButton = accountButton(user.allowPersistentLogin ? "Disable persistent" : "Allow persistent", () =>
       updateUser(user.username, { allowPersistentLogin: !user.allowPersistentLogin })
     );
-    const detailsButton = accountButton("Info", () => openAccountDetails(user.username));
-    const detailTabButton = accountButton("Info tab", () => openAccountDetailTab(user.username));
+    const detailsButton = accountButton("Details", () => openAccountDetails(user.username));
+    const detailTabButton = accountButton("Open tab", () => openAccountDetailTab(user.username));
     const banFive = accountButton("Ban 5m", () => banUser(user.username, 5));
     const banShort = accountButton("Ban 15m", () => banUser(user.username, 15));
     const banHour = accountButton("Ban 1h", () => banUser(user.username, 60));
@@ -5800,22 +5438,6 @@ function renderFeatureLocks() {
   });
 }
 
-function renderFileReleaseControls() {
-  if (!els.fileReleaseControls || !els.fileReleaseRoom) return;
-  const canSchedule = canScheduleRoomFiles();
-  els.fileReleaseControls.classList.toggle("hidden", !canSchedule);
-  if (!canSchedule) return;
-  const previous = els.fileReleaseRoom.value || "all";
-  const options = [
-    { value: "all", label: "All users" },
-    ...(state.rooms || [])
-      .filter((room) => canAccessVisibleRoom(room))
-      .map((room) => ({ value: room.id, label: room.name || room.id })),
-  ];
-  els.fileReleaseRoom.replaceChildren(...options.map((option) => optionNode(option.value, option.label)));
-  els.fileReleaseRoom.value = options.some((option) => option.value === previous) ? previous : "all";
-}
-
 function syncSearchedAccountDetails(visibleUsers) {
   const term = String(state.accountSearch || "").trim().toLowerCase();
   if (!term || state.selectedAccountDetails) return;
@@ -5863,8 +5485,7 @@ function renderAccountDetails() {
   els.accountDetailBody.replaceChildren();
   const contact = typeof user.contact === "object" && user.contact ? user.contact : {};
   const profile = state.profiles[user.username] || {};
-    const identityLines = [
-    user.firstName || user.lastName ? `Legal name ${[user.firstName, user.lastName].filter(Boolean).join(" ")}` : "",
+  const identityLines = [
     user.displayName || profile.displayName ? `Name ${user.displayName || profile.displayName}` : "",
     `Username ${user.username}`,
     `Role ${user.role || "member"}`,
@@ -5874,11 +5495,6 @@ function renderAccountDetails() {
     user.contact && typeof user.contact === "string" ? `Contact ${user.contact}` : "",
     `Created ${formatDate(user.createdAt) || "-"}`,
     user.createdBy ? `Created by ${user.createdBy}` : "",
-    user.passwordStatus ? `Password ${user.passwordStatus}` : user.passwordSet ? "Password hash saved" : "Password missing",
-    "Plaintext password is not stored. Use Reset password to set a new one.",
-    user.lastPasswordResetAt ? `Password reset ${formatDate(user.lastPasswordResetAt)}` : "",
-    user.lastPasswordResetBy ? `Reset by ${user.lastPasswordResetBy}` : "",
-    user.mustChangePassword ? "Must change password on next login" : "",
   ];
   els.accountDetailBody.append(adminCard("Account", user.banned ? "Banned" : "Active", identityLines));
 
@@ -5894,32 +5510,6 @@ function renderAccountDetails() {
     user.banReason ? `Ban reason ${user.banReason}` : "",
   ];
   els.accountDetailBody.append(adminCard("Access and device", user.role || "member", accessLines));
-
-  const uploadedFiles = filesForUser(user.username);
-  if (!uploadedFiles.length) {
-    els.accountDetailBody.append(adminCard("Uploaded files", "0 files", ["No uploaded files saved for this account."]));
-  } else {
-    uploadedFiles.slice(0, 25).forEach((file) => {
-      const lines = [
-        `${file.kind || "file"} - ${formatBytes(file.size || 0)}`,
-        file.category ? `Category ${file.category}` : "",
-        file.private ? "Private upload" : "Public upload",
-        file.roomName ? `Room ${file.roomName}` : "",
-        file.releaseAt ? `Release ${formatDate(file.releaseAt)}` : "",
-        file.createdAt ? `Uploaded ${formatDate(file.createdAt)}` : "",
-      ].filter(Boolean);
-      const card = adminCard(file.originalName || file.storedName || "Upload", file.persistence || "file", lines);
-      const actions = document.createElement("div");
-      actions.className = "account-actions";
-      actions.append(accountButton("Open", () => window.open(file.url, "_blank", "noopener")));
-      actions.append(accountButton("Download", () => downloadUrl(downloadableUrl(file.url), file.originalName || "upload")));
-      card.append(actions);
-      els.accountDetailBody.append(card);
-    });
-    if (uploadedFiles.length > 25) {
-      els.accountDetailBody.append(adminCard("Uploaded files", `${uploadedFiles.length} total`, [`Showing newest 25 of ${uploadedFiles.length}.`]));
-    }
-  }
 
   const history = browserHistoryForUser(user.username);
   if (!history.length) {
@@ -5938,13 +5528,6 @@ function renderAccountDetails() {
     ];
     els.accountDetailBody.append(adminCard(details.query ? "Browser search" : "Browser open", details.host || "history", lines));
   });
-}
-
-function filesForUser(username) {
-  const current = String(username || "").toLowerCase();
-  return (state.files || [])
-    .filter((file) => String(file.user || "").toLowerCase() === current)
-    .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0));
 }
 
 function browserHistoryForUser(username) {
@@ -5991,47 +5574,10 @@ function renderFeatureVisibility() {
     return;
   }
   visibleRules.forEach(([name, rule]) => {
-    const card = adminCard(featureLabel(name), rule.hidden ? "Hidden" : "Visible", [
+    els.featureVisibilityList.append(adminCard(featureLabel(name), rule.hidden ? "Hidden" : "Visible", [
       (rule.allowedUsers || []).length ? `Allowed: ${(rule.allowedUsers || []).join(", ")}` : "No allowed users",
-    ]);
-    const actions = document.createElement("div");
-    actions.className = "account-actions";
-    actions.append(
-      accountButton("Edit", () => editFeatureVisibilityRule(name)),
-      accountButton("Clear", () => clearFeatureVisibilityRule(name))
-    );
-    card.append(actions);
-    els.featureVisibilityList.append(card);
+    ]));
   });
-}
-
-function editFeatureVisibilityRule(feature) {
-  const rules = state.settings.featureVisibility || {};
-  const rule = rules[feature] || { hidden: false, allowedUsers: [] };
-  if (els.visibilityFeatureName) els.visibilityFeatureName.value = feature;
-  if (els.visibilityHidden) els.visibilityHidden.checked = Boolean(rule.hidden);
-  if (els.visibilityAllowedUsers) els.visibilityAllowedUsers.value = Array.isArray(rule.allowedUsers) ? rule.allowedUsers.join(", ") : "";
-  if (els.visibilityAllowedUsers) els.visibilityAllowedUsers.focus();
-}
-
-async function clearFeatureVisibilityRule(feature) {
-  if (!isOwner()) return notify("Hardcoded admin owner access required");
-  const nextVisibility = { ...(state.settings.featureVisibility || {}) };
-  delete nextVisibility[feature];
-  try {
-    const data = await api("/api/settings", {
-      method: "POST",
-      json: {
-        ...serverSettingsPayload(),
-        featureVisibility: nextVisibility,
-      },
-    });
-    state.settings = data.settings || state.settings;
-    renderAll();
-    notify("Hidden tab rule cleared");
-  } catch (error) {
-    notify(error.message);
-  }
 }
 
 function renderPaywalls() {
@@ -6118,7 +5664,7 @@ function renderRoomManager() {
 const serviceScaleLabels = [
   { key: "messages", title: "Messages", detail: "Render web service + JSON/database writes", baseUsd: 7, provider: "Render", url: "https://render.com/pricing" },
   { key: "dms", title: "DMs", detail: "Render web service + realtime message storage", baseUsd: 4, provider: "Render", url: "https://render.com/pricing" },
-  { key: "uploads", title: "Uploads", detail: "Backblaze B2/file storage and bandwidth", baseUsd: 5, provider: "Backblaze B2", url: "https://www.backblaze.com/cloud-storage/pricing" },
+  { key: "uploads", title: "Uploads", detail: "Cloudinary/file storage and bandwidth", baseUsd: 10, provider: "Cloudinary", url: "https://cloudinary.com/pricing" },
   { key: "voice", title: "Voice calls", detail: "TURN/WebRTC relay usage planning", baseUsd: 12, provider: "Open Relay / TURN", url: "https://www.metered.ca/tools/openrelay/" },
   { key: "screen", title: "Screen share", detail: "TURN bandwidth for screen/video streams", baseUsd: 14, provider: "TURN relay", url: "https://www.metered.ca/tools/openrelay/" },
   { key: "notifications", title: "Notifications", detail: "Browser alerts + email provider", baseUsd: 3, provider: "Resend", url: "https://resend.com/pricing" },
@@ -6190,7 +5736,7 @@ function renderServiceScaleCostSummary(presetTotal) {
         return sum + Math.round((baseCost * Number(input.value || 100)) / 100);
       }, 0);
   const rupees = formatInr(total);
-  els.serviceScaleCostSummary.textContent = `Rough monthly bill: about $${total}/month, around Rs ${rupees}/month. Planning rate: $1 = Rs ${usdToInrEstimate}. Real billing comes from Render, Backblaze B2, Resend, TURN, domain/DNS, and actual usage.`;
+  els.serviceScaleCostSummary.textContent = `Rough monthly bill: about $${total}/month, around Rs ${rupees}/month. Planning rate: $1 = Rs ${usdToInrEstimate}. Real billing comes from Render, Cloudinary, Resend, TURN, domain/DNS, and actual usage.`;
   if (els.domainBillSummary) {
     els.domainBillSummary.textContent = `Rough monthly bill for the whole app: about $${total}/month, around Rs ${rupees}/month. Domain alone is estimated around $1/month or Rs ${formatInr(1)}/month, usually billed yearly by your registrar.`;
   }
@@ -6325,12 +5871,6 @@ function renderBackups() {
 function renderAccountRequests() {
   if (!els.accountRequestList || !isOwner()) return;
   els.accountRequestList.replaceChildren();
-  const retention = state.settings.accountRequestRetention || {};
-  els.accountRequestList.append(adminCard("Request cleanup timing", "Managed", [
-    `Pending/reviewing show for ${retention.pendingDays || 7} days`,
-    `Approved show for ${retention.approvedHours || 48} hours`,
-    `Declined login message works for ${retention.declinedLoginHours || 12} hours`,
-  ]));
   if (!state.accountRequests.length) {
     els.accountRequestList.append(emptyBlock("No account requests"));
     return;
@@ -6342,7 +5882,6 @@ function renderAccountRequests() {
       ? `${Number(request.location.latitude).toFixed(4)}, ${Number(request.location.longitude).toFixed(4)} accuracy ${Math.round(Number(request.location.accuracy || 0))}m`
       : "No location";
     const card = adminCard(request.username, status, [
-      request.firstName || request.lastName ? `Legal name ${[request.firstName, request.lastName].filter(Boolean).join(" ")}` : "",
       request.displayName ? `Name ${request.displayName}` : "",
       `Requested type ${request.requestedRole || "member"}`,
       request.grade ? `Grade ${request.grade}` : "",
@@ -6673,17 +6212,10 @@ function updateControls() {
   els.roomSelect.disabled = !featureAvailable("rooms") && room.id !== "main";
   els.inviteCodeInput.disabled = !invitesEnabled;
   els.joinInviteButton.disabled = !invitesEnabled;
-  if (els.toggleInviteJoinButton) {
-    els.toggleInviteJoinButton.classList.toggle("hidden", !invitesEnabled);
-  }
-  if (!invitesEnabled && els.inviteJoinForm) {
-    els.inviteJoinForm.classList.add("hidden");
-    if (els.toggleInviteJoinButton) els.toggleInviteJoinButton.textContent = "Enter invite code";
-  }
   els.messageInput.disabled = !messagesEnabled;
   els.messageAttachment.disabled = !messagesEnabled;
   els.messageSelfieButton.disabled = !messagesEnabled;
-  els.sendMessageButton.disabled = !messagesEnabled || state.messageSending;
+  els.sendMessageButton.disabled = !messagesEnabled;
   els.dmPeerSelect.disabled = !dmsEnabled && !state.selectedDmUser;
   els.dmInput.disabled = !dmsEnabled;
   els.dmAttachment.disabled = !dmsEnabled;
@@ -6704,8 +6236,6 @@ function updateControls() {
   els.fileCategory.disabled = !filesEnabled;
   els.privateUpload.disabled = !filesEnabled;
   els.uploadButton.disabled = !filesEnabled;
-  if (els.fileReleaseRoom) els.fileReleaseRoom.disabled = !filesEnabled || !canScheduleRoomFiles();
-  if (els.fileReleaseAt) els.fileReleaseAt.disabled = !filesEnabled || !canScheduleRoomFiles();
   els.friendUserSelect.disabled = !friendsEnabled;
   els.sendFriendRequestButton.disabled = !friendsEnabled;
   els.joinVoiceButton.disabled = !voiceEnabled || Boolean(state.voiceStream);
@@ -6718,7 +6248,6 @@ function updateControls() {
 }
 
 function addMessage(message) {
-  replacePendingWithServerMessage(message);
   if (state.messages.some((entry) => entry.id === message.id)) return;
   message.roomId = message.roomId || "main";
   state.messages.push(message);
@@ -6728,7 +6257,6 @@ function addMessage(message) {
 }
 
 function addDm(dm) {
-  replacePendingWithServerDm(dm);
   if (state.dms.some((entry) => entry.id === dm.id)) return;
   state.dms.push(dm);
   state.dms = state.dms.slice(-500);
@@ -6799,8 +6327,8 @@ async function sendPendingItem(item) {
   item.sending = true;
   try {
     const payload = item.kind === "message"
-      ? { text: item.text, attachment: item.attachment, roomId: item.roomId || "main", parentId: item.parentId || "", clientId: item.localId }
-      : { to: item.to || "", groupId: item.groupId || "", text: item.text, attachment: item.attachment, clientId: item.localId };
+      ? { text: item.text, attachment: item.attachment, roomId: item.roomId || "main", parentId: item.parentId || "" }
+      : { to: item.to || "", groupId: item.groupId || "", text: item.text, attachment: item.attachment };
     const data = await api(item.kind === "message" ? "/api/messages" : "/api/dms", {
       method: "POST",
       json: payload,
@@ -7196,10 +6724,8 @@ async function approveAccountRequest(id, username, requestedRole = "member") {
     });
     state.users = data.users || state.users;
     state.accountRequests = data.accountRequests || state.accountRequests;
-    if (data.rooms) state.rooms = data.rooms;
     renderUsers();
     renderAccountRequests();
-    renderRooms();
     renderDms();
     notify("Account created");
   } catch (error) {
@@ -7221,27 +6747,21 @@ function accountButton(label, onClick) {
   return button;
 }
 
-function hydrateGradeSelects() {
-  const configs = [
-    [els.requestGrade, "Choose grade and section"],
-    [els.signupGrade, "Choose grade and section"],
-    [els.profileGrade, "Choose grade and section"],
-    [els.newAccountGrade, "Choose grade and section"],
-    [els.friendGradeSearch, "Grade/section"],
-    [els.accountGradeFilter, "All grades/sections"],
-  ];
-  configs.forEach(([select, firstLabel]) => {
-    if (!select) return;
-    const current = select.value || "";
-    const includeNone = select === els.accountGradeFilter;
-    select.replaceChildren(...gradeOptions({ firstLabel, includeNone }));
-    if (current && Array.from(select.options).some((option) => option.value === current)) select.value = current;
-  });
-}
-
 function gradeOptions() {
-  const options = gradeOptionData();
-  return options.map(([value, label]) => {
+  const grades = [
+    ["", "No grade"],
+    ["6", "Grade 6"],
+    ["7", "Grade 7"],
+    ["8", "Grade 8"],
+    ["9", "Grade 9"],
+    ["10", "Grade 10"],
+    ["11", "Grade 11"],
+    ["12", "Grade 12"],
+    ["college", "College"],
+    ["staff", "Staff"],
+    ["other", "Other"],
+  ];
+  return grades.map(([value, label]) => {
     const option = document.createElement("option");
     option.value = value;
     option.textContent = label;
@@ -7249,26 +6769,8 @@ function gradeOptions() {
   });
 }
 
-function gradeOptionData({ firstLabel = "No grade", includeNone = false } = {}) {
-  const grades = [
-    ["", firstLabel],
-    ...["6", "7", "8", "9", "10", "11", "12"].flatMap((grade) => [
-      [`${grade}a`, `Grade ${grade}A`],
-      [`${grade}b`, `Grade ${grade}B`],
-      [`${grade}c`, `Grade ${grade}C`],
-      [grade, `Grade ${grade} (no section)`],
-    ]),
-    ["college", "College"],
-    ["staff", "Staff"],
-    ["other", "Other"],
-  ];
-  if (includeNone) grades.push(["none", "No grade"]);
-  return grades;
-}
-
 function normalizeClientGrade(grade) {
   const value = String(grade || "").trim().toLowerCase();
-  if (/^(6|7|8|9|10|11|12)[abc]$/.test(value)) return value;
   return ["6", "7", "8", "9", "10", "11", "12", "college", "staff", "other"].includes(value) ? value : "";
 }
 
@@ -7321,9 +6823,7 @@ async function updateUser(username, changes) {
     });
     state.users = data.users || state.users;
     state.profiles = data.profiles || state.profiles;
-    if (data.rooms) state.rooms = data.rooms;
     renderUsers();
-    renderRooms();
     renderFriends();
     notify("Account updated");
   } catch (error) {
@@ -7392,11 +6892,9 @@ function filterUsersForAdmin(users) {
 function userMatchesAccountSearch(user, term) {
   const profile = state.profiles[user.username] || {};
   const contact = typeof user.contact === "object" && user.contact ? user.contact : {};
-    return searchableText({
-      username: user.username,
-    firstName: user.firstName,
-    lastName: user.lastName,
-      displayName: user.displayName || profile.displayName,
+  return searchableText({
+    username: user.username,
+    displayName: user.displayName || profile.displayName,
     email: user.email || contact.email,
     phone: user.phone || contact.phone,
     role: user.role,
@@ -7686,8 +7184,6 @@ function featureLock(feature) {
 
 function featureAvailable(feature) {
   if (isOwner()) return true;
-  const visibleFeatures = Array.isArray(state.settings.visibleFeatures) ? state.settings.visibleFeatures : null;
-  if (visibleFeatures && !visibleFeatures.includes(feature)) return false;
   const hidden = hiddenRule(feature);
   if (hidden.hidden && !hidden.allowedUsers.includes((state.user && state.user.username || "").toLowerCase())) return false;
   if (featureLock(feature)) return false;
@@ -7697,10 +7193,6 @@ function featureAvailable(feature) {
 }
 
 function lockMessage(feature) {
-  const visibleFeatures = Array.isArray(state.settings.visibleFeatures) ? state.settings.visibleFeatures : null;
-  if (!isOwner() && visibleFeatures && !visibleFeatures.includes(feature)) {
-    return `${featureLabel(feature)} is hidden for your account`;
-  }
   const hidden = hiddenRule(feature);
   if (!isOwner() && hidden.hidden && !hidden.allowedUsers.includes((state.user && state.user.username || "").toLowerCase())) {
     return `${featureLabel(feature)} is hidden for your account`;
@@ -7788,8 +7280,7 @@ function hasPaidOrder(itemId) {
 }
 
 function splitUserList(value) {
-  const source = Array.isArray(value) ? value.join(",") : String(value || "");
-  return source
+  return String(value || "")
     .split(/[,\n]/)
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean);
@@ -8256,9 +7747,6 @@ async function api(path, options = {}) {
     credentials: "same-origin",
     headers: options.headers || {},
   };
-  if (!["GET", "HEAD", "OPTIONS"].includes(String(init.method || "GET").toUpperCase())) {
-    init.headers = { ...init.headers, "x-inner-csrf": "1" };
-  }
 
   if (options.json !== undefined) {
     init.headers = { ...init.headers, "Content-Type": "application/json" };
@@ -8290,10 +7778,6 @@ function isOwner() {
 
 function isDev() {
   return state.user && ["admin", "hmd", "dev"].includes(state.user.role);
-}
-
-function canScheduleRoomFiles() {
-  return state.user && ["moderator", "admin", "hmd", "dev"].includes(state.user.role);
 }
 
 function setConnection(value) {

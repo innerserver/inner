@@ -1,0 +1,40 @@
+[
+  {
+    "username": "admin",
+    "role": "admin",
+    "passwordHash": "1467e1e772b34babc74c83b6afe38e68:415e13abdc7805166886807e3abc2aa96433db4eda7d1798750b1b2a7a3923be578f9e8d6f3aae8a08d0be308580d63dc0d6f587e636f79d67316f2c64a30d1a",
+    "passwordPreset": "admin-v1",
+    "allowPersistentLogin": false,
+    "locked": true,
+    "createdAt": "2026-08-10T17:35:48.105Z"
+  },
+  {
+    "username": "admin2",
+    "role": "admin",
+    "passwordHash": "95981bf98f79872d36c6646f704b1666:e4cd57b3e7fefd5e8aa445d344c146f652b56e9951d44c55a9e8f1f0fd97deba550695b1f7339aead6c96614a5e871436d4f93338f3cef662bf36acf9943ed75",
+    "passwordPreset": "admin2-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-10T17:35:48.105Z"
+  },
+  {
+    "username": "hmd",
+    "role": "hmd",
+    "passwordHash": "9ac097d9a2724f55bb8c40b519d05ab9:713af514904fed1ca2a9e75209a28987ef3ea99f740de7057361aa0d0d99faa06d1582d44bdc642389e0b5c3deebf2d5095520f014a94b41f4360610c69c203f",
+    "passwordPreset": "hmd-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-10T17:35:48.105Z",
+    "createdBy": "system"
+  },
+  {
+    "username": "dev",
+    "role": "dev",
+    "passwordHash": "1828b2bb02c16697bd80e17e004ec51a:6b3688ef26f9b077f7497fc5883c427709b6e5f8371b5b401832dc191d5171fb54627f23aedde42ff60384d5451cea3c495bc46af69e3f5bf13066d764d59b41",
+    "passwordPreset": "dev-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-10T17:35:48.105Z",
+    "createdBy": "system"
+  }
+]

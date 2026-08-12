@@ -33,10 +33,6 @@ const CLOUDINARY_API_KEY = firstEnvValue("CLOUDINARY_API_KEY", "INNER_CLOUDINARY
 const CLOUDINARY_API_SECRET = firstEnvValue("CLOUDINARY_API_SECRET", "INNER_CLOUDINARY_API_SECRET");
 const CLOUDINARY_FOLDER = firstEnvValue("CLOUDINARY_FOLDER", "INNER_CLOUDINARY_FOLDER") || "inner_uploads";
 const UPLOAD_PROVIDER = String(firstEnvValue("INNER_UPLOAD_PROVIDER", "UPLOAD_PROVIDER") || "").toLowerCase();
-const B2_KEY_ID = firstEnvValue("INNER_B2_KEY_ID", "B2_KEY_ID", "BACKBLAZE_KEY_ID");
-const B2_APPLICATION_KEY = firstEnvValue("INNER_B2_APPLICATION_KEY", "B2_APPLICATION_KEY", "BACKBLAZE_APPLICATION_KEY", "BACKBLAZE_APP_KEY");
-const B2_BUCKET_ID = firstEnvValue("INNER_B2_BUCKET_ID", "B2_BUCKET_ID", "BACKBLAZE_BUCKET_ID");
-const B2_BUCKET_NAME = firstEnvValue("INNER_B2_BUCKET_NAME", "B2_BUCKET_NAME", "BACKBLAZE_BUCKET_NAME");
 const REPORT_EMAILS = splitEnvList(firstEnvValue("INNER_REPORT_EMAILS", "REPORT_EMAILS", "INNER_ADMIN_EMAILS", "ADMIN_EMAILS")).slice(0, 4);
 const EMAIL_WEBHOOK_URL = firstEnvValue("INNER_EMAIL_WEBHOOK_URL", "REPORT_EMAIL_WEBHOOK_URL", "EMAIL_WEBHOOK_URL");
 const EMAIL_FROM = firstEnvValue("INNER_EMAIL_FROM", "EMAIL_FROM", "RESEND_FROM", "SENDGRID_FROM", "BREVO_FROM") || "Inner <innerservers@gmail.com>";
@@ -90,9 +86,6 @@ const sessions = new Map();
 const wsClients = new Map();
 const messageRateLimits = new Map();
 const banExpiryTimers = new Map();
-let backblazeAuthCache = null;
-let backblazeBucketCache = null;
-const requestRateLimits = new Map();
 const serverStartedAt = new Date().toISOString();
 const persistence = {
   mode: "local",
@@ -251,12 +244,11 @@ const vpnLocations = [
 async function main() {
   await initPersistence();
   await ensureStorage();
-  await schedulePendingFileReleases();
 
   const server = createInnerServer((req, res) => {
     route(req, res).catch((error) => {
       console.error(error);
-      json(res, error.statusCode || 500, { error: error.publicMessage || (error.statusCode ? error.message : "Internal server error") });
+      json(res, 500, { error: "Internal server error" });
     });
   });
 
@@ -275,11 +267,6 @@ async function main() {
     );
     console.log("Default account passwords are loaded from env vars and stored only as password hashes.");
   });
-}
-
-async function schedulePendingFileReleases() {
-  const files = await readJson(FILES.uploads, []);
-  (files || []).forEach(scheduleFileReleaseBroadcast);
 }
 
 function createInnerServer(handler) {
@@ -407,7 +394,6 @@ async function ensureStorage() {
     signupMode: DEFAULT_SIGNUP_MODE,
     requireContact: DEFAULT_REQUIRE_CONTACT,
     reportEmails: REPORT_EMAILS,
-    googleExtensionStoreUrl: "",
     featureLocks: {},
     featureVisibility: {},
     paywalls: {},
@@ -416,11 +402,6 @@ async function ensureStorage() {
       grades: [],
       roles: [],
       rooms: [],
-    },
-    accountRequestRetention: {
-      pendingDays: 7,
-      approvedHours: 48,
-      declinedLoginHours: 12,
     },
     shutdownAt: "",
     shutdownBy: "",
@@ -633,39 +614,6 @@ async function ensureRooms() {
   if (changed) await writeJson(FILES.rooms, rooms);
 }
 
-async function ensureGradeRoomMembership(username, gradeValue) {
-  const grade = normalizeGrade(gradeValue);
-  if (!username || !isSectionGrade(grade)) return [];
-  const rooms = await readJson(FILES.rooms, []);
-  const roomName = grade.toUpperCase();
-  let room = rooms.find((entry) => String(entry.name || "").toLowerCase() === grade);
-  let changed = false;
-  if (!room) {
-    room = sanitizeRoom({
-      id: `grade-${grade}`,
-      name: roomName,
-      icon: roomName,
-      category: "Grade rooms",
-      private: true,
-      inviteOnly: true,
-      allowedUsers: [],
-      moderators: [],
-      createdAt: new Date().toISOString(),
-      createdBy: "system",
-    });
-    rooms.push(room);
-    changed = true;
-  }
-  if (!Array.isArray(room.allowedUsers)) room.allowedUsers = [];
-  if (!room.allowedUsers.includes(username)) {
-    room.allowedUsers.push(username);
-    changed = true;
-  }
-  if (changed) await writeJson(FILES.rooms, rooms);
-  if (changed) broadcastRoomsUpdate(rooms);
-  return rooms;
-}
-
 async function ensureProfiles() {
   const users = await readJson(FILES.users, []);
   const profiles = await readJson(FILES.profiles, {});
@@ -705,14 +653,6 @@ async function ensureSettings() {
   }
   if (!Array.isArray(next.reportEmails)) {
     next.reportEmails = REPORT_EMAILS;
-    changed = true;
-  }
-  next.googleExtensionStoreUrl = sanitizeExternalUrl(next.googleExtensionStoreUrl || "");
-  if (typeof next.accountRequestRetention !== "object" || !next.accountRequestRetention || Array.isArray(next.accountRequestRetention)) {
-    next.accountRequestRetention = defaultAccountRequestRetention();
-    changed = true;
-  } else {
-    next.accountRequestRetention = sanitizeAccountRequestRetention(next.accountRequestRetention);
     changed = true;
   }
   if (typeof next.moderationSettings !== "object" || !next.moderationSettings || Array.isArray(next.moderationSettings)) {
@@ -766,35 +706,12 @@ async function ensureJson(file, fallback) {
 }
 
 async function route(req, res) {
-  applySecurityHeaders(req, res);
-  if (!["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"].includes(req.method)) {
-    return text(res, 405, "Method not allowed");
-  }
-  if (String(req.url || "").length > 4096) {
-    return text(res, 414, "Request URL is too long");
-  }
-  if (req.method === "OPTIONS") {
-    res.writeHead(204);
-    return res.end();
-  }
   if (shouldRedirectToHttps(req)) {
     return redirectToHttps(req, res);
   }
 
-  let requestUrl;
-  let pathname;
-  try {
-    requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
-    pathname = decodeURIComponent(requestUrl.pathname);
-  } catch {
-    return text(res, 400, "Bad request");
-  }
-  const rateError = checkRequestRate(req, requestUrl);
-  if (rateError) return json(res, 429, { error: rateError });
-  if (pathname.startsWith("/api/") && !csrfSafeRequest(req)) {
-    await addSystemLog("security.csrf.blocked", "system", { path: pathname, method: req.method, origin: req.headers.origin || "", referer: req.headers.referer || "" }, req);
-    return json(res, 403, { error: "Security check failed. Refresh Inner and try again." });
-  }
+  const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
+  const pathname = decodeURIComponent(requestUrl.pathname);
 
   if (req.method === "GET" && pathname === "/") {
     return serveStatic(res, path.join(PUBLIC_DIR, "index.html"));
@@ -865,8 +782,7 @@ async function routeApi(req, res, requestUrl) {
       return json(res, 423, { error: "Server is shut down. Only admin, HMD, and dev access is open right now." });
     }
 
-    const gradeRooms = await ensureGradeRoomMembership(user.username, user.grade || "");
-    const rooms = gradeRooms.length ? gradeRooms : await readJson(FILES.rooms, []);
+    const rooms = await readJson(FILES.rooms, []);
     const persistent = effectivePersistentLogin(user, settings, rooms);
     const token = crypto.randomBytes(32).toString("hex");
     sessions.set(token, {
@@ -885,12 +801,9 @@ async function routeApi(req, res, requestUrl) {
       Boolean(previousLoginIp && previousLoginIp !== currentLoginIp) ||
       Boolean(previousLoginDevice && previousLoginDevice !== currentLoginDevice);
     const userIndex = users.findIndex((entry) => entry.username.toLowerCase() === user.username.toLowerCase());
-    let loginCount = Number(user.loginCount || 0) + 1;
     if (userIndex !== -1) {
-      loginCount = Number(users[userIndex].loginCount || 0) + 1;
       users[userIndex] = {
         ...users[userIndex],
-        loginCount,
         lastLoginAt: new Date().toISOString(),
         lastLoginIp: currentLoginIp,
         lastLoginDevice: currentLoginDevice,
@@ -899,8 +812,7 @@ async function routeApi(req, res, requestUrl) {
       await writeJson(FILES.users, users);
     }
 
-    user.loginCount = loginCount;
-    await addSystemLog("login.success", user.username, { role: normalizeRole(user.role), persistent, loginCount, persistentReason: persistentLoginReason(user, settings, rooms) }, req);
+    await addSystemLog("login.success", user.username, { role: normalizeRole(user.role), persistent, persistentReason: persistentLoginReason(user, settings, rooms) }, req);
     await notifyAdminEmails(differentLogin ? "Inner different login alert" : "Inner login alert", [
       `${user.username} signed in.`,
       `Role: ${normalizeRole(user.role)}`,
@@ -939,11 +851,10 @@ async function routeApi(req, res, requestUrl) {
       },
       persistence: {
         mode: storageModeLabel(),
-        cloudStorageReady: backblazeConfigured() || cloudinaryConfigured() || persistence.ready,
+        cloudStorageReady: cloudinaryConfigured() || persistence.ready,
         cloudStorageRequired: cloudStorageRequired(),
         localhostMode: LOCALHOST_MODE,
         cloudinaryConfigured: cloudinaryConfigured(),
-        backblazeConfigured: backblazeConfigured(),
         error: persistence.error,
       },
     });
@@ -967,12 +878,8 @@ async function routeApi(req, res, requestUrl) {
     const phone = String(body.phone || "").trim().slice(0, 80);
     const password = String(body.password || "");
     const grade = normalizeGrade(body.grade || "");
-    const firstName = normalizePersonName(body.firstName || "");
-    const lastName = normalizePersonName(body.lastName || "");
-    const displayName = String(body.displayName || [firstName, lastName].filter(Boolean).join(" ") || username).trim().slice(0, 80);
     const contact = String(body.contact || [email, phone].filter(Boolean).join(" / ")).trim().slice(0, 160);
     if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
-    if (!firstName || !lastName) return json(res, 400, { error: "Add your first name and surname." });
     if (settings.requireContact !== false && !contact) {
       return json(res, 400, { error: "Add an email or phone number so admins can contact you after review." });
     }
@@ -994,9 +901,7 @@ async function routeApi(req, res, requestUrl) {
     const request = sanitizeAccountRequest({
       id: crypto.randomUUID(),
       username,
-      firstName,
-      lastName,
-      displayName,
+      displayName: body.displayName,
       contact,
       email,
       phone,
@@ -1028,7 +933,7 @@ async function routeApi(req, res, requestUrl) {
       `Browser: ${request.sourceAgent || "unknown"}`,
       `Time: ${request.createdAt}`,
     ].join("\n"));
-    broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests, null, settings) });
+    broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
     return json(res, 201, { request: safeAccountRequest(request) });
   }
 
@@ -1044,12 +949,8 @@ async function routeApi(req, res, requestUrl) {
     const phone = String(body.phone || "").trim().slice(0, 80);
     const contact = String(body.contact || [email, phone].filter(Boolean).join(" / ")).trim().slice(0, 160);
     const grade = normalizeGrade(body.grade || "");
-    const firstName = normalizePersonName(body.firstName || "");
-    const lastName = normalizePersonName(body.lastName || "");
-    const displayName = String(body.displayName || [firstName, lastName].filter(Boolean).join(" ") || username).trim().slice(0, 80);
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
     if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
-    if (!firstName || !lastName) return json(res, 400, { error: "Add your first name and surname." });
     if (settings.requireContact !== false && !contact) {
       return json(res, 400, { error: "Add an email or phone number so admins can contact you." });
     }
@@ -1069,9 +970,6 @@ async function routeApi(req, res, requestUrl) {
       contact,
       email,
       phone,
-      firstName,
-      lastName,
-      displayName,
       grade,
       sourceIp: getClientIp(req),
       sourceHost: req.headers.host || "",
@@ -1085,13 +983,12 @@ async function routeApi(req, res, requestUrl) {
     users.push(account);
     profiles[username] = sanitizeProfile({
       ...defaultProfile(username),
-      displayName,
+      displayName: body.displayName || username,
       grade,
       gradeUpdatedAt: grade ? now : "",
       updatedAt: now,
     });
     await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles)]);
-    await ensureGradeRoomMembership(username, grade);
     await addSystemLog("account.signup.created", username, { sourceIp: account.sourceIp, contact }, req);
     await notifyAdminEmails("Inner open signup", [
       `${username} created a member account.`,
@@ -1199,15 +1096,15 @@ async function routeApi(req, res, requestUrl) {
       : dms.filter((entry) => Array.isArray(entry.participants) && entry.participants.includes(user.username));
     return json(res, 200, {
       user: safeUser(user, user),
-      settings: safeSettings(settings, user),
+      settings: safeSettings(settings),
       rtcConfig: buildRtcConfig(),
       uploadConfig: safeUploadConfig(settings),
       rooms: safeRoomsForUser(rooms, user),
       messages: normalizedMessages.slice(-500),
       dms: visibleDms.slice(-500),
       dmGroups: safeDmGroups(dmGroups, user),
-      files: safeFileRecords(files, user, rooms),
-      accountRequests: canManage(user) ? safeAccountRequests(accountRequests, user, settings) : [],
+      files: safeFileRecords(files, user),
+      accountRequests: canManage(user) ? safeAccountRequests(accountRequests, user) : [],
       store: safeStore(store, user),
       innerDocs: safeInnerDocs(innerDocs, user),
       aiRequests: canManage(user) ? aiRequests.slice(-100) : [],
@@ -1266,16 +1163,6 @@ async function routeApi(req, res, requestUrl) {
     if (automodError) return json(res, 400, { error: automodError });
 
     const messages = await readJson(FILES.messages, []);
-    const duplicateWindowMs = 2500;
-    const lastMessage = [...messages].reverse().find((entry) => entry && entry.user === user.username && (entry.roomId || "main") === roomId);
-    if (lastMessage) {
-      const lastTime = Date.parse(lastMessage.createdAt || "");
-      const sameText = String(lastMessage.text || "") === textValue;
-      const sameAttachment = JSON.stringify(lastMessage.attachment || null) === JSON.stringify(attachment || null);
-      if (sameText && sameAttachment && Number.isFinite(lastTime) && Date.now() - lastTime < duplicateWindowMs) {
-        return json(res, 200, { message: lastMessage, deduped: true });
-      }
-    }
     const message = {
       id: crypto.randomUUID(),
       roomId,
@@ -1320,8 +1207,6 @@ async function routeApi(req, res, requestUrl) {
     const scaledUploadBytes = Math.round(MAX_UPLOAD_BYTES * serviceScaleMultiplier(settings, "uploads"));
     if (!isAllowedUploadExtension(extension)) return json(res, 400, { error: "Unsupported or unsafe file type" });
     if (size > scaledUploadBytes) return json(res, 413, { error: `File is larger than ${formatServerBytes(scaledUploadBytes)}` });
-    const scheduleMeta = await normalizeUploadSchedule(req, user, body.roomId, body.releaseAt);
-    if (scheduleMeta.error) return json(res, scheduleMeta.status, { error: scheduleMeta.error });
 
     const storedName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${extension}`;
     const draft = createUploadRecord({
@@ -1332,10 +1217,7 @@ async function routeApi(req, res, requestUrl) {
       category: normalizeCategory(body.category || "document"),
       extension,
       providedType: String(body.mimeType || "application/octet-stream").slice(0, 120),
-      privateUpload: scheduleMeta.roomId || scheduleMeta.releaseAt ? false : Boolean(body.private),
-      roomId: scheduleMeta.roomId,
-      roomName: scheduleMeta.roomName,
-      releaseAt: scheduleMeta.releaseAt,
+      privateUpload: Boolean(body.private),
       size,
       url: "",
       persistence: "cloudinary-direct",
@@ -1362,12 +1244,6 @@ async function routeApi(req, res, requestUrl) {
     const originalName = sanitizeFileName(draft.originalName || "upload.bin");
     const extension = path.extname(originalName).toLowerCase();
     if (!isAllowedUploadExtension(extension)) return json(res, 400, { error: "Unsupported or unsafe file type" });
-    const scheduleMeta = await normalizeUploadSchedule(req, user, draft.roomId, draft.releaseAt);
-    if (scheduleMeta.error) return json(res, scheduleMeta.status, { error: scheduleMeta.error });
-    draft.roomId = scheduleMeta.roomId;
-    draft.roomName = scheduleMeta.roomName;
-    draft.releaseAt = scheduleMeta.releaseAt;
-    if (scheduleMeta.roomId || scheduleMeta.releaseAt) draft.private = false;
 
     const fileRecord = {
       ...draft,
@@ -1392,9 +1268,8 @@ async function routeApi(req, res, requestUrl) {
     const files = await readJson(FILES.uploads, []);
     files.unshift(fileRecord);
     await writeJson(FILES.uploads, files);
-    await addSystemLog("file.uploaded", user.username, { id: fileRecord.id, name: originalName, kind: fileRecord.kind, size: fileRecord.size, private: fileRecord.private, roomId: fileRecord.roomId, releaseAt: fileRecord.releaseAt, provider: "cloudinary-direct-browser" }, req);
+    await addSystemLog("file.uploaded", user.username, { id: fileRecord.id, name: originalName, kind: fileRecord.kind, size: fileRecord.size, private: fileRecord.private, provider: "cloudinary-direct-browser" }, req);
     broadcastFileNew(fileRecord);
-    scheduleFileReleaseBroadcast(fileRecord);
     return json(res, 201, { file: safeFileRecord(fileRecord, user) });
   }
 
@@ -1452,17 +1327,17 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "GET" && pathname === "/api/files") {
-    const [files, rooms] = await Promise.all([readJson(FILES.uploads, []), readJson(FILES.rooms, [])]);
-    return json(res, 200, { files: safeFileRecords(files, user, rooms) });
+    const files = await readJson(FILES.uploads, []);
+    return json(res, 200, { files: safeFileRecords(files, user) });
   }
 
   const fileDownloadMatch = pathname.match(/^\/api\/files\/([^/]+)\/download$/);
   if (req.method === "GET" && fileDownloadMatch) {
     const id = decodeURIComponent(fileDownloadMatch[1]);
-    const [files, rooms] = await Promise.all([readJson(FILES.uploads, []), readJson(FILES.rooms, [])]);
+    const files = await readJson(FILES.uploads, []);
     const record = files.find((entry) => entry.id === id);
     if (!record) return text(res, 404, "File not found");
-    if (!canAccessFileRecord(record, user, rooms)) return text(res, 403, "File is not available yet");
+    if (!canAccessFileRecord(record, user)) return text(res, 403, "Private file");
     return serveFileRecord(req, res, record);
   }
 
@@ -2350,7 +2225,7 @@ async function routeApi(req, res, requestUrl) {
     await writeJson(FILES.settings, next);
     await addSystemLog("feature.lock.updated", user.username, { feature, minutes, reason }, req);
     broadcast({ type: "state:update", settings: safeSettings(next) });
-    return json(res, 200, { settings: safeSettings(next, user) });
+    return json(res, 200, { settings: safeSettings(next) });
   }
 
   if (req.method === "GET" && pathname === "/api/backups") {
@@ -2402,7 +2277,7 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     const id = String(body.id || "");
     const status = normalizeAccountRequestStatus(body.status);
-    const [requests, settings] = await Promise.all([readJson(FILES.accountRequests, []), readJson(FILES.settings, {})]);
+    const requests = await readJson(FILES.accountRequests, []);
     const index = requests.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "Account request not found" });
     requests[index] = sanitizeAccountRequest({
@@ -2416,8 +2291,8 @@ async function routeApi(req, res, requestUrl) {
     });
     await writeJson(FILES.accountRequests, requests);
     await addSystemLog("account.request.updated", user.username, { requestUsername: requests[index].username, status }, req);
-    broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests, null, settings) });
-    return json(res, 200, { accountRequests: safeAccountRequests(requests, user, settings), request: safeAccountRequest(requests[index], user) });
+    broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
+    return json(res, 200, { accountRequests: safeAccountRequests(requests, user), request: safeAccountRequest(requests[index], user) });
   }
 
   if (req.method === "POST" && pathname === "/api/account-requests/approve") {
@@ -2454,9 +2329,6 @@ async function routeApi(req, res, requestUrl) {
       contact: request.contact,
       email: request.email,
       phone: request.phone,
-      firstName: request.firstName,
-      lastName: request.lastName,
-      displayName: request.displayName,
       grade: request.grade,
       sourceIp: request.sourceIp,
       sourceDevice: request.sourceDevice,
@@ -2487,7 +2359,6 @@ async function routeApi(req, res, requestUrl) {
       writeJson(FILES.profiles, profiles),
       writeJson(FILES.accountRequests, requests),
     ]);
-    const updatedRooms = await ensureGradeRoomMembership(request.username, request.grade);
     await addSystemLog("account.request.approved", user.username, { requestUsername: request.username, requestedRole: request.requestedRole, role: grantedRole }, req);
     await notifyAdminEmails("Inner account approved", [
       `${request.username} was approved by ${user.username}.`,
@@ -2499,14 +2370,8 @@ async function routeApi(req, res, requestUrl) {
       `Time: ${new Date().toISOString()}`,
     ].join("\n"));
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
-    const retentionSettings = await readJson(FILES.settings, {});
-    broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests, null, retentionSettings) });
-    return json(res, 201, {
-      users: users.map((entry) => safeUser(entry, user)),
-      accountRequests: safeAccountRequests(requests, user, retentionSettings),
-      user: safeUser(account, user),
-      rooms: updatedRooms.length ? safeRoomsForUser(updatedRooms, user) : undefined,
-    });
+    broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
+    return json(res, 201, { users: users.map((entry) => safeUser(entry, user)), accountRequests: safeAccountRequests(requests, user), user: safeUser(account, user) });
   }
 
   if (req.method === "POST" && pathname === "/api/users") {
@@ -2525,34 +2390,20 @@ async function routeApi(req, res, requestUrl) {
       return json(res, 409, { error: "Username already exists" });
     }
 
-    const grade = normalizeGrade(body.grade || "");
-    const email = String(body.email || "").trim().slice(0, 120);
-    const phone = String(body.phone || "").trim().slice(0, 80);
-    const contact = String(body.contact || [email, phone].filter(Boolean).join(" / ")).trim().slice(0, 160);
     users.push({
       username,
       role,
       passwordHash: hashPassword(password),
       createdAt: new Date().toISOString(),
       createdBy: user.username,
-      allowPersistentLogin: Boolean(body.allowPersistentLogin) || effectivePersistentLogin({ username, role, grade }, await readJson(FILES.settings, {}), await readJson(FILES.rooms, [])),
-      contact,
-      email,
-      phone,
-      grade,
-      gradeUpdatedAt: grade ? new Date().toISOString() : "",
+      allowPersistentLogin: Boolean(body.allowPersistentLogin) || effectivePersistentLogin({ username, role, grade: body.grade }, await readJson(FILES.settings, {}), await readJson(FILES.rooms, [])),
       bannedUntil: "",
       banReason: "",
     });
     await writeJson(FILES.users, users);
     const profiles = await readJson(FILES.profiles, {});
-    profiles[username] = sanitizeProfile({
-      ...defaultProfile(username),
-      grade,
-      gradeUpdatedAt: grade ? new Date().toISOString() : "",
-    });
+    profiles[username] = defaultProfile(username);
     await writeJson(FILES.profiles, profiles);
-    const updatedRooms = await ensureGradeRoomMembership(username, grade);
     if (username.toLowerCase() === "admin2") await unmarkDeletedDefault("admin2", user.username);
     await addSystemLog("account.created", user.username, { username, role }, req);
     await notifyAdminEmails("Inner account created", [
@@ -2565,10 +2416,7 @@ async function routeApi(req, res, requestUrl) {
       `Time: ${new Date().toISOString()}`,
     ].join("\n"));
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
-    return json(res, 201, {
-      users: users.map((entry) => safeUser(entry, user)),
-      rooms: updatedRooms.length ? safeRoomsForUser(updatedRooms, user) : undefined,
-    });
+    return json(res, 201, { users: users.map((entry) => safeUser(entry, user)) });
   }
 
   if (req.method === "POST" && pathname === "/api/users/update") {
@@ -2608,17 +2456,12 @@ async function routeApi(req, res, requestUrl) {
       updatedAt: new Date().toISOString(),
     });
     await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles)]);
-    const updatedRooms = gradeChanged ? await ensureGradeRoomMembership(previous.username, nextGrade) : [];
     if (previous.role !== nextRole || previous.allowPersistentLogin !== users[index].allowPersistentLogin) {
       expireUserSessions(username);
     }
     broadcast({ type: "profiles:update", profiles: safeProfiles(profiles, users, user) });
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
-    return json(res, 200, {
-      users: users.map((entry) => safeUser(entry, user)),
-      profiles: safeProfiles(profiles, users, user),
-      rooms: updatedRooms.length ? safeRoomsForUser(updatedRooms, user) : undefined,
-    });
+    return json(res, 200, { users: users.map((entry) => safeUser(entry, user)), profiles: safeProfiles(profiles, users, user) });
   }
 
   if (req.method === "DELETE" && pathname.startsWith("/api/users/")) {
@@ -2789,14 +2632,8 @@ async function routeApi(req, res, requestUrl) {
         : Array.isArray(settings.reportEmails)
           ? settings.reportEmails.slice(0, 4)
           : REPORT_EMAILS,
-      googleExtensionStoreUrl: sanitizeExternalUrl(body.googleExtensionStoreUrl || settings.googleExtensionStoreUrl || ""),
       chessUrl: sanitizeExternalUrl(body.chessUrl) || sanitizeExternalUrl(settings.chessUrl) || "https://chessverse.co.in/",
       gameLinks: sanitizeGameLinks(body.gameLinks !== undefined ? body.gameLinks : settings.gameLinks || []),
-      accountRequestRetention: sanitizeAccountRequestRetention(
-        body.accountRequestRetention && typeof body.accountRequestRetention === "object"
-          ? body.accountRequestRetention
-          : settings.accountRequestRetention || {}
-      ),
       moderationSettings: {
         ...(settings.moderationSettings || {}),
         ...(body.moderationSettings && typeof body.moderationSettings === "object" ? body.moderationSettings : {}),
@@ -2831,7 +2668,7 @@ async function routeApi(req, res, requestUrl) {
     } else {
       await addSystemLog("server.settings.updated", user.username, { roomName: next.roomName }, req);
     }
-    return json(res, 200, { settings: safeSettings(next, user) });
+    return json(res, 200, { settings: safeSettings(next) });
   }
 
   if (req.method === "POST" && pathname === "/api/vpn") {
@@ -2963,7 +2800,6 @@ async function routeApi(req, res, requestUrl) {
     users[index] = {
       ...users[index],
       passwordHash: hashPassword(nextPassword),
-      lastPasswordResetAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     await writeJson(FILES.users, users);
@@ -2986,9 +2822,6 @@ async function routeApi(req, res, requestUrl) {
       ...users[index],
       passwordHash: hashPassword(nextPassword),
       passwordPreset: "",
-      mustChangePassword: true,
-      lastPasswordResetAt: new Date().toISOString(),
-      lastPasswordResetBy: user.username,
       updatedAt: new Date().toISOString(),
       updatedBy: user.username,
     };
@@ -3043,26 +2876,12 @@ async function saveUpload(req, res, user) {
   if (contentLength > scaledUploadBytes) {
     return json(res, 413, { error: `File is larger than ${formatServerBytes(scaledUploadBytes)}` });
   }
-  const scheduleMeta = await normalizeUploadSchedule(req, user, req.headers["x-file-room"], req.headers["x-file-release-at"]);
-  if (scheduleMeta.error) return json(res, scheduleMeta.status, { error: scheduleMeta.error });
 
   const storedName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${extension}`;
-  const useBackblaze = backblazePreferred();
-  const provider = uploadProviderRequested();
-  const useCloudinary = !useBackblaze && cloudinaryConfigured() && (provider === "auto" || cloudinaryUploadPreferred());
-  const useMongoGridFs = !useBackblaze && !useCloudinary && persistence.ready && (provider === "auto" || mongoUploadPreferred());
-  const mustAvoidLocalDisk = cloudStorageRequired() && useCloudinary;
-  if (backblazeUploadRequested() && !backblazeConfigured()) {
-    await addSystemLog("file.upload.fallback", user.username, { name: originalName, requestedProvider: "backblaze-b2", reason: "Backblaze env missing; using local disk fallback" }, req);
-  }
-  if (mongoUploadPreferred() && !persistence.ready) {
-    await addSystemLog("file.upload.fallback", user.username, { name: originalName, requestedProvider: "mongodb-gridfs", reason: "MongoDB unavailable; using local disk fallback" }, req);
-  }
-  if (cloudinaryUploadPreferred() && !cloudinaryConfigured()) {
-    await addSystemLog("file.upload.fallback", user.username, { name: originalName, requestedProvider: "cloudinary", reason: "Cloudinary env missing; using local disk fallback" }, req);
-  }
-  if (cloudStorageRequired() && !backblazeConfigured() && !cloudinaryConfigured() && !persistence.ready) {
-    await addSystemLog("file.upload.fallback", user.username, { name: originalName, reason: "cloud storage missing; using local disk fallback" }, req);
+  const mustAvoidLocalDisk = cloudStorageRequired() && cloudinaryConfigured() && UPLOAD_PROVIDER !== "mongodb";
+  if (cloudStorageRequired() && !cloudinaryConfigured() && !persistence.ready) {
+    await addSystemLog("file.upload.blocked", user.username, { name: originalName, reason: "cloud storage missing" }, req);
+    return json(res, 503, { error: "Cloudinary is not connected on this Render app. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET before uploads." });
   }
 
   if (mustAvoidLocalDisk) {
@@ -3074,10 +2893,7 @@ async function saveUpload(req, res, user) {
       category,
       extension,
       providedType,
-      privateUpload: scheduleMeta.roomId || scheduleMeta.releaseAt ? false : privateUpload,
-      roomId: scheduleMeta.roomId,
-      roomName: scheduleMeta.roomName,
-      releaseAt: scheduleMeta.releaseAt,
+      privateUpload,
       size: contentLength || 0,
       url: "",
       persistence: "cloudinary",
@@ -3105,9 +2921,8 @@ async function saveUpload(req, res, user) {
     const files = await readJson(FILES.uploads, []);
     files.unshift(fileRecord);
     await writeJson(FILES.uploads, files);
-    await addSystemLog("file.uploaded", user.username, { id: fileRecord.id, name: originalName, kind: fileRecord.kind, size: fileRecord.size, private: fileRecord.private, roomId: fileRecord.roomId, releaseAt: fileRecord.releaseAt, provider: "cloudinary-stream" }, req);
+    await addSystemLog("file.uploaded", user.username, { id: fileRecord.id, name: originalName, kind: fileRecord.kind, size: fileRecord.size, private: privateUpload, provider: "cloudinary-stream" }, req);
     broadcastFileNew(fileRecord);
-    scheduleFileReleaseBroadcast(fileRecord);
     return json(res, 201, { file: safeFileRecord(fileRecord, user) });
   }
 
@@ -3158,35 +2973,13 @@ async function saveUpload(req, res, user) {
     category,
     extension,
     providedType,
-    privateUpload: scheduleMeta.roomId || scheduleMeta.releaseAt ? false : privateUpload,
-    roomId: scheduleMeta.roomId,
-    roomName: scheduleMeta.roomName,
-    releaseAt: scheduleMeta.releaseAt,
+    privateUpload,
     size: written,
     url: `/uploads/${encodeURIComponent(storedName)}`,
     persistence: inlineEnabled ? "disk+inline" : "disk",
   });
 
-  if (useBackblaze) {
-    try {
-      const b2File = await uploadLocalFileToBackblaze(storedName, target, fileRecord);
-      fileRecord.cloudStorage = "backblaze-b2";
-      fileRecord.b2FileId = b2File.fileId || "";
-      fileRecord.b2FileName = b2File.fileName || storedName;
-      fileRecord.b2BucketId = b2File.bucketId || "";
-      fileRecord.b2BucketName = b2File.bucketName || B2_BUCKET_NAME || "";
-      fileRecord.persistence = "disk+backblaze-b2";
-      fileRecord.url = `/api/files/${fileRecord.id}/download`;
-      inlineEnabled = false;
-      inlineChunks = [];
-    } catch (error) {
-      await addSystemLog("file.upload.failed", user.username, { name: originalName, provider: "backblaze-b2", reason: error.message || "Backblaze upload failed" }, req);
-      fileRecord.cloudStorage = "";
-      fileRecord.cloudStorageError = error.message || "Backblaze upload failed";
-      fileRecord.persistence = inlineEnabled ? "disk+inline" : "disk";
-      fileRecord.url = `/uploads/${encodeURIComponent(storedName)}`;
-    }
-  } else if (useCloudinary) {
+  if (cloudinaryConfigured() && UPLOAD_PROVIDER !== "mongodb") {
     try {
       const cloudFile = await uploadLocalFileToCloudinary(storedName, target, fileRecord);
       fileRecord.cloudStorage = "cloudinary";
@@ -3205,7 +2998,7 @@ async function saveUpload(req, res, user) {
       fileRecord.persistence = inlineEnabled ? "disk+inline" : "disk";
       fileRecord.url = `/uploads/${encodeURIComponent(storedName)}`;
     }
-  } else if (useMongoGridFs) {
+  } else if (persistence.ready) {
     try {
       const cloudFile = await uploadLocalFileToCloud(storedName, target, fileRecord);
       fileRecord.cloudStorage = "mongodb-gridfs";
@@ -3220,7 +3013,7 @@ async function saveUpload(req, res, user) {
     }
   } else if (cloudStorageRequired()) {
     await fsp.rm(target, { force: true }).catch(() => {});
-    return json(res, 503, { error: "Cloud storage is not connected. Set Backblaze B2 env vars, Cloudinary env vars, or MONGODB_URI so uploads survive redeploys." });
+    return json(res, 503, { error: "Cloud storage is not connected. Set Cloudinary env vars or MONGODB_URI so uploads survive redeploys." });
   }
 
   if (inlineEnabled && inlineChunks.length) {
@@ -3232,9 +3025,8 @@ async function saveUpload(req, res, user) {
   const files = await readJson(FILES.uploads, []);
   files.unshift(fileRecord);
   await writeJson(FILES.uploads, files);
-  await addSystemLog("file.uploaded", user.username, { id: fileRecord.id, name: originalName, kind: fileRecord.kind, size: written, private: fileRecord.private, roomId: fileRecord.roomId, releaseAt: fileRecord.releaseAt }, req);
+  await addSystemLog("file.uploaded", user.username, { id: fileRecord.id, name: originalName, kind: fileRecord.kind, size: written, private: privateUpload }, req);
   broadcastFileNew(fileRecord);
-  scheduleFileReleaseBroadcast(fileRecord);
   const safeRecord = safeFileRecord(fileRecord, user);
   return json(res, 201, { file: safeRecord });
 }
@@ -3251,7 +3043,7 @@ async function resolveChatAttachment(attachment) {
   return safeFileRecord(file, null);
 }
 
-function createUploadRecord({ req, user, originalName, storedName, category, extension, providedType, privateUpload, roomId, roomName, releaseAt, size, url, persistence: persistenceLabel }) {
+function createUploadRecord({ req, user, originalName, storedName, category, extension, providedType, privateUpload, size, url, persistence: persistenceLabel }) {
   return {
     id: crypto.randomUUID(),
     originalName,
@@ -3267,10 +3059,6 @@ function createUploadRecord({ req, user, originalName, storedName, category, ext
     sourceDevice: deviceSignature(req),
     approximateLocation: approximateLocationFromIp(getClientIp(req)),
     private: privateUpload,
-    roomId: normalizeUploadRoomId(roomId || ""),
-    roomName: String(roomName || "").trim().slice(0, 80),
-    releaseAt: normalizeReleaseAt(releaseAt || ""),
-    scheduledBy: releaseAt ? user.username : "",
     createdAt: new Date().toISOString(),
     url,
     persistence: persistenceLabel,
@@ -3321,88 +3109,6 @@ async function uploadBufferToCloud(storedName, buffer, record) {
     upload.on("finish", resolve);
     upload.end(buffer);
   });
-}
-
-async function backblazeAuthorize() {
-  if (!backblazeConfigured()) throw new Error("Backblaze B2 is not configured");
-  if (backblazeAuthCache && backblazeAuthCache.expiresAt > Date.now() + 60_000) return backblazeAuthCache;
-  const auth = Buffer.from(`${B2_KEY_ID}:${B2_APPLICATION_KEY}`).toString("base64");
-  const response = await fetch("https://api.backblazeb2.com/b2api/v2/b2_authorize_account", {
-    headers: { Authorization: `Basic ${auth}` },
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || `Backblaze authorization failed (${response.status})`);
-  backblazeAuthCache = { ...data, expiresAt: Date.now() + 23 * 60 * 60 * 1000 };
-  return backblazeAuthCache;
-}
-
-async function backblazeBucket() {
-  if (backblazeBucketCache) return backblazeBucketCache;
-  const auth = await backblazeAuthorize();
-  if (B2_BUCKET_ID) {
-    backblazeBucketCache = { bucketId: B2_BUCKET_ID, bucketName: B2_BUCKET_NAME || "" };
-    return backblazeBucketCache;
-  }
-  const response = await fetch(`${auth.apiUrl}/b2api/v2/b2_list_buckets`, {
-    method: "POST",
-    headers: { Authorization: auth.authorizationToken, "Content-Type": "application/json" },
-    body: JSON.stringify({ accountId: auth.accountId, bucketName: B2_BUCKET_NAME }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || `Backblaze bucket lookup failed (${response.status})`);
-  const bucket = (data.buckets || []).find((entry) => entry.bucketName === B2_BUCKET_NAME);
-  if (!bucket) throw new Error(`Backblaze bucket not found: ${B2_BUCKET_NAME}`);
-  backblazeBucketCache = { bucketId: bucket.bucketId, bucketName: bucket.bucketName };
-  return backblazeBucketCache;
-}
-
-async function backblazeUploadUrl() {
-  const [auth, bucket] = await Promise.all([backblazeAuthorize(), backblazeBucket()]);
-  const response = await fetch(`${auth.apiUrl}/b2api/v2/b2_get_upload_url`, {
-    method: "POST",
-    headers: { Authorization: auth.authorizationToken, "Content-Type": "application/json" },
-    body: JSON.stringify({ bucketId: bucket.bucketId }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || `Backblaze upload URL failed (${response.status})`);
-  return { ...data, bucket };
-}
-
-async function uploadLocalFileToBackblaze(storedName, filePath, record) {
-  if (!backblazeConfigured()) throw new Error("Backblaze B2 is not configured");
-  const [upload, stat, sha1] = await Promise.all([backblazeUploadUrl(), fsp.stat(filePath), sha1File(filePath)]);
-  const b2Name = `inner/${storedName}`.replace(/^\/+/, "");
-  const response = await fetch(upload.uploadUrl, {
-    method: "POST",
-    headers: {
-      Authorization: upload.authorizationToken,
-      "X-Bz-File-Name": encodeURIComponent(b2Name),
-      "Content-Type": record.mimeType || "application/octet-stream",
-      "Content-Length": String(stat.size),
-      "X-Bz-Content-Sha1": sha1,
-      "X-Bz-Info-inner-id": safeBackblazeInfo(record.id),
-      "X-Bz-Info-uploader": safeBackblazeInfo(record.user),
-    },
-    body: fs.createReadStream(filePath),
-    duplex: "half",
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || `Backblaze upload failed (${response.status})`);
-  return { ...data, bucketId: upload.bucket.bucketId, bucketName: upload.bucket.bucketName };
-}
-
-function sha1File(filePath) {
-  return new Promise((resolve, reject) => {
-    const hash = crypto.createHash("sha1");
-    const stream = fs.createReadStream(filePath);
-    stream.on("data", (chunk) => hash.update(chunk));
-    stream.on("error", reject);
-    stream.on("end", () => resolve(hash.digest("hex")));
-  });
-}
-
-function safeBackblazeInfo(value) {
-  return encodeURIComponent(String(value || "").slice(0, 120));
 }
 
 async function uploadLocalFileToCloudinary(storedName, filePath, record) {
@@ -3579,20 +3285,6 @@ async function deleteCloudinaryUpload(record) {
   }
 }
 
-async function deleteBackblazeUpload(record) {
-  if (!backblazeConfigured() || !record || record.cloudStorage !== "backblaze-b2" || !record.b2FileId || !record.b2FileName) return;
-  const auth = await backblazeAuthorize();
-  const response = await fetch(`${auth.apiUrl}/b2api/v2/b2_delete_file_version`, {
-    method: "POST",
-    headers: { Authorization: auth.authorizationToken, "Content-Type": "application/json" },
-    body: JSON.stringify({ fileId: record.b2FileId, fileName: record.b2FileName }),
-  }).catch(() => null);
-  if (response && !response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.message || `Backblaze delete failed (${response.status})`);
-  }
-}
-
 function appendSignedCloudinaryParams(form, params) {
   const signedParams = {
     ...params,
@@ -3640,35 +3332,7 @@ function cloudinaryConfigured() {
   return Boolean(CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET);
 }
 
-function backblazeConfigured() {
-  return Boolean(B2_KEY_ID && B2_APPLICATION_KEY && (B2_BUCKET_ID || B2_BUCKET_NAME));
-}
-
-function backblazePreferred() {
-  if (!backblazeConfigured()) return false;
-  return !UPLOAD_PROVIDER || ["backblaze", "b2", "backblaze-b2"].includes(UPLOAD_PROVIDER);
-}
-
-function uploadProviderRequested(provider) {
-  const value = String(provider || UPLOAD_PROVIDER || "").toLowerCase();
-  return value ? value : "auto";
-}
-
-function mongoUploadPreferred() {
-  return ["mongodb", "mongo", "gridfs", "mongodb-gridfs"].includes(uploadProviderRequested());
-}
-
-function cloudinaryUploadPreferred() {
-  return ["cloudinary"].includes(uploadProviderRequested());
-}
-
-function backblazeUploadRequested() {
-  return ["backblaze", "b2", "backblaze-b2"].includes(uploadProviderRequested());
-}
-
 function storageModeLabel() {
-  if (backblazePreferred() && persistence.ready) return "backblaze-b2+mongodb-gridfs";
-  if (backblazePreferred()) return "backblaze-b2";
   if (cloudinaryConfigured() && persistence.ready) return "cloudinary+mongodb-gridfs";
   if (cloudinaryConfigured()) return "cloudinary";
   if (persistence.ready) return "mongodb-gridfs";
@@ -3690,7 +3354,7 @@ function uploadMetadata(record) {
 }
 
 function cloudStorageRequired() {
-  return Boolean((REQUIRE_CLOUD_STORAGE || backblazeUploadRequested() || cloudinaryUploadPreferred() || mongoUploadPreferred()) && (backblazeConfigured() || cloudinaryConfigured() || persistence.ready));
+  return REQUIRE_CLOUD_STORAGE || (!LOCALHOST_MODE && Boolean(MONGODB_URI));
 }
 
 async function handleUpgrade(req, socket) {
@@ -4227,29 +3891,12 @@ function broadcastStoreUpdate(store, orderUser) {
   }
 }
 
-async function broadcastFileNew(file) {
-  const rooms = await readJson(FILES.rooms, []);
+function broadcastFileNew(file) {
   for (const client of wsClients.values()) {
-    if (canAccessFileRecord(file, client, rooms)) {
+    if (canAccessFileRecord(file, client)) {
       sendWs(client, { type: "file:new", file: safeFileRecord(file, client) });
     }
   }
-}
-
-async function broadcastFilesUpdate() {
-  const [files, rooms] = await Promise.all([readJson(FILES.uploads, []), readJson(FILES.rooms, [])]);
-  for (const client of wsClients.values()) {
-    sendWs(client, { type: "files:update", files: safeFileRecords(files, client, rooms) });
-  }
-}
-
-function scheduleFileReleaseBroadcast(file) {
-  const releaseTime = file && file.releaseAt ? new Date(file.releaseAt).getTime() : 0;
-  if (!releaseTime || !Number.isFinite(releaseTime) || releaseTime <= Date.now()) return;
-  const delay = Math.min(releaseTime - Date.now() + 750, 2147483647);
-  setTimeout(() => {
-    broadcastFilesUpdate().catch(() => {});
-  }, delay).unref?.();
 }
 
 function sendWs(client, payload) {
@@ -4357,82 +4004,6 @@ function sessionCookie(value, req, maxAgeSeconds = null) {
   return parts.join("; ");
 }
 
-function applySecurityHeaders(req, res) {
-  res.setHeader("Content-Security-Policy", [
-    "default-src 'self'",
-    "base-uri 'self'",
-    "object-src 'none'",
-    "frame-ancestors 'self'",
-    "script-src 'self'",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https:",
-    "media-src 'self' blob: data: https:",
-    "font-src 'self' data:",
-    "connect-src 'self' ws: wss: https://*.backblazeb2.com https://*.cloudinary.com https://api.cloudinary.com",
-    "frame-src 'self' https:",
-    "form-action 'self'",
-    "upgrade-insecure-requests",
-  ].join("; "));
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "SAMEORIGIN");
-  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.setHeader("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(self), display-capture=(self), payment=()");
-  if (isHttpsRequest(req)) res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
-}
-
-function csrfSafeRequest(req) {
-  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return true;
-  if (req.headers["x-inner-csrf"] !== "1") return false;
-  const origin = String(req.headers.origin || "").trim();
-  const referer = String(req.headers.referer || "").trim();
-  const requestOrigin = requestOriginFromHeaders(req);
-  if (origin && origin !== requestOrigin) return false;
-  if (!origin && referer) {
-    try {
-      if (new URL(referer).origin !== requestOrigin) return false;
-    } catch {
-      return false;
-    }
-  }
-  return true;
-}
-
-function requestOriginFromHeaders(req) {
-  const proto = isHttpsRequest(req) ? "https" : "http";
-  const host = String(req.headers.host || `${HOST}:${PORT}`).toLowerCase();
-  return `${proto}://${host}`;
-}
-
-function checkRequestRate(req, requestUrl) {
-  const pathname = requestUrl.pathname || "/";
-  const ip = getClientIp(req) || "unknown";
-  const unsafe = !["GET", "HEAD", "OPTIONS"].includes(req.method);
-  const strict = pathname === "/api/login" || pathname === "/api/signup" || pathname === "/api/account-requests";
-  if (strict) return rateLimitBucket(`strict:${ip}:${pathname}`, 20, 10 * 60 * 1000);
-  if (unsafe && pathname.startsWith("/api/")) return rateLimitBucket(`write:${ip}`, 240, 60 * 1000);
-  if (pathname.startsWith("/api/")) return rateLimitBucket(`api:${ip}`, 900, 60 * 1000);
-  return "";
-}
-
-function rateLimitBucket(key, limit, windowMs) {
-  const now = Date.now();
-  const bucket = requestRateLimits.get(key) || { count: 0, resetAt: now + windowMs };
-  if (bucket.resetAt <= now) {
-    bucket.count = 0;
-    bucket.resetAt = now + windowMs;
-  }
-  bucket.count += 1;
-  requestRateLimits.set(key, bucket);
-  if (requestRateLimits.size > 5000) pruneRateLimitBuckets(now);
-  return bucket.count > limit ? "Too many requests. Slow down and try again." : "";
-}
-
-function pruneRateLimitBuckets(now = Date.now()) {
-  for (const [key, bucket] of requestRateLimits) {
-    if (!bucket || bucket.resetAt <= now) requestRateLimits.delete(key);
-  }
-}
-
 function isHttpsRequest(req) {
   if (req.socket && req.socket.encrypted) return true;
   const forwarded = firstForwardedValue(req.headers["x-forwarded-proto"]).toLowerCase();
@@ -4482,20 +4053,11 @@ function safeUser(user, viewer = null) {
     contact: user.contact || "",
     email: user.email || "",
     phone: user.phone || "",
-    firstName: user.firstName || "",
-    lastName: user.lastName || "",
-    displayName: user.displayName || "",
     grade: normalizeGrade(user.grade || ""),
     gradeUpdatedAt: user.gradeUpdatedAt || "",
-    loginCount: Number(user.loginCount || 0),
     mutedUntil: user.mutedUntil || "",
     muted: isUserMuted(user),
     shadowMuted: Boolean(user.shadowMuted),
-    passwordSet: Boolean(user.passwordHash),
-    passwordStatus: user.passwordHash ? "hashed" : "missing",
-    mustChangePassword: Boolean(user.mustChangePassword),
-    lastPasswordResetAt: user.lastPasswordResetAt || "",
-    lastPasswordResetBy: user.lastPasswordResetBy || "",
   };
   if (ownerView) {
     safe.lastLoginAt = user.lastLoginAt || "";
@@ -4822,23 +4384,14 @@ function safeDmGroups(groups, user) {
     }));
 }
 
-function canAccessFileRecord(file, user, rooms = []) {
-  if (!file) return true;
-  if (!user) return !file.private && !file.releaseAt && !file.roomId;
-  if (canManage(user) || file.user === user.username) return true;
-  const releaseTime = file.releaseAt ? new Date(file.releaseAt).getTime() : 0;
-  if (releaseTime && Number.isFinite(releaseTime) && releaseTime > Date.now()) return false;
-  if (file.private) return false;
-  if (file.roomId) {
-    const room = (rooms || []).find((entry) => entry.id === file.roomId);
-    return Boolean(room && canAccessRoom(room, user));
-  }
-  return true;
+function canAccessFileRecord(file, user) {
+  if (!file || !user) return !file || !file.private;
+  return !file.private || canManage(user) || file.user === user.username;
 }
 
-function safeFileRecords(files, user, rooms = []) {
+function safeFileRecords(files, user) {
   return (files || [])
-    .filter((file) => canAccessFileRecord(file, user, rooms))
+    .filter((file) => canAccessFileRecord(file, user))
     .map((file) => safeFileRecord(file, user));
 }
 
@@ -4952,10 +4505,6 @@ function safeFileRecord(file, viewer) {
     size: file.size,
     user: file.user,
     private: Boolean(file.private),
-    roomId: file.roomId || "",
-    roomName: file.roomName || "",
-    releaseAt: file.releaseAt || "",
-    scheduledBy: file.scheduledBy || "",
     sourceIp: showAdminMeta ? file.sourceIp : "",
     sourceHost: showAdminMeta ? file.sourceHost : "",
     sourceAgent: showAdminMeta ? file.sourceAgent : "",
@@ -4965,10 +4514,8 @@ function safeFileRecord(file, viewer) {
     url: `/api/files/${encodeURIComponent(file.id)}/download`,
     persistence: file.persistence || (file.inlineData ? "disk+inline" : "disk"),
     cloudStorage: file.cloudStorage || "",
-    externalBacked: Boolean(file.cloudinarySecureUrl || file.cloudFileId || file.b2FileId),
+    externalBacked: Boolean(file.cloudinarySecureUrl || file.cloudFileId),
     cloudinaryPublicId: showAdminMeta ? file.cloudinaryPublicId || "" : "",
-    b2FileId: showAdminMeta ? file.b2FileId || "" : "",
-    b2BucketName: showAdminMeta ? file.b2BucketName || "" : "",
     inlineBacked: Boolean(file.inlineData),
     inlineSize: Number(file.inlineSize || 0),
   };
@@ -4978,8 +4525,6 @@ function sanitizeAccountRequest(request) {
   return {
     id: String(request.id || crypto.randomUUID()),
     username: normalizeUsername(request.username),
-    firstName: normalizePersonName(request.firstName || ""),
-    lastName: normalizePersonName(request.lastName || ""),
     displayName: String(request.displayName || request.username || "").trim().slice(0, 80),
     contact: String(request.contact || "").trim().slice(0, 160),
     email: String(request.email || "").trim().slice(0, 120),
@@ -5036,19 +4581,18 @@ function safeAccountRequest(request, viewer = null) {
   return result;
 }
 
-function safeAccountRequests(requests, viewer = null, settings = {}) {
-  const retention = sanitizeAccountRequestRetention(settings.accountRequestRetention || {});
+function safeAccountRequests(requests, viewer = null) {
   return (requests || [])
     .map((request) => safeAccountRequest(request, viewer))
     .filter((request) => {
       if (request.status === "declined") return false;
       if (request.status === "approved") {
         const approvedAt = Date.parse(request.approvedAt || request.updatedAt || request.createdAt);
-        return Number.isFinite(approvedAt) ? Date.now() - approvedAt < retention.approvedHours * 60 * 60 * 1000 : true;
+        return Number.isFinite(approvedAt) ? Date.now() - approvedAt < 48 * 60 * 60 * 1000 : true;
       }
       if (request.status === "pending" || request.status === "reviewing") {
         const createdAt = Date.parse(request.createdAt || request.updatedAt);
-        return Number.isFinite(createdAt) ? Date.now() - createdAt < retention.pendingDays * 24 * 60 * 60 * 1000 : true;
+        return Number.isFinite(createdAt) ? Date.now() - createdAt < 7 * 24 * 60 * 60 * 1000 : true;
       }
       return true;
     })
@@ -5070,10 +4614,8 @@ async function requestLoginStatus(usernameValue, passwordValue) {
     };
   }
   if (request.status === "declined") {
-    const settings = await readJson(FILES.settings, {});
-    const retention = sanitizeAccountRequestRetention(settings.accountRequestRetention || {});
     const declinedAt = Date.parse(request.declinedAt || request.updatedAt || request.createdAt);
-    if (Number.isFinite(declinedAt) && Date.now() - declinedAt <= retention.declinedLoginHours * 60 * 60 * 1000) {
+    if (Number.isFinite(declinedAt) && Date.now() - declinedAt <= 12 * 60 * 60 * 1000) {
       return {
         status: "declined",
         message: "Request denied. Ask an admin if you think this was a mistake.",
@@ -5199,34 +4741,10 @@ function normalizeAccountRequestStatus(status) {
   return "pending";
 }
 
-function defaultAccountRequestRetention() {
+function safeSettings(settings) {
   return {
-    pendingDays: 7,
-    approvedHours: 48,
-    declinedLoginHours: 12,
-  };
-}
-
-function sanitizeAccountRequestRetention(source = {}) {
-  const defaults = defaultAccountRequestRetention();
-  const clampNumber = (value, fallback, min, max) => {
-    const number = Math.round(Number(value));
-    if (!Number.isFinite(number)) return fallback;
-    return Math.min(max, Math.max(min, number));
-  };
-  return {
-    pendingDays: clampNumber(source.pendingDays, defaults.pendingDays, 1, 90),
-    approvedHours: clampNumber(source.approvedHours, defaults.approvedHours, 1, 720),
-    declinedLoginHours: clampNumber(source.declinedLoginHours, defaults.declinedLoginHours, 1, 168),
-  };
-}
-
-function safeSettings(settings, user = null) {
-  const result = {
     ...settings,
     gameLinks: sanitizeGameLinks(settings.gameLinks || []),
-    googleExtensionStoreUrl: sanitizeExternalUrl(settings.googleExtensionStoreUrl || ""),
-    accountRequestRetention: sanitizeAccountRequestRetention(settings.accountRequestRetention || {}),
     customizations: sanitizeCustomizations(settings.customizations || {}),
     serviceScale: sanitizeServiceScale(settings.serviceScale || {}),
     persistentLogin: sanitizePersistentLogin(settings.persistentLogin || {}),
@@ -5239,22 +4757,6 @@ function safeSettings(settings, user = null) {
     shutdownBy: settings.serverEnabled === false ? String(settings.shutdownBy || "") : "",
     shutdownReason: settings.serverEnabled === false ? String(settings.shutdownReason || "") : "",
   };
-  if (user) result.visibleFeatures = visibleFeaturesForUser(settings, user);
-  return result;
-}
-
-function visibleFeaturesForUser(settings, user) {
-  const visibility = sanitizeFeatureVisibility(settings.featureVisibility || {});
-  return Array.from(allowedFeatureLocks).filter((feature) => {
-    if (feature === "all") return true;
-    if ((feature === "admin" || feature === "domain") && !canOwn(user)) return false;
-    if (feature === "hmd" && !canDev(user)) return false;
-    const rule = visibility[feature];
-    if (rule && rule.hidden && !canOwn(user) && !rule.allowedUsers.includes(String(user.username || "").toLowerCase())) {
-      return false;
-    }
-    return true;
-  });
 }
 
 function sanitizePersistentLogin(source = {}) {
@@ -5288,13 +4790,12 @@ function sanitizeGameLinks(source = []) {
       return {
         name: String(raw.name || host || "Game").trim().slice(0, 80),
         url,
-        allowedUsers: normalizeUsernameList(raw.allowedUsers || raw.users || raw.access || []),
       };
     })
     .filter((entry) => entry.name && entry.url);
   const withDefault = [
+    { name: "ChessVerse", url: "https://chessverse.co.in/" },
     ...cleaned,
-    { name: "ChessVerse", url: "https://chessverse.co.in/", allowedUsers: [] },
   ];
   const seen = new Set();
   return withDefault.filter((entry) => {
@@ -5327,7 +4828,7 @@ function safeUploadConfig(settings) {
   return {
     maxBytes,
     maxLabel: formatServerBytes(maxBytes),
-    directCloudinary: !backblazePreferred() && cloudinaryConfigured() && UPLOAD_PROVIDER !== "mongodb",
+    directCloudinary: cloudinaryConfigured() && UPLOAD_PROVIDER !== "mongodb",
     cloudRequired: cloudStorageRequired(),
     provider: storageModeLabel(),
   };
@@ -5349,10 +4850,6 @@ function safeDirectUploadDraft(draft) {
     sourceDevice: String(draft.sourceDevice || ""),
     approximateLocation: draft.approximateLocation || null,
     private: Boolean(draft.private),
-    roomId: String(draft.roomId || ""),
-    roomName: String(draft.roomName || ""),
-    releaseAt: String(draft.releaseAt || ""),
-    scheduledBy: String(draft.scheduledBy || ""),
     createdAt: draft.createdAt || new Date().toISOString(),
     url: `/api/files/${encodeURIComponent(draft.id || "")}/download`,
     persistence: "cloudinary-direct",
@@ -5413,11 +4910,11 @@ function sanitizeCustomizations(customizations) {
   return {
     ...defaultCustomizations(),
     appName: String(customizations.appName || "").trim().slice(0, 60),
-    connectedLabel: "",
-    disconnectedLabel: "",
-    serverOnLabel: "",
-    serverOffLabel: "",
-    versionLabel: "",
+    connectedLabel: String(customizations.connectedLabel || "").trim().slice(0, 40),
+    disconnectedLabel: String(customizations.disconnectedLabel || "").trim().slice(0, 40),
+    serverOnLabel: String(customizations.serverOnLabel || "").trim().slice(0, 40),
+    serverOffLabel: String(customizations.serverOffLabel || "").trim().slice(0, 40),
+    versionLabel: String(customizations.versionLabel || "").trim().slice(0, 80),
     updateTitle: String(customizations.updateTitle || "").trim().slice(0, 100),
     updateNote: String(customizations.updateNote || "").trim().slice(0, 800),
     notice: String(customizations.notice || "").trim().slice(0, 240),
@@ -5807,21 +5304,8 @@ function normalizeCurrency(currency) {
 
 function normalizeGrade(grade) {
   const value = String(grade || "").trim().toLowerCase();
-  if (/^(6|7|8|9|10|11|12)[abc]$/.test(value)) return value;
   if (["6", "7", "8", "9", "10", "11", "12", "college", "staff", "other"].includes(value)) return value;
   return "";
-}
-
-function normalizePersonName(name) {
-  return String(name || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/[^a-zA-Z .'-]/g, "")
-    .slice(0, 60);
-}
-
-function isSectionGrade(grade) {
-  return /^(6|7|8|9|10|11|12)[abc]$/.test(String(grade || "").trim().toLowerCase());
 }
 
 function normalizeInnerDocType(type) {
@@ -5856,7 +5340,7 @@ function normalizePresenceStatus(status) {
 
 function normalizeRoomTheme(theme) {
   const value = String(theme || "system").trim().toLowerCase();
-  if (["system", "midnight", "ocean", "forest", "rose", "slate", "glass", "bd-somani", "custom"].includes(value)) return value;
+  if (["system", "midnight", "ocean", "forest", "rose", "slate", "glass", "custom"].includes(value)) return value;
   return "system";
 }
 
@@ -6029,9 +5513,7 @@ async function storageSummary() {
     dataFileCount: dataFiles.length,
     dataDir: DATA_DIR,
     persistenceMode: storageModeLabel(),
-    cloudStorageReady: backblazeConfigured() || cloudinaryConfigured() || persistence.ready,
-    backblazeConfigured: backblazeConfigured(),
-    backblazeBucketName: backblazeConfigured() ? B2_BUCKET_NAME || "" : "",
+    cloudStorageReady: cloudinaryConfigured() || persistence.ready,
     cloudinaryConfigured: cloudinaryConfigured(),
     cloudinaryFolder: cloudinaryConfigured() ? CLOUDINARY_FOLDER : "",
     cloudStorageError: persistence.error,
@@ -6063,7 +5545,7 @@ function buildLocalhostState() {
 }
 
 async function migrateExistingUploadsToCloud() {
-  if (!persistence.ready && !cloudinaryConfigured() && !backblazeConfigured()) return;
+  if (!persistence.ready && !cloudinaryConfigured()) return;
   const files = await readJson(FILES.uploads, []);
   if (!Array.isArray(files) || !files.length) return;
 
@@ -6071,26 +5553,7 @@ async function migrateExistingUploadsToCloud() {
   for (const record of files) {
     if (!record || !record.storedName) continue;
     const localPath = path.join(UPLOAD_DIR, record.storedName);
-    if (backblazePreferred() && record.cloudStorage !== "backblaze-b2" && fs.existsSync(localPath)) {
-      try {
-        const b2File = await uploadLocalFileToBackblaze(record.storedName, localPath, record);
-        record.cloudStorage = "backblaze-b2";
-        record.b2FileId = b2File.fileId || "";
-        record.b2FileName = b2File.fileName || record.storedName;
-        record.b2BucketId = b2File.bucketId || "";
-        record.b2BucketName = b2File.bucketName || B2_BUCKET_NAME || "";
-        record.persistence = record.persistence && record.persistence.includes("disk") ? "disk+backblaze-b2" : "backblaze-b2";
-        delete record.inlineData;
-        record.inlineEncoding = "";
-        record.inlineSize = 0;
-        changed = true;
-        continue;
-      } catch (error) {
-        persistence.error = error.message || "Backblaze migration failed";
-        console.error("[persistence] backblaze migration failed:", record.originalName || record.storedName, persistence.error);
-      }
-    }
-    if (!backblazePreferred() && cloudinaryConfigured() && record.cloudStorage !== "cloudinary") {
+    if (cloudinaryConfigured() && record.cloudStorage !== "cloudinary") {
       try {
         if (fs.existsSync(localPath)) {
           const cloudFile = await uploadLocalFileToCloudinary(record.storedName, localPath, record);
@@ -6710,22 +6173,9 @@ function verifyPassword(password, passwordRecord) {
 }
 
 async function readJsonBody(req) {
-  let body;
-  try {
-    body = await readBody(req, MAX_JSON_BYTES);
-  } catch (error) {
-    error.statusCode = String(error.message || "").includes("too large") ? 413 : 400;
-    error.publicMessage = error.message || "Bad request body";
-    throw error;
-  }
+  const body = await readBody(req, MAX_JSON_BYTES);
   if (!body.trim()) return {};
-  try {
-    return JSON.parse(body);
-  } catch (error) {
-    error.statusCode = 400;
-    error.publicMessage = "Invalid JSON body";
-    throw error;
-  }
+  return JSON.parse(body);
 }
 
 function readBody(req, maxBytes) {
@@ -7171,14 +6621,9 @@ async function serveStatic(res, filePath) {
     const stat = await fsp.stat(safePath);
     if (!stat.isFile()) return text(res, 404, "Not found");
     const extension = path.extname(safePath).toLowerCase();
-    const name = path.basename(safePath).toLowerCase();
-    const noStoreAssets = new Set([".html", ".js", ".css", ".json", ".webmanifest"]);
-    const cacheControl = noStoreAssets.has(extension) || name === "service-worker.js"
-      ? "no-store, max-age=0"
-      : "no-cache";
     res.writeHead(200, {
       "Content-Type": mimeTypes[extension] || "application/octet-stream",
-      "Cache-Control": cacheControl,
+      "Cache-Control": "no-cache",
     });
     fs.createReadStream(safePath).pipe(res);
   } catch (error) {
@@ -7192,10 +6637,10 @@ async function serveUpload(req, res, pathname, user) {
   const featureError = await featureGateError(settings, "files", user);
   if (featureError) return text(res, 423, featureError);
   const storedName = path.basename(pathname);
-  const [files, rooms] = await Promise.all([readJson(FILES.uploads, []), readJson(FILES.rooms, [])]);
+  const files = await readJson(FILES.uploads, []);
   const record = files.find((entry) => entry.storedName === storedName);
   if (!record) return text(res, 404, "Not found");
-  if (!canAccessFileRecord(record, user, rooms)) return text(res, 403, "File is not available yet");
+  if (!canAccessFileRecord(record, user)) return text(res, 403, "Private file");
 
   const target = path.join(UPLOAD_DIR, storedName);
   return serveFileRecord(req, res, record, target);
@@ -7250,9 +6695,6 @@ async function serveFileRecord(req, res, record, targetPath = "") {
 }
 
 async function serveCloudUpload(req, res, record) {
-  if (record && record.cloudStorage === "backblaze-b2" && record.b2FileId) {
-    return proxyBackblazeUpload(req, res, record);
-  }
   if (record && record.cloudStorage === "cloudinary" && record.cloudinarySecureUrl) {
     const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
     if (record.private || requestUrl.searchParams.get("download") === "1") return proxyCloudinaryUpload(req, res, record);
@@ -7309,37 +6751,6 @@ async function serveCloudUpload(req, res, record) {
   return true;
 }
 
-async function proxyBackblazeUpload(req, res, record) {
-  if (typeof fetch !== "function") return false;
-  const auth = await backblazeAuthorize().catch(() => null);
-  if (!auth) return false;
-  const requestHeaders = { Authorization: auth.authorizationToken };
-  if (req.headers.range) requestHeaders.Range = req.headers.range;
-  const upstream = await fetch(`${auth.downloadUrl}/b2api/v2/b2_download_file_by_id?fileId=${encodeURIComponent(record.b2FileId)}`, {
-    headers: requestHeaders,
-  }).catch(() => null);
-  if (!upstream || !upstream.ok) return false;
-  const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
-  const dispositionType = requestUrl.searchParams.get("download") === "1" ? "attachment" : "inline";
-  const headers = {
-    "Content-Type": upstream.headers.get("content-type") || record.mimeType || "application/octet-stream",
-    "Content-Disposition": `${dispositionType}; filename="${String(record.originalName || "upload").replaceAll('"', "")}"`,
-    "Accept-Ranges": upstream.headers.get("accept-ranges") || "bytes",
-    "Cache-Control": record.private ? "no-store" : "private, max-age=60",
-  };
-  const length = upstream.headers.get("content-length");
-  const range = upstream.headers.get("content-range");
-  if (length) headers["Content-Length"] = length;
-  if (range) headers["Content-Range"] = range;
-  res.writeHead(upstream.status, headers);
-  if (upstream.body) {
-    Readable.fromWeb(upstream.body).pipe(res);
-  } else {
-    res.end(Buffer.from(await upstream.arrayBuffer()));
-  }
-  return true;
-}
-
 async function proxyCloudinaryUpload(req, res, record) {
   if (typeof fetch !== "function") return false;
   const requestHeaders = {};
@@ -7388,10 +6799,6 @@ function addCloudinaryDownloadFlag(url, originalName) {
 }
 
 async function deleteCloudUpload(record) {
-  if (record && record.cloudStorage === "backblaze-b2") {
-    await deleteBackblazeUpload(record);
-    return;
-  }
   if (record && record.cloudStorage === "cloudinary") {
     await deleteCloudinaryUpload(record);
     return;
@@ -7477,42 +6884,6 @@ function normalizeCategory(category) {
 function parseBooleanHeader(value) {
   const normalized = String(value || "").trim().toLowerCase();
   return ["1", "true", "yes", "on", "private"].includes(normalized);
-}
-
-function decodeHeaderValue(value) {
-  try {
-    return decodeURIComponent(String(value || ""));
-  } catch {
-    return String(value || "");
-  }
-}
-
-function normalizeUploadRoomId(value) {
-  const roomId = String(value || "").trim().slice(0, 80);
-  if (!roomId || roomId === "all" || roomId === "main") return "";
-  return roomId;
-}
-
-function normalizeReleaseAt(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  const date = new Date(raw);
-  if (!Number.isFinite(date.getTime())) return "";
-  return date.toISOString();
-}
-
-async function normalizeUploadSchedule(req, user, rawRoomId, rawReleaseAt) {
-  const requestedRoomId = normalizeUploadRoomId(decodeHeaderValue(rawRoomId));
-  const releaseAt = normalizeReleaseAt(decodeHeaderValue(rawReleaseAt));
-  if ((requestedRoomId || releaseAt) && !canModerate(user)) {
-    return { status: 403, error: "Teacher/moderator access required for scheduled room releases" };
-  }
-  if (!requestedRoomId) return { roomId: "", roomName: "", releaseAt };
-  const rooms = await readJson(FILES.rooms, []);
-  const room = rooms.find((entry) => entry.id === requestedRoomId);
-  if (!room) return { status: 404, error: "Release room was not found" };
-  if (!canAccessRoom(room, user)) return { status: 403, error: "You cannot release files to that room" };
-  return { roomId: room.id, roomName: room.name || room.id, releaseAt };
 }
 
 function formatServerBytes(bytes) {

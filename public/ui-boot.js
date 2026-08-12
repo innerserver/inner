@@ -18,15 +18,15 @@
   function writeCollapsed(key, collapsed) {
     try {
       localStorage.setItem(key, collapsed ? "1" : "0");
-    } catch (error) {
-      // Collapsing should still work if browser storage is unavailable.
-    }
+    } catch (error) {}
   }
 
   function syncButton(panel, button) {
     const collapsed = panel.classList.contains("admin-collapsed");
-    button.textContent = collapsed ? "Expand" : "Collapse";
-    button.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    const nextText = collapsed ? "Expand" : "Collapse";
+    const nextExpanded = collapsed ? "false" : "true";
+    if (button.textContent !== nextText) button.textContent = nextText;
+    if (button.getAttribute("aria-expanded") !== nextExpanded) button.setAttribute("aria-expanded", nextExpanded);
   }
 
   function ensurePanel(panel, index) {
@@ -60,6 +60,17 @@
     document.querySelectorAll(PANEL_SELECTOR).forEach(ensurePanel);
   }
 
+  let scheduled = false;
+
+  function scheduleSetupCollapsibles() {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      setupCollapsibles();
+    });
+  }
+
   function setGroupCollapsed(rootId, collapsed) {
     setupCollapsibles();
     document.querySelectorAll(`#${rootId} .panel-form, #${rootId} .status-panel`).forEach((panel, index) => {
@@ -77,8 +88,8 @@
     document.getElementById("expandAdminPanelsButton")?.addEventListener("click", () => setGroupCollapsed("adminView", false));
     document.getElementById("collapseHmdPanelsButton")?.addEventListener("click", () => setGroupCollapsed("hmdView", true));
     document.getElementById("expandHmdPanelsButton")?.addEventListener("click", () => setGroupCollapsed("hmdView", false));
-    new MutationObserver(setupCollapsibles).observe(document.body, { childList: true, subtree: true });
+    new MutationObserver(scheduleSetupCollapsibles).observe(document.body, { childList: true, subtree: true });
   });
 
-  window.InnerUiBoot = { setupCollapsibles, setGroupCollapsed };
+  window.InnerUiBoot = { setupCollapsibles, scheduleSetupCollapsibles, setGroupCollapsed };
 })();

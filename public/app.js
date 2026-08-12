@@ -330,6 +330,8 @@ function cacheElements() {
     "filePickerSummary",
     "fileCategory",
     "privateUpload",
+    "fileReleaseRoom",
+    "fileReleaseAt",
     "uploadButton",
     "uploadQueue",
     "uploadStatus",
@@ -1494,6 +1496,8 @@ async function uploadOneFile(file, category, options = {}) {
       "x-file-type": file.type || "application/octet-stream",
       "x-file-category": category || "document",
       "x-file-private": options.private ? "1" : "0",
+      "x-file-release-room": els.fileReleaseRoom ? els.fileReleaseRoom.value : "",
+      "x-file-release-at": releaseAtHeaderValue(),
     },
     body: file,
   });
@@ -1641,10 +1645,12 @@ function parseGameLinksInput(value) {
     .filter(Boolean)
     .map((line) => {
       const parts = line.split("|");
+      const allowedPart = parts.length > 2 ? parts.pop() : "";
       const rawUrl = parts.length > 1 ? parts.pop() : line;
       const url = normalizeExternalUrl(rawUrl);
       const name = (parts.join("|").trim() || hostLabel(url) || "Game").slice(0, 80);
-      return { name, url };
+      const allowedUsers = splitUserList(allowedPart).filter((entry) => entry.toLowerCase() !== "everyone");
+      return { name, url, allowedUsers };
     })
     .filter((entry) => entry.url)
     .slice(0, 24);
@@ -1652,7 +1658,10 @@ function parseGameLinksInput(value) {
 
 function gameLinksInputValue(links) {
   return (Array.isArray(links) ? links : [])
-    .map((entry) => `${entry.name || hostLabel(entry.url) || "Game"} | ${entry.url || ""}`)
+    .map((entry) => {
+      const allowed = Array.isArray(entry.allowedUsers) && entry.allowedUsers.length ? ` | ${entry.allowedUsers.join(", ")}` : " | everyone";
+      return `${entry.name || hostLabel(entry.url) || "Game"} | ${entry.url || ""}${allowed}`;
+    })
     .filter((line) => line.includes("http"))
     .join("\n");
 }
@@ -1663,6 +1672,19 @@ function hostLabel(url) {
   } catch (error) {
     return "";
   }
+}
+
+function releaseAtHeaderValue() {
+  if (!els.fileReleaseAt || !els.fileReleaseAt.value) return "";
+  const date = new Date(els.fileReleaseAt.value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : "";
+}
+
+function optionNode(value, label) {
+  const option = document.createElement("option");
+  option.value = value;
+  option.textContent = label;
+  return option;
 }
 
 async function sendTestEmail() {
@@ -2315,9 +2337,14 @@ function gameLinks() {
     .map((entry) => ({
       name: String(entry && entry.name || "").trim().slice(0, 80),
       url: normalizeExternalUrl(entry && entry.url),
+      allowedUsers: Array.isArray(entry && entry.allowedUsers) ? entry.allowedUsers.map((name) => String(name || "").toLowerCase()).filter(Boolean) : [],
     }))
-    .filter((entry) => entry.name && entry.url);
-  const chess = { name: "ChessVerse", url: currentChessUrl() || "https://chessverse.co.in/" };
+    .filter((entry) => {
+      if (!entry.name || !entry.url) return false;
+      if (isOwner() || !entry.allowedUsers.length) return true;
+      return state.user && entry.allowedUsers.includes(String(state.user.username || "").toLowerCase());
+    });
+  const chess = { name: "ChessVerse", url: currentChessUrl() || "https://chessverse.co.in/", allowedUsers: [] };
   const merged = [chess, ...normalized];
   const seen = new Set();
   return merged.filter((entry) => {
@@ -4011,6 +4038,16 @@ function renderRooms() {
     })
   );
   els.roomSelect.value = state.selectedRoomId;
+  if (els.fileReleaseRoom) {
+    const previous = els.fileReleaseRoom.value;
+    els.fileReleaseRoom.replaceChildren(
+      optionNode("", "Everyone"),
+      ...visibleRooms.map((room) => optionNode(room.id, room.name))
+    );
+    if ([...els.fileReleaseRoom.options].some((option) => option.value === previous)) {
+      els.fileReleaseRoom.value = previous;
+    }
+  }
 }
 
 function canAccessVisibleRoom(room) {
@@ -4901,6 +4938,8 @@ function renderFiles() {
     meta.className = "file-meta";
     meta.append(textNode(`${file.kind} - ${formatBytes(file.size)}`), textNode(`Uploaded by ${file.user}`), textNode(formatDate(file.createdAt)));
     if (file.private) meta.append(textNode("Visible only to uploader and admins"));
+    if (file.releaseAt) meta.append(textNode(`Release at ${formatDate(file.releaseAt)}`));
+    if (file.releaseRoom) meta.append(textNode(`Release room ${roomName(file.releaseRoom)}`));
     if (isOwner()) {
       meta.append(textNode(`From ${file.sourceIp || "unknown"}`));
       if (file.sourceAgent) meta.append(textNode(file.sourceAgent));
@@ -5664,7 +5703,7 @@ function renderRoomManager() {
 const serviceScaleLabels = [
   { key: "messages", title: "Messages", detail: "Render web service + JSON/database writes", baseUsd: 7, provider: "Render", url: "https://render.com/pricing" },
   { key: "dms", title: "DMs", detail: "Render web service + realtime message storage", baseUsd: 4, provider: "Render", url: "https://render.com/pricing" },
-  { key: "uploads", title: "Uploads", detail: "Cloudinary/file storage and bandwidth", baseUsd: 10, provider: "Cloudinary", url: "https://cloudinary.com/pricing" },
+  { key: "uploads", title: "Uploads", detail: "Backblaze B2 file storage and bandwidth", baseUsd: 7, provider: "Backblaze B2", url: "https://www.backblaze.com/cloud-storage/pricing" },
   { key: "voice", title: "Voice calls", detail: "TURN/WebRTC relay usage planning", baseUsd: 12, provider: "Open Relay / TURN", url: "https://www.metered.ca/tools/openrelay/" },
   { key: "screen", title: "Screen share", detail: "TURN bandwidth for screen/video streams", baseUsd: 14, provider: "TURN relay", url: "https://www.metered.ca/tools/openrelay/" },
   { key: "notifications", title: "Notifications", detail: "Browser alerts + email provider", baseUsd: 3, provider: "Resend", url: "https://resend.com/pricing" },
@@ -5736,7 +5775,7 @@ function renderServiceScaleCostSummary(presetTotal) {
         return sum + Math.round((baseCost * Number(input.value || 100)) / 100);
       }, 0);
   const rupees = formatInr(total);
-  els.serviceScaleCostSummary.textContent = `Rough monthly bill: about $${total}/month, around Rs ${rupees}/month. Planning rate: $1 = Rs ${usdToInrEstimate}. Real billing comes from Render, Cloudinary, Resend, TURN, domain/DNS, and actual usage.`;
+  els.serviceScaleCostSummary.textContent = `Rough monthly bill: about $${total}/month, around Rs ${rupees}/month. Planning rate: $1 = Rs ${usdToInrEstimate}. Real billing comes from Render, Backblaze B2, Resend, TURN, domain/DNS, and actual usage.`;
   if (els.domainBillSummary) {
     els.domainBillSummary.textContent = `Rough monthly bill for the whole app: about $${total}/month, around Rs ${rupees}/month. Domain alone is estimated around $1/month or Rs ${formatInr(1)}/month, usually billed yearly by your registrar.`;
   }
@@ -6748,19 +6787,11 @@ function accountButton(label, onClick) {
 }
 
 function gradeOptions() {
-  const grades = [
-    ["", "No grade"],
-    ["6", "Grade 6"],
-    ["7", "Grade 7"],
-    ["8", "Grade 8"],
-    ["9", "Grade 9"],
-    ["10", "Grade 10"],
-    ["11", "Grade 11"],
-    ["12", "Grade 12"],
-    ["college", "College"],
-    ["staff", "Staff"],
-    ["other", "Other"],
-  ];
+  const grades = [["", "No grade"]];
+  for (let grade = 6; grade <= 12; grade += 1) {
+    ["A", "B", "C"].forEach((section) => grades.push([`${grade}${section}`, `Grade ${grade}${section}`]));
+  }
+  grades.push(["college", "College"], ["staff", "Staff"], ["other", "Other"]);
   return grades.map(([value, label]) => {
     const option = document.createElement("option");
     option.value = value;
@@ -6770,7 +6801,8 @@ function gradeOptions() {
 }
 
 function normalizeClientGrade(grade) {
-  const value = String(grade || "").trim().toLowerCase();
+  const value = String(grade || "").trim().toLowerCase().replace(/\s+/g, "");
+  if (/^(6|7|8|9|10|11|12)[abc]$/.test(value)) return value.toUpperCase();
   return ["6", "7", "8", "9", "10", "11", "12", "college", "staff", "other"].includes(value) ? value : "";
 }
 

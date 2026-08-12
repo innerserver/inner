@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-79-freeze-fix" />
+    <link rel="stylesheet" href="/styles.css?v=inner-80-b2-games-release" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -47,7 +47,7 @@
             <label>Email<input id="requestEmail" type="email" autocomplete="email" placeholder="you@example.com" /></label>
             <label>Phone<input id="requestPhone" type="tel" autocomplete="tel" placeholder="+1 555 000 0000" /></label>
           </div>
-          <label>Grade<select id="requestGrade"><option value="">Choose grade</option><option value="6">Grade 6</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
+          <label>Grade<select id="requestGrade"><option value="">Choose grade</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
           <label>Requested account type<select id="requestRole"><option value="member">Student / member</option><option value="moderator">Teacher / moderator</option></select></label>
           <label>Password<input id="requestPassword" type="password" autocomplete="new-password" placeholder="used after approval" required /></label>
           <label>Note<textarea id="requestNote" rows="3" maxlength="600" placeholder="why you need access"></textarea></label>
@@ -67,7 +67,7 @@
             <label>Email<input id="signupEmail" type="email" autocomplete="email" placeholder="you@example.com" /></label>
             <label>Phone<input id="signupPhone" type="tel" autocomplete="tel" placeholder="+1 555 000 0000" /></label>
           </div>
-          <label>Grade<select id="signupGrade"><option value="">Choose grade</option><option value="6">Grade 6</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
+          <label>Grade<select id="signupGrade"><option value="">Choose grade</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
           <label>Password<input id="signupPassword" type="password" autocomplete="new-password" /></label>
           <button id="signupButton" class="secondary-button" type="submit">Create member account</button>
           <button id="signupBackButton" class="ghost-button" type="button">Back to sign in</button>
@@ -288,7 +288,7 @@
           </div>
           <form id="friendRequestForm" class="upload-bar">
             <input id="friendSearchInput" maxlength="120" placeholder="Search username, email, or phone" autocomplete="off" />
-            <select id="friendGradeSearch" aria-label="Search by grade"><option value="">Grade</option><option value="6">Grade 6</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select>
+            <select id="friendGradeSearch" aria-label="Search by grade"><option value="">Grade</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select>
             <button id="friendGradeSearchButton" class="secondary-button" type="button">Search grade</button>
             <select id="friendUserSelect" aria-label="User"></select>
             <button id="sendFriendRequestButton" class="primary-button" type="submit">Add friend</button>
@@ -323,7 +323,7 @@
             <label>Badges<input id="profileBadges" maxlength="180" placeholder="Helpful, Funny, Supportive" autocomplete="off" /></label>
             <label>Status<select id="profileStatus"><option value="online">Online</option><option value="idle">Idle</option><option value="busy">Busy</option><option value="invisible">Invisible</option></select></label>
             <label>Custom status<input id="profileCustomStatus" maxlength="80" autocomplete="off" /></label>
-            <label>Grade<select id="profileGrade"><option value="">Choose grade</option><option value="6">Grade 6</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
+            <label>Grade<select id="profileGrade"><option value="">Choose grade</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
             <label>Theme<select id="profileTheme"><option value="system">Light</option><option value="midnight">Night</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="custom">Custom</option></select></label>
             <div id="customThemeFields" class="theme-editor">
               <label>Background<input id="profileThemeBg" type="color" value="#f7f7f4" /></label>
@@ -358,6 +358,10 @@
             </select>
             <label class="switch-row upload-private-toggle"><input id="privateUpload" type="checkbox" /><span>Private</span></label>
             <button id="uploadButton" class="primary-button" type="submit">Upload</button>
+            <div class="upload-release-row">
+              <label>Release to<select id="fileReleaseRoom"><option value="">Everyone</option></select></label>
+              <label>Release at<input id="fileReleaseAt" type="datetime-local" /></label>
+            </div>
           </form>
           <div id="uploadQueue" class="account-list"></div>
           <div id="uploadStatus" class="inline-status"></div>
@@ -565,7 +569,7 @@
               <label class="switch-row"><input id="requireContact" type="checkbox" /><span>Require contact details</span></label>
               <label>Report emails<input id="reportEmails" maxlength="300" placeholder="admin@email.com, helper@email.com" /></label>
               <label>Main game link<input id="chessUrlInput" maxlength="300" placeholder="https://chessverse.co.in/" /></label>
-              <label>Games links<textarea id="gameLinksInput" rows="4" maxlength="1600" placeholder="ChessVerse | https://chessverse.co.in/&#10;Cool Math | https://www.coolmathgames.com/"></textarea></label>
+              <label>Games links<textarea id="gameLinksInput" rows="4" maxlength="1600" placeholder="ChessVerse | https://chessverse.co.in/ | admin,dev&#10;Cool Math | https://www.coolmathgames.com/ | everyone"></textarea></label>
               <label class="switch-row"><input id="persistentDefaultEnabled" type="checkbox" checked /><span>Persistent login default on</span></label>
               <label>Persistent grades<input id="persistentGrades" maxlength="160" placeholder="9, 10, 11, staff" /></label>
               <label>Persistent roles/classes<input id="persistentRoles" maxlength="160" placeholder="member, moderator" /></label>
@@ -740,7 +744,7 @@
             <div class="status-panel owner-only hidden wide-panel"><h3>AI requests</h3><div id="aiResponseList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>Backups</h3><button id="createBackupButton" class="secondary-button compact-button" type="button">Create backup</button></div><p class="panel-note">Backups save account data, messages, DMs, settings, and file records. Uploaded file contents stay in the data/uploads folder.</p><div id="backupList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Account requests</h3><p class="panel-note">Requests include browser location because users must turn on location for server allocation.</p><div id="accountRequestList" class="account-list"></div></div>
-            <div id="accountManager" class="status-panel account-manager owner-only hidden"><div class="panel-title-row account-search-row"><h3>Accounts</h3><button id="showAllAccountsButton" class="secondary-button compact-button" type="button">Show all</button><select id="accountGradeFilter" class="compact-search" aria-label="Filter accounts by grade"><option value="">All grades</option><option value="6">Grade 6</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option><option value="none">No grade</option></select><input id="accountSearchInput" class="compact-search" maxlength="120" placeholder="Search username, display name, email, phone, IP, device, role" autocomplete="off" /></div><p class="panel-note">Admin/HMD/dev accounts show by default. Use grade filter, search, or Show all to display member accounts.</p><div id="accountList" class="account-list compact-account-list"></div></div>
+            <div id="accountManager" class="status-panel account-manager owner-only hidden"><div class="panel-title-row account-search-row"><h3>Accounts</h3><button id="showAllAccountsButton" class="secondary-button compact-button" type="button">Show all</button><select id="accountGradeFilter" class="compact-search" aria-label="Filter accounts by grade"><option value="">All grades</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option><option value="none">No grade</option></select><input id="accountSearchInput" class="compact-search" maxlength="120" placeholder="Search username, display name, email, phone, IP, device, role" autocomplete="off" /></div><p class="panel-note">Admin/HMD/dev accounts show by default. Use grade filter, search, or Show all to display member accounts.</p><div id="accountList" class="account-list compact-account-list"></div></div>
             <div id="accountDetailPanel" class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><div><h3 id="accountDetailTitle">Account details</h3><p id="accountDetailSubtitle" class="panel-note">Search and select a user to inspect account and browser activity.</p></div><div class="button-row"><button id="openAccountDetailTabButton" class="secondary-button compact-button" type="button">Open detail tab</button><button id="wipeAccountBrowserHistoryButton" class="danger-button compact-button" type="button">Wipe browser history</button><button id="closeAccountDetailButton" class="ghost-light-button compact-button" type="button">Close</button></div></div><div id="accountDetailBody" class="account-list compact-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Live IP tracking</h3><p class="panel-note">Shows active sessions first, then latest login/IP data for accounts.</p><div id="liveIpList" class="account-list compact-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Reports</h3><div id="reportList" class="account-list"></div></div>
@@ -837,10 +841,10 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-79-freeze-fix" defer></script>
-    <script src="/status-guard.js?v=inner-79-freeze-fix" defer></script>
-    <script src="/ui-boot.js?v=inner-79-freeze-fix" defer></script>
-    <script src="/app.js?v=inner-79-freeze-fix" defer></script>
-    <script src="/force-logout.js?v=inner-79-freeze-fix" defer></script>
+    <script src="/session-guard.js?v=inner-80-b2-games-release" defer></script>
+    <script src="/status-guard.js?v=inner-80-b2-games-release" defer></script>
+    <script src="/ui-boot.js?v=inner-80-b2-games-release" defer></script>
+    <script src="/app.js?v=inner-80-b2-games-release" defer></script>
+    <script src="/force-logout.js?v=inner-80-b2-games-release" defer></script>
   </body>
 </html>

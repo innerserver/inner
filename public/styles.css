@@ -4168,3 +4168,178 @@ textarea {
     gap: 3px;
   }
 }
+
+
+/* v80 recovery polish: mobile, DMs, details, signup, workspace scrolling. */
+html,
+body {
+  min-height: 100%;
+  overscroll-behavior: none;
+}
+
+.app {
+  min-height: 100dvh;
+}
+
+.workspace,
+.view.active,
+.message-list,
+.account-list,
+.embedded-app-frame,
+.google-app-frame {
+  min-width: 0;
+}
+
+#dmsView.view.active,
+#messagesView.view.active,
+#filesView.view.active,
+#googleWorkspaceView.view.active,
+#browserView.view.active {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-height: calc(100dvh - 92px);
+  overflow: hidden;
+}
+
+#dmsView .message-list,
+#messagesView .message-list,
+#accountDetailBody,
+#adminDmList,
+#logList,
+#browserView .embedded-app-frame,
+#googleWorkspaceView .google-app-frame {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+#dmsView .composer,
+#messagesView .composer {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+}
+
+.dm-tools-panel,
+.dm-call-panel,
+.panel-form,
+.status-panel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.login-shell {
+  min-height: 100dvh;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.login-stack {
+  align-items: start;
+  padding-block: clamp(16px, 4dvh, 42px);
+}
+
+.upload-release-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.upload-release-row label {
+  min-width: 0;
+}
+
+.upload-release-row input,
+.upload-release-row select {
+  width: 100%;
+  min-width: 0;
+}
+
+.account-detail-page-list,
+#accountDetailPanel {
+  max-height: min(78dvh, 760px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 860px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .upload-release-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0;
+    width: min(86vw, 340px) !important;
+    max-width: 340px;
+    z-index: 60;
+    transform: translateX(-105%);
+    transition: transform 160ms ease;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app.sidebar-open .sidebar {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop:not(.hidden) {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    display: block;
+    background: rgba(0, 0, 0, 0.36);
+  }
+
+  .workspace {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .topbar-metrics,
+  .topbar-actions {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .topbar-metrics .metric-pill {
+    min-width: 0;
+  }
+
+  .section-header,
+  .upload-bar,
+  .composer,
+  .button-row,
+  .split-fields {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .dm-call-grid,
+  .settings-grid,
+  .admin-grid,
+  .file-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    max-width: 100%;
+  }
+}

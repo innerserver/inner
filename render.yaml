@@ -19,15 +19,15 @@ services:
       - key: INNER_REQUIRE_CLOUD_STORAGE
         value: "true"
       - key: INNER_UPLOAD_PROVIDER
-        value: "cloudinary"
-      - key: CLOUDINARY_CLOUD_NAME
+        value: "backblaze"
+      - key: INNER_B2_KEY_ID
         sync: false
-      - key: CLOUDINARY_API_KEY
+      - key: INNER_B2_APPLICATION_KEY
         sync: false
-      - key: CLOUDINARY_API_SECRET
+      - key: INNER_B2_BUCKET_NAME
         sync: false
-      - key: CLOUDINARY_FOLDER
-        value: "inner_uploads"
+      - key: INNER_B2_BUCKET_ID
+        sync: false
       - key: MONGODB_URI
         sync: false
       - key: MONGODB_DB

@@ -33,6 +33,10 @@ const CLOUDINARY_API_KEY = firstEnvValue("CLOUDINARY_API_KEY", "INNER_CLOUDINARY
 const CLOUDINARY_API_SECRET = firstEnvValue("CLOUDINARY_API_SECRET", "INNER_CLOUDINARY_API_SECRET");
 const CLOUDINARY_FOLDER = firstEnvValue("CLOUDINARY_FOLDER", "INNER_CLOUDINARY_FOLDER") || "inner_uploads";
 const UPLOAD_PROVIDER = String(firstEnvValue("INNER_UPLOAD_PROVIDER", "UPLOAD_PROVIDER") || "").toLowerCase();
+const B2_KEY_ID = firstEnvValue("INNER_B2_KEY_ID", "B2_KEY_ID", "BACKBLAZE_B2_KEY_ID");
+const B2_APPLICATION_KEY = firstEnvValue("INNER_B2_APPLICATION_KEY", "B2_APPLICATION_KEY", "BACKBLAZE_B2_APPLICATION_KEY");
+const B2_BUCKET_NAME = firstEnvValue("INNER_B2_BUCKET_NAME", "B2_BUCKET_NAME", "BACKBLAZE_B2_BUCKET_NAME");
+const B2_BUCKET_ID = firstEnvValue("INNER_B2_BUCKET_ID", "B2_BUCKET_ID", "BACKBLAZE_B2_BUCKET_ID");
 const REPORT_EMAILS = splitEnvList(firstEnvValue("INNER_REPORT_EMAILS", "REPORT_EMAILS", "INNER_ADMIN_EMAILS", "ADMIN_EMAILS")).slice(0, 4);
 const EMAIL_WEBHOOK_URL = firstEnvValue("INNER_EMAIL_WEBHOOK_URL", "REPORT_EMAIL_WEBHOOK_URL", "EMAIL_WEBHOOK_URL");
 const EMAIL_FROM = firstEnvValue("INNER_EMAIL_FROM", "EMAIL_FROM", "RESEND_FROM", "SENDGRID_FROM", "BREVO_FROM") || "Inner <innerservers@gmail.com>";
@@ -851,10 +855,11 @@ async function routeApi(req, res, requestUrl) {
       },
       persistence: {
         mode: storageModeLabel(),
-        cloudStorageReady: cloudinaryConfigured() || persistence.ready,
+        cloudStorageReady: cloudStorageConfigured() || persistence.ready,
         cloudStorageRequired: cloudStorageRequired(),
         localhostMode: LOCALHOST_MODE,
         cloudinaryConfigured: cloudinaryConfigured(),
+        backblazeConfigured: b2Configured(),
         error: persistence.error,
       },
     });
@@ -1103,7 +1108,7 @@ async function routeApi(req, res, requestUrl) {
       messages: normalizedMessages.slice(-500),
       dms: visibleDms.slice(-500),
       dmGroups: safeDmGroups(dmGroups, user),
-      files: safeFileRecords(files, user),
+      files: safeFileRecords(files, user, rooms),
       accountRequests: canManage(user) ? safeAccountRequests(accountRequests, user) : [],
       store: safeStore(store, user),
       innerDocs: safeInnerDocs(innerDocs, user),
@@ -1327,17 +1332,17 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "GET" && pathname === "/api/files") {
-    const files = await readJson(FILES.uploads, []);
-    return json(res, 200, { files: safeFileRecords(files, user) });
+    const [files, rooms] = await Promise.all([readJson(FILES.uploads, []), readJson(FILES.rooms, [])]);
+    return json(res, 200, { files: safeFileRecords(files, user, rooms) });
   }
 
   const fileDownloadMatch = pathname.match(/^\/api\/files\/([^/]+)\/download$/);
   if (req.method === "GET" && fileDownloadMatch) {
     const id = decodeURIComponent(fileDownloadMatch[1]);
-    const files = await readJson(FILES.uploads, []);
+    const [files, rooms] = await Promise.all([readJson(FILES.uploads, []), readJson(FILES.rooms, [])]);
     const record = files.find((entry) => entry.id === id);
     if (!record) return text(res, 404, "File not found");
-    if (!canAccessFileRecord(record, user)) return text(res, 403, "Private file");
+    if (!canAccessFileRecord(record, user, rooms)) return text(res, 403, "Private or unreleased file");
     return serveFileRecord(req, res, record);
   }
 
@@ -2878,10 +2883,11 @@ async function saveUpload(req, res, user) {
   }
 
   const storedName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${extension}`;
-  const mustAvoidLocalDisk = cloudStorageRequired() && cloudinaryConfigured() && UPLOAD_PROVIDER !== "mongodb";
-  if (cloudStorageRequired() && !cloudinaryConfigured() && !persistence.ready) {
+  const preferB2 = UPLOAD_PROVIDER === "b2" || UPLOAD_PROVIDER === "backblaze";
+  const mustAvoidLocalDisk = cloudStorageRequired() && cloudinaryConfigured() && !preferB2 && UPLOAD_PROVIDER !== "mongodb";
+  if (cloudStorageRequired() && !cloudinaryConfigured() && !b2Configured() && !persistence.ready) {
     await addSystemLog("file.upload.blocked", user.username, { name: originalName, reason: "cloud storage missing" }, req);
-    return json(res, 503, { error: "Cloudinary is not connected on this Render app. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET before uploads." });
+    return json(res, 503, { error: "Cloud storage is not connected. Set INNER_UPLOAD_PROVIDER=b2 plus INNER_B2_KEY_ID, INNER_B2_APPLICATION_KEY, and INNER_B2_BUCKET_NAME on Render." });
   }
 
   if (mustAvoidLocalDisk) {
@@ -2979,7 +2985,24 @@ async function saveUpload(req, res, user) {
     persistence: inlineEnabled ? "disk+inline" : "disk",
   });
 
-  if (cloudinaryConfigured() && UPLOAD_PROVIDER !== "mongodb") {
+  if (preferB2 && b2Configured()) {
+    try {
+      const b2File = await uploadLocalFileToB2(storedName, target, fileRecord);
+      fileRecord.cloudStorage = "backblaze-b2";
+      fileRecord.b2FileId = b2File.fileId || "";
+      fileRecord.b2FileName = b2File.fileName || storedName;
+      fileRecord.persistence = "disk+backblaze-b2";
+      fileRecord.url = `/api/files/${fileRecord.id}/download`;
+      inlineEnabled = false;
+      inlineChunks = [];
+    } catch (error) {
+      await addSystemLog("file.upload.failed", user.username, { name: originalName, provider: "backblaze-b2", reason: error.message || "Backblaze B2 upload failed" }, req);
+      fileRecord.cloudStorage = "";
+      fileRecord.cloudStorageError = error.message || "Backblaze B2 upload failed";
+      fileRecord.persistence = inlineEnabled ? "disk+inline" : "disk";
+      fileRecord.url = `/uploads/${encodeURIComponent(storedName)}`;
+    }
+  } else if (cloudinaryConfigured() && UPLOAD_PROVIDER !== "mongodb") {
     try {
       const cloudFile = await uploadLocalFileToCloudinary(storedName, target, fileRecord);
       fileRecord.cloudStorage = "cloudinary";
@@ -3013,7 +3036,7 @@ async function saveUpload(req, res, user) {
     }
   } else if (cloudStorageRequired()) {
     await fsp.rm(target, { force: true }).catch(() => {});
-    return json(res, 503, { error: "Cloud storage is not connected. Set Cloudinary env vars or MONGODB_URI so uploads survive redeploys." });
+    return json(res, 503, { error: "Cloud storage is not connected. Set INNER_UPLOAD_PROVIDER=b2 plus INNER_B2_KEY_ID, INNER_B2_APPLICATION_KEY, and INNER_B2_BUCKET_NAME so uploads survive redeploys." });
   }
 
   if (inlineEnabled && inlineChunks.length) {
@@ -3044,6 +3067,8 @@ async function resolveChatAttachment(attachment) {
 }
 
 function createUploadRecord({ req, user, originalName, storedName, category, extension, providedType, privateUpload, size, url, persistence: persistenceLabel }) {
+  const releaseAt = canModerate(user) ? normalizeReleaseAt(req.headers["x-file-release-at"]) : "";
+  const releaseRoom = canModerate(user) ? String(req.headers["x-file-release-room"] || "").trim().slice(0, 80) : "";
   return {
     id: crypto.randomUUID(),
     originalName,
@@ -3059,6 +3084,8 @@ function createUploadRecord({ req, user, originalName, storedName, category, ext
     sourceDevice: deviceSignature(req),
     approximateLocation: approximateLocationFromIp(getClientIp(req)),
     private: privateUpload,
+    releaseAt,
+    releaseRoom,
     createdAt: new Date().toISOString(),
     url,
     persistence: persistenceLabel,
@@ -3285,6 +3312,159 @@ async function deleteCloudinaryUpload(record) {
   }
 }
 
+async function authorizeB2() {
+  if (!b2Configured()) throw new Error("Backblaze B2 is not configured");
+  const auth = Buffer.from(`${B2_KEY_ID}:${B2_APPLICATION_KEY}`).toString("base64");
+  const response = await fetch("https://api.backblazeb2.com/b2api/v2/b2_authorize_account", {
+    headers: { Authorization: `Basic ${auth}` },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || data.code || `Backblaze authorization failed (${response.status})`);
+  return data;
+}
+
+async function resolveB2Bucket(auth) {
+  if (B2_BUCKET_ID) return { bucketId: B2_BUCKET_ID, bucketName: B2_BUCKET_NAME };
+  const response = await fetch(`${auth.apiUrl}/b2api/v2/b2_list_buckets`, {
+    method: "POST",
+    headers: {
+      Authorization: auth.authorizationToken,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ accountId: auth.accountId, bucketName: B2_BUCKET_NAME }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || data.code || `Backblaze bucket lookup failed (${response.status})`);
+  const bucket = (data.buckets || []).find((entry) => entry.bucketName === B2_BUCKET_NAME);
+  if (!bucket) throw new Error(`Backblaze bucket "${B2_BUCKET_NAME}" was not found`);
+  return bucket;
+}
+
+async function getB2UploadUrl(auth, bucketId) {
+  const response = await fetch(`${auth.apiUrl}/b2api/v2/b2_get_upload_url`, {
+    method: "POST",
+    headers: {
+      Authorization: auth.authorizationToken,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ bucketId }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || data.code || `Backblaze upload URL failed (${response.status})`);
+  return data;
+}
+
+function sha1File(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash("sha1");
+    const stream = fs.createReadStream(filePath);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("error", reject);
+    stream.on("end", () => resolve(hash.digest("hex")));
+  });
+}
+
+async function uploadLocalFileToB2(storedName, filePath, record) {
+  const auth = await authorizeB2();
+  const bucket = await resolveB2Bucket(auth);
+  const upload = await getB2UploadUrl(auth, bucket.bucketId);
+  const stat = await fsp.stat(filePath);
+  const sha1 = await sha1File(filePath);
+  const fileName = encodeURIComponent(`inner/${storedName}`);
+  const uploadUrl = new URL(upload.uploadUrl);
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        method: "POST",
+        hostname: uploadUrl.hostname,
+        path: `${uploadUrl.pathname}${uploadUrl.search}`,
+        headers: {
+          Authorization: upload.authorizationToken,
+          "X-Bz-File-Name": fileName,
+          "Content-Type": record.mimeType || "application/octet-stream",
+          "Content-Length": stat.size,
+          "X-Bz-Content-Sha1": sha1,
+          "X-Bz-Info-inner-id": record.id,
+          "X-Bz-Info-uploader": encodeURIComponent(record.user || ""),
+        },
+      },
+      (res) => {
+        const chunks = [];
+        res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks).toString("utf8");
+          let data = {};
+          try {
+            data = JSON.parse(raw || "{}");
+          } catch (error) {
+            data = {};
+          }
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            reject(new Error(data.message || data.code || `Backblaze upload failed (${res.statusCode})`));
+            return;
+          }
+          resolve(data);
+        });
+      }
+    );
+    req.on("error", reject);
+    fs.createReadStream(filePath).on("error", reject).pipe(req);
+  });
+}
+
+async function uploadBufferToB2(storedName, buffer, record) {
+  const tempName = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}-${path.basename(storedName)}`;
+  const tempPath = path.join(UPLOAD_DIR, tempName);
+  await fsp.writeFile(tempPath, buffer);
+  try {
+    return await uploadLocalFileToB2(storedName, tempPath, record);
+  } finally {
+    await fsp.rm(tempPath, { force: true }).catch(() => {});
+  }
+}
+
+async function proxyB2Upload(req, res, record) {
+  if (!record || record.cloudStorage !== "backblaze-b2" || !record.b2FileName) return false;
+  const auth = await authorizeB2().catch(() => null);
+  if (!auth) return false;
+  const b2Url = new URL(`${auth.downloadUrl}/file/${encodeURIComponent(B2_BUCKET_NAME)}/${String(record.b2FileName || "").split("/").map(encodeURIComponent).join("/")}`);
+  const requestHeaders = { Authorization: auth.authorizationToken };
+  if (req.headers.range) requestHeaders.Range = req.headers.range;
+  const upstream = await fetch(b2Url, { headers: requestHeaders }).catch(() => null);
+  if (!upstream || !upstream.ok) return false;
+  const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
+  const dispositionType = requestUrl.searchParams.get("download") === "1" ? "attachment" : "inline";
+  const headers = {
+    "Content-Type": upstream.headers.get("content-type") || record.mimeType || "application/octet-stream",
+    "Content-Disposition": `${dispositionType}; filename="${String(record.originalName || "upload").replaceAll('"', "")}"`,
+    "Accept-Ranges": upstream.headers.get("accept-ranges") || "bytes",
+    "Cache-Control": record.private ? "no-store" : "private, max-age=60",
+  };
+  const length = upstream.headers.get("content-length");
+  const range = upstream.headers.get("content-range");
+  if (length) headers["Content-Length"] = length;
+  if (range) headers["Content-Range"] = range;
+  res.writeHead(upstream.status === 206 ? 206 : 200, headers);
+  if (upstream.body && typeof Readable.fromWeb === "function") Readable.fromWeb(upstream.body).pipe(res);
+  else res.end(Buffer.from(await upstream.arrayBuffer()));
+  return true;
+}
+
+async function deleteB2Upload(record) {
+  if (!record || record.cloudStorage !== "backblaze-b2" || !record.b2FileId || !record.b2FileName) return;
+  const auth = await authorizeB2();
+  const response = await fetch(`${auth.apiUrl}/b2api/v2/b2_delete_file_version`, {
+    method: "POST",
+    headers: {
+      Authorization: auth.authorizationToken,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ fileName: record.b2FileName, fileId: record.b2FileId }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || data.code || `Backblaze delete failed (${response.status})`);
+}
+
 function appendSignedCloudinaryParams(form, params) {
   const signedParams = {
     ...params,
@@ -3332,7 +3512,17 @@ function cloudinaryConfigured() {
   return Boolean(CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET);
 }
 
+function b2Configured() {
+  return Boolean(B2_KEY_ID && B2_APPLICATION_KEY && B2_BUCKET_NAME);
+}
+
+function cloudStorageConfigured() {
+  return cloudinaryConfigured() || b2Configured();
+}
+
 function storageModeLabel() {
+  if (b2Configured() && persistence.ready) return "backblaze-b2+mongodb-gridfs";
+  if (b2Configured()) return "backblaze-b2";
   if (cloudinaryConfigured() && persistence.ready) return "cloudinary+mongodb-gridfs";
   if (cloudinaryConfigured()) return "cloudinary";
   if (persistence.ready) return "mongodb-gridfs";
@@ -4384,14 +4574,20 @@ function safeDmGroups(groups, user) {
     }));
 }
 
-function canAccessFileRecord(file, user) {
+function canAccessFileRecord(file, user, rooms = []) {
   if (!file || !user) return !file || !file.private;
-  return !file.private || canManage(user) || file.user === user.username;
+  if (canManage(user) || file.user === user.username) return true;
+  const releaseAt = Date.parse(file.releaseAt || "");
+  if (Number.isFinite(releaseAt) && releaseAt > Date.now()) return false;
+  if (file.private) return false;
+  if (!file.releaseRoom) return true;
+  const room = (rooms || []).find((entry) => entry.id === file.releaseRoom || entry.name === file.releaseRoom);
+  return room ? canAccessRoom(room, user) : false;
 }
 
-function safeFileRecords(files, user) {
+function safeFileRecords(files, user, rooms = []) {
   return (files || [])
-    .filter((file) => canAccessFileRecord(file, user))
+    .filter((file) => canAccessFileRecord(file, user, rooms))
     .map((file) => safeFileRecord(file, user));
 }
 
@@ -4505,6 +4701,8 @@ function safeFileRecord(file, viewer) {
     size: file.size,
     user: file.user,
     private: Boolean(file.private),
+    releaseAt: file.releaseAt || "",
+    releaseRoom: file.releaseRoom || "",
     sourceIp: showAdminMeta ? file.sourceIp : "",
     sourceHost: showAdminMeta ? file.sourceHost : "",
     sourceAgent: showAdminMeta ? file.sourceAgent : "",
@@ -4514,8 +4712,10 @@ function safeFileRecord(file, viewer) {
     url: `/api/files/${encodeURIComponent(file.id)}/download`,
     persistence: file.persistence || (file.inlineData ? "disk+inline" : "disk"),
     cloudStorage: file.cloudStorage || "",
-    externalBacked: Boolean(file.cloudinarySecureUrl || file.cloudFileId),
+    externalBacked: Boolean(file.cloudinarySecureUrl || file.cloudFileId || file.b2FileId),
     cloudinaryPublicId: showAdminMeta ? file.cloudinaryPublicId || "" : "",
+    b2FileId: showAdminMeta ? file.b2FileId || "" : "",
+    b2FileName: showAdminMeta ? file.b2FileName || "" : "",
     inlineBacked: Boolean(file.inlineData),
     inlineSize: Number(file.inlineSize || 0),
   };
@@ -4790,11 +4990,12 @@ function sanitizeGameLinks(source = []) {
       return {
         name: String(raw.name || host || "Game").trim().slice(0, 80),
         url,
+        allowedUsers: normalizeUsernameList(raw.allowedUsers || raw.users || raw.visibleTo || []).slice(0, 80),
       };
     })
     .filter((entry) => entry.name && entry.url);
   const withDefault = [
-    { name: "ChessVerse", url: "https://chessverse.co.in/" },
+    { name: "ChessVerse", url: "https://chessverse.co.in/", allowedUsers: [] },
     ...cleaned,
   ];
   const seen = new Set();
@@ -4828,7 +5029,7 @@ function safeUploadConfig(settings) {
   return {
     maxBytes,
     maxLabel: formatServerBytes(maxBytes),
-    directCloudinary: cloudinaryConfigured() && UPLOAD_PROVIDER !== "mongodb",
+    directCloudinary: cloudinaryConfigured() && !["b2", "backblaze", "mongodb"].includes(UPLOAD_PROVIDER),
     cloudRequired: cloudStorageRequired(),
     provider: storageModeLabel(),
   };
@@ -5303,7 +5504,8 @@ function normalizeCurrency(currency) {
 }
 
 function normalizeGrade(grade) {
-  const value = String(grade || "").trim().toLowerCase();
+  const value = String(grade || "").trim().toLowerCase().replace(/\s+/g, "");
+  if (/^(6|7|8|9|10|11|12)[abc]$/.test(value)) return value.toUpperCase();
   if (["6", "7", "8", "9", "10", "11", "12", "college", "staff", "other"].includes(value)) return value;
   return "";
 }
@@ -5513,9 +5715,11 @@ async function storageSummary() {
     dataFileCount: dataFiles.length,
     dataDir: DATA_DIR,
     persistenceMode: storageModeLabel(),
-    cloudStorageReady: cloudinaryConfigured() || persistence.ready,
+    cloudStorageReady: cloudStorageConfigured() || persistence.ready,
     cloudinaryConfigured: cloudinaryConfigured(),
     cloudinaryFolder: cloudinaryConfigured() ? CLOUDINARY_FOLDER : "",
+    backblazeConfigured: b2Configured(),
+    backblazeBucket: b2Configured() ? B2_BUCKET_NAME : "",
     cloudStorageError: persistence.error,
   };
 }
@@ -5545,7 +5749,7 @@ function buildLocalhostState() {
 }
 
 async function migrateExistingUploadsToCloud() {
-  if (!persistence.ready && !cloudinaryConfigured()) return;
+  if (!persistence.ready && !cloudinaryConfigured() && !b2Configured()) return;
   const files = await readJson(FILES.uploads, []);
   if (!Array.isArray(files) || !files.length) return;
 
@@ -5553,6 +5757,37 @@ async function migrateExistingUploadsToCloud() {
   for (const record of files) {
     if (!record || !record.storedName) continue;
     const localPath = path.join(UPLOAD_DIR, record.storedName);
+    if ((UPLOAD_PROVIDER === "b2" || UPLOAD_PROVIDER === "backblaze") && b2Configured() && record.cloudStorage !== "backblaze-b2") {
+      try {
+        if (fs.existsSync(localPath)) {
+          const b2File = await uploadLocalFileToB2(record.storedName, localPath, record);
+          record.cloudStorage = "backblaze-b2";
+          record.b2FileId = b2File.fileId || "";
+          record.b2FileName = b2File.fileName || `inner/${record.storedName}`;
+          record.persistence = record.persistence && record.persistence.includes("disk") ? "disk+backblaze-b2" : "backblaze-b2";
+          delete record.inlineData;
+          record.inlineEncoding = "";
+          record.inlineSize = 0;
+          changed = true;
+          continue;
+        } else if (record.inlineEncoding === "base64" && record.inlineData) {
+          const buffer = Buffer.from(record.inlineData, "base64");
+          const b2File = await uploadBufferToB2(record.storedName, buffer, record);
+          record.cloudStorage = "backblaze-b2";
+          record.b2FileId = b2File.fileId || "";
+          record.b2FileName = b2File.fileName || `inner/${record.storedName}`;
+          record.persistence = "backblaze-b2";
+          delete record.inlineData;
+          record.inlineEncoding = "";
+          record.inlineSize = 0;
+          changed = true;
+          continue;
+        }
+      } catch (error) {
+        persistence.error = error.message || "Backblaze B2 migration failed";
+        console.error("[persistence] backblaze migration failed:", record.originalName || record.storedName, persistence.error);
+      }
+    }
     if (cloudinaryConfigured() && record.cloudStorage !== "cloudinary") {
       try {
         if (fs.existsSync(localPath)) {
@@ -6637,10 +6872,10 @@ async function serveUpload(req, res, pathname, user) {
   const featureError = await featureGateError(settings, "files", user);
   if (featureError) return text(res, 423, featureError);
   const storedName = path.basename(pathname);
-  const files = await readJson(FILES.uploads, []);
+  const [files, rooms] = await Promise.all([readJson(FILES.uploads, []), readJson(FILES.rooms, [])]);
   const record = files.find((entry) => entry.storedName === storedName);
   if (!record) return text(res, 404, "Not found");
-  if (!canAccessFileRecord(record, user)) return text(res, 403, "Private file");
+  if (!canAccessFileRecord(record, user, rooms)) return text(res, 403, "Private or unreleased file");
 
   const target = path.join(UPLOAD_DIR, storedName);
   return serveFileRecord(req, res, record, target);
@@ -6695,6 +6930,9 @@ async function serveFileRecord(req, res, record, targetPath = "") {
 }
 
 async function serveCloudUpload(req, res, record) {
+  if (record && record.cloudStorage === "backblaze-b2") {
+    return proxyB2Upload(req, res, record);
+  }
   if (record && record.cloudStorage === "cloudinary" && record.cloudinarySecureUrl) {
     const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
     if (record.private || requestUrl.searchParams.get("download") === "1") return proxyCloudinaryUpload(req, res, record);
@@ -6799,6 +7037,10 @@ function addCloudinaryDownloadFlag(url, originalName) {
 }
 
 async function deleteCloudUpload(record) {
+  if (record && record.cloudStorage === "backblaze-b2") {
+    await deleteB2Upload(record);
+    return;
+  }
   if (record && record.cloudStorage === "cloudinary") {
     await deleteCloudinaryUpload(record);
     return;
@@ -6884,6 +7126,14 @@ function normalizeCategory(category) {
 function parseBooleanHeader(value) {
   const normalized = String(value || "").trim().toLowerCase();
   return ["1", "true", "yes", "on", "private"].includes(normalized);
+}
+
+function normalizeReleaseAt(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return "";
+  return new Date(parsed).toISOString();
 }
 
 function formatServerBytes(bytes) {

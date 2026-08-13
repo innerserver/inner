@@ -3736,6 +3736,7 @@ function cloudStorageRequired() {
 }
 
 async function handleUpgrade(req, socket) {
+  socket.on("error", () => {});
   const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
   if (requestUrl.pathname !== "/ws") {
     socket.destroy();
@@ -3802,6 +3803,8 @@ async function handleUpgrade(req, socket) {
     missedHeartbeats: 0,
   };
   wsClients.set(id, client);
+  socket.removeAllListeners("error");
+  socket.on("error", () => removeClient(id));
 
   sendWs(client, {
     type: "hello",
@@ -3814,7 +3817,6 @@ async function handleUpgrade(req, socket) {
 
   socket.on("data", (chunk) => handleWsData(client, chunk));
   socket.on("close", () => removeClient(id));
-  socket.on("error", () => removeClient(id));
 }
 
 function handleWsData(client, chunk) {
@@ -3861,7 +3863,7 @@ function handleWsData(client, chunk) {
     }
 
     if (opcode === 0x9) {
-      sendFrame(client.socket, Buffer.alloc(0), 0xA);
+      if (!sendFrame(client.socket, Buffer.alloc(0), 0xA, client)) closeWs(client);
       continue;
     }
 
@@ -4125,9 +4127,7 @@ function startWsHeartbeat() {
         closeWs(client);
         continue;
       }
-      try {
-        sendFrame(client.socket, Buffer.alloc(0), 0x9);
-      } catch (error) {
+      if (!sendFrame(client.socket, Buffer.alloc(0), 0x9, client)) {
         closeWs(client);
       }
     }
@@ -4338,14 +4338,16 @@ function broadcastFileNew(file) {
 function sendWs(client, payload) {
   if (!client.socket || client.socket.destroyed) return;
   try {
-    sendFrame(client.socket, Buffer.from(JSON.stringify(payload), "utf8"), 0x1);
+    if (!sendFrame(client.socket, Buffer.from(JSON.stringify(payload), "utf8"), 0x1, client)) {
+      closeWs(client);
+    }
   } catch (error) {
     closeWs(client);
   }
 }
 
-function sendFrame(socket, payload, opcode) {
-  if (!socket || socket.destroyed || !socket.writable) return;
+function sendFrame(socket, payload, opcode, client) {
+  if (!socket || socket.destroyed || !socket.writable || socket.writableEnded) return false;
   const length = payload.length;
   let header;
 
@@ -4363,11 +4365,38 @@ function sendFrame(socket, payload, opcode) {
   }
 
   header[0] = 0x80 | opcode;
-  socket.write(Buffer.concat([header, payload]));
+  try {
+    return safeWriteSocket(socket, Buffer.concat([header, payload]), client);
+  } catch (error) {
+    if (client) closeWs(client);
+    return false;
+  }
+}
+
+function safeWriteSocket(socket, data, client) {
+  if (!socket || socket.destroyed || !socket.writable || socket.writableEnded) return false;
+  const onError = (error) => {
+    if (client) closeWs(client);
+  };
+  try {
+    const ok = socket.write(data, (error) => {
+      if (error) onError(error);
+    });
+    return ok || !socket.destroyed;
+  } catch (error) {
+    onError(error);
+    return false;
+  }
 }
 
 function closeWs(client) {
-  if (client.socket && !client.socket.destroyed) client.socket.end();
+  if (client.socket && !client.socket.destroyed) {
+    try {
+      client.socket.end();
+    } catch (error) {
+      client.socket.destroy();
+    }
+  }
   removeClient(client.id);
 }
 

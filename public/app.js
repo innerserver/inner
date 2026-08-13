@@ -382,6 +382,7 @@ function cacheElements() {
     "signupMode",
     "requireContact",
     "requireProfileUpdate",
+    "triggerProfileUpdateButton",
     "reportEmails",
     "reportRetentionDays",
     "chessUrlInput",
@@ -772,6 +773,9 @@ function bindEvents() {
   els.createBackupButton.addEventListener("click", createBackup);
   els.wipeLogsButton.addEventListener("click", wipeLogs);
   els.wipeReportsButton.addEventListener("click", () => wipeUtility("reports"));
+  if (els.triggerProfileUpdateButton) {
+    els.triggerProfileUpdateButton.addEventListener("click", triggerProfileUpdateNow);
+  }
   els.wipeUploadsButton.addEventListener("click", () => wipeUtility("uploads"));
   els.wipeRoomsButton.addEventListener("click", () => wipeUtility("rooms"));
   els.notificationsButton.addEventListener("click", handleNotifications);
@@ -1061,6 +1065,10 @@ function showApp() {
 }
 
 function showView(viewName, options = {}) {
+  if (profileUpdateGateActive() && !["profile", "dashboard"].includes(viewName)) {
+    notify("Update grade, class, phone, and email first.");
+    viewName = "profile";
+  }
   if (["docs", "googleDocs", "googleSlides", "googleSheets"].includes(viewName)) {
     if (viewName === "googleSlides") state.googleWorkspaceKind = "slides";
     else if (viewName === "googleSheets") state.googleWorkspaceKind = "sheets";
@@ -1632,6 +1640,25 @@ async function saveServer(event) {
     notify(error.message);
   } finally {
     els.saveServerButton.disabled = false;
+  }
+}
+
+async function triggerProfileUpdateNow() {
+  if (!isOwner()) return notify("Admin access required");
+  try {
+    els.triggerProfileUpdateButton.disabled = true;
+    if (els.requireProfileUpdate) els.requireProfileUpdate.checked = true;
+    const data = await api("/api/settings", {
+      method: "POST",
+      json: serverSettingsPayload({ requireProfileUpdate: true, triggerProfileUpdate: true }),
+    });
+    state.settings = data.settings;
+    renderAll();
+    notify("Profile update required for users");
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    els.triggerProfileUpdateButton.disabled = false;
   }
 }
 
@@ -4103,13 +4130,42 @@ function yearlyGradeReminder() {
 
 function requiredProfileUpdateReminder() {
   if (!state.user || !state.settings.requireProfileUpdate) return "";
-  const profile = state.profiles[state.user.username] || {};
-  const missing = [];
-  if (!normalizeClientGrade(profile.grade || state.user.grade || "")) missing.push("grade/class");
-  if (!String(state.user.email || "").trim()) missing.push("email");
-  if (!String(state.user.phone || "").trim()) missing.push("phone");
+  const missing = profileUpdateMissingFields();
   if (!missing.length) return "";
   return `Admin requested updated ${missing.join(", ")}. Open Profile and save your latest details.`;
+}
+
+function profileUpdateGateActive() {
+  if (!state.user || isOwner() || !state.settings.requireProfileUpdate) return false;
+  return profileUpdateMissingFields().length > 0;
+}
+
+function profileUpdateMissingFields() {
+  if (!state.user) return [];
+  const profile = state.profiles[state.user.username] || {};
+  const missing = [];
+  const augustFirst = latestAugustFirst();
+  const triggerAt = Date.parse(state.settings.profileUpdateRequestedAt || "");
+  const cutoff = Math.max(
+    Number.isFinite(triggerAt) ? triggerAt : 0,
+    augustFirst ? augustFirst.getTime() : 0
+  );
+  const gradeUpdatedAt = Date.parse(profile.gradeUpdatedAt || state.user.gradeUpdatedAt || "");
+  const contactUpdatedAt = Date.parse(profile.contactUpdatedAt || state.user.contactUpdatedAt || "");
+  if (!normalizeClientGrade(profile.grade || state.user.grade || "") || (cutoff && (!Number.isFinite(gradeUpdatedAt) || gradeUpdatedAt < cutoff))) {
+    missing.push("grade/class");
+  }
+  if (!String(state.user.email || "").trim()) missing.push("email");
+  if (!String(state.user.phone || "").trim()) missing.push("phone");
+  if (cutoff && (!Number.isFinite(contactUpdatedAt) || contactUpdatedAt < cutoff)) missing.push("contact confirmation");
+  return [...new Set(missing)];
+}
+
+function latestAugustFirst() {
+  const now = new Date();
+  const augustFirst = new Date(now.getFullYear(), 7, 1);
+  if (now < augustFirst) return null;
+  return augustFirst;
 }
 
 function renderDashboardAnnouncements() {
@@ -4996,6 +5052,13 @@ function safeDownloadName(value) {
   return String(value || "inner-doc").replace(/[^\w.\- ]+/g, "_").trim().slice(0, 80) || "inner-doc";
 }
 
+function roomDisplayName(roomId) {
+  const id = String(roomId || "main");
+  const room = (state.rooms || []).find((entry) => String(entry.id || "") === id);
+  if (room && room.name) return room.name;
+  return id === "main" ? "Main" : id;
+}
+
 function setInnerDocPageBody(value) {
   const html = normalizeInnerDocHtml(value);
   if (els.innerDocPage) els.innerDocPage.innerHTML = html;
@@ -5114,7 +5177,7 @@ function renderFiles() {
     meta.append(textNode(`${file.kind} - ${formatBytes(file.size)}`), textNode(`Uploaded by ${file.user}`), textNode(formatDate(file.createdAt)));
     if (file.private) meta.append(textNode("Visible only to uploader and admins"));
     if (file.releaseAt) meta.append(textNode(`Release at ${formatDate(file.releaseAt)}`));
-    if (file.releaseRoom) meta.append(textNode(`Release room ${roomName(file.releaseRoom)}`));
+    if (file.releaseRoom) meta.append(textNode(`Release room ${roomDisplayName(file.releaseRoom)}`));
     if (isOwner()) {
       meta.append(textNode(`From ${file.sourceIp || "unknown"}`));
       if (file.sourceAgent) meta.append(textNode(file.sourceAgent));
@@ -5430,6 +5493,10 @@ function renderServer() {
   els.signupMode.value = state.settings.signupMode || "request";
   els.requireContact.checked = state.settings.requireContact !== false;
   if (els.requireProfileUpdate) els.requireProfileUpdate.checked = Boolean(state.settings.requireProfileUpdate);
+  if (els.triggerProfileUpdateButton) {
+    const requestedAt = state.settings.profileUpdateRequestedAt ? `Last triggered ${formatDate(state.settings.profileUpdateRequestedAt)}` : "Trigger profile update now";
+    els.triggerProfileUpdateButton.textContent = requestedAt;
+  }
   els.reportEmails.value = Array.isArray(state.settings.reportEmails) ? state.settings.reportEmails.join(", ") : "";
   if (els.reportRetentionDays) els.reportRetentionDays.value = String(Math.max(1, Math.min(3650, Number(state.settings.reportRetentionDays || 30))));
   if (els.chessUrlInput) els.chessUrlInput.value = currentChessUrl();
@@ -7935,6 +8002,7 @@ async function saveProfile(event) {
     state.profiles = data.profiles || state.profiles;
     state.user = { ...state.user, ...(data.user || {}), email: els.profileEmail ? els.profileEmail.value.trim() : state.user.email, phone: els.profilePhone ? els.profilePhone.value.trim() : state.user.phone };
     renderProfile();
+    renderDashboard();
     applyProfileTheme();
     notify("Profile saved");
     sendWs({

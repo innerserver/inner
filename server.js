@@ -765,7 +765,7 @@ async function routeApi(req, res, requestUrl) {
     if (clearExpiredUserRestrictions(users)) await writeJson(FILES.users, users);
     const user = users.find((entry) => entry.username.toLowerCase() === String(body.username || "").toLowerCase());
 
-    if (!user || !verifyPassword(String(body.password || ""), user.passwordHash)) {
+    if (!user || !(await verifyPasswordAsync(String(body.password || ""), user.passwordHash))) {
       const requestLogin = await requestLoginStatus(String(body.username || ""), String(body.password || ""));
       if (requestLogin) {
         return json(res, 403, { error: requestLogin.message, requestStatus: requestLogin.status });
@@ -1002,6 +1002,8 @@ async function routeApi(req, res, requestUrl) {
       email,
       phone,
       grade,
+      gradeUpdatedAt: grade ? now : "",
+      contactUpdatedAt: contact ? now : "",
       sourceIp: getClientIp(req),
       sourceHost: req.headers.host || "",
       sourceAgent: String(req.headers["user-agent"] || "").slice(0, 240),
@@ -1017,6 +1019,7 @@ async function routeApi(req, res, requestUrl) {
       displayName: body.displayName || username,
       grade,
       gradeUpdatedAt: grade ? now : "",
+      contactUpdatedAt: contact ? now : "",
       updatedAt: now,
     });
     await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles)]);
@@ -1383,6 +1386,11 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     const profiles = await readJson(FILES.profiles, {});
     const previous = profiles[user.username] || defaultProfile(user.username);
+    const now = new Date().toISOString();
+    const submittedGrade = normalizeGrade(body.grade || "");
+    const submittedEmail = String(body.email || "").trim().slice(0, 120);
+    const submittedPhone = String(body.phone || "").trim().slice(0, 40);
+    const submittedContact = [submittedEmail, submittedPhone].filter(Boolean).join(" / ");
     const next = sanitizeProfile({
       ...previous,
       displayName: body.displayName,
@@ -1392,28 +1400,30 @@ async function routeApi(req, res, requestUrl) {
       badges: body.badges,
       customStatus: body.customStatus,
       grade: body.grade,
-      gradeUpdatedAt: normalizeGrade(body.grade || "") !== normalizeGrade(previous.grade || "") ? new Date().toISOString() : previous.gradeUpdatedAt,
+      gradeUpdatedAt: submittedGrade ? now : previous.gradeUpdatedAt,
+      contactUpdatedAt: submittedContact ? now : previous.contactUpdatedAt,
       status: body.status,
       invisible: Boolean(body.invisible),
       theme: body.theme,
       customTheme: body.customTheme,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
     });
     profiles[user.username] = next;
     const users = await readJson(FILES.users, []);
     const userIndex = users.findIndex((entry) => entry.username.toLowerCase() === user.username.toLowerCase());
     if (userIndex !== -1) {
-      const nextEmail = String(body.email || users[userIndex].email || "").trim().slice(0, 120);
-      const nextPhone = String(body.phone || users[userIndex].phone || "").trim().slice(0, 40);
+      const nextEmail = submittedEmail || String(users[userIndex].email || "").trim().slice(0, 120);
+      const nextPhone = submittedPhone || String(users[userIndex].phone || "").trim().slice(0, 40);
       const contactParts = [nextEmail, nextPhone].filter(Boolean);
       users[userIndex] = {
         ...users[userIndex],
         grade: next.grade,
-        gradeUpdatedAt: users[userIndex].grade !== next.grade ? next.gradeUpdatedAt : users[userIndex].gradeUpdatedAt,
+        gradeUpdatedAt: next.grade ? now : users[userIndex].gradeUpdatedAt,
         email: nextEmail,
         phone: nextPhone,
         contact: contactParts.length ? contactParts.join(" / ") : users[userIndex].contact || "",
-        updatedAt: new Date().toISOString(),
+        contactUpdatedAt: contactParts.length ? now : users[userIndex].contactUpdatedAt,
+        updatedAt: now,
         updatedBy: user.username,
       };
       await writeJson(FILES.users, users);
@@ -2051,7 +2061,7 @@ async function routeApi(req, res, requestUrl) {
     const room = rooms.find((entry) => entry.id === roomId);
     if (!room) return json(res, 404, { error: "Room not found" });
     if (!room.passwordHash) return json(res, 200, { room: safeRoom(room), rooms: safeRooms(rooms) });
-    if (!verifyPassword(password, room.passwordHash)) return json(res, 403, { error: "Room password is incorrect" });
+    if (!(await verifyPasswordAsync(password, room.passwordHash))) return json(res, 403, { error: "Room password is incorrect" });
     if (!Array.isArray(room.allowedUsers)) room.allowedUsers = [];
     if (!room.allowedUsers.includes(user.username)) room.allowedUsers.push(user.username);
     await writeJson(FILES.rooms, rooms);
@@ -2384,6 +2394,8 @@ async function routeApi(req, res, requestUrl) {
       email: request.email,
       phone: request.phone,
       grade: request.grade,
+      gradeUpdatedAt: request.grade ? now : "",
+      contactUpdatedAt: request.contact ? now : "",
       sourceIp: request.sourceIp,
       sourceDevice: request.sourceDevice,
       sourceAgent: request.sourceAgent,
@@ -2398,6 +2410,7 @@ async function routeApi(req, res, requestUrl) {
       displayName: request.displayName || request.username,
       grade: request.grade,
       gradeUpdatedAt: request.grade ? now : "",
+      contactUpdatedAt: request.contact ? now : "",
       updatedAt: now,
     });
     requests[index] = sanitizeAccountRequest({
@@ -2677,6 +2690,9 @@ async function routeApi(req, res, requestUrl) {
     const settings = await readJson(FILES.settings, {});
     const nextServerEnabled =
       typeof body.serverEnabled === "boolean" ? body.serverEnabled : Boolean(settings.serverEnabled);
+    const nextRequireProfileUpdate =
+      typeof body.requireProfileUpdate === "boolean" ? body.requireProfileUpdate : Boolean(settings.requireProfileUpdate);
+    const previousProfileUpdateGeneration = String(settings.profileUpdateRequestedAt || "");
     const next = {
       ...settings,
       serverEnabled: nextServerEnabled,
@@ -2685,7 +2701,10 @@ async function routeApi(req, res, requestUrl) {
         ? String(body.signupMode || settings.signupMode).toLowerCase()
         : DEFAULT_SIGNUP_MODE,
       requireContact: typeof body.requireContact === "boolean" ? body.requireContact : settings.requireContact !== false,
-      requireProfileUpdate: typeof body.requireProfileUpdate === "boolean" ? body.requireProfileUpdate : Boolean(settings.requireProfileUpdate),
+      requireProfileUpdate: nextRequireProfileUpdate,
+      profileUpdateRequestedAt: nextRequireProfileUpdate
+        ? (body.triggerProfileUpdate || !settings.requireProfileUpdate ? new Date().toISOString() : previousProfileUpdateGeneration || new Date().toISOString())
+        : "",
       reportEmails: Array.isArray(body.reportEmails)
         ? body.reportEmails.map((entry) => String(entry || "").trim()).filter(Boolean).slice(0, 4)
         : Array.isArray(settings.reportEmails)
@@ -2853,7 +2872,7 @@ async function routeApi(req, res, requestUrl) {
 
     const users = await readJson(FILES.users, []);
     const index = users.findIndex((entry) => entry.username === user.username);
-    if (index === -1 || !verifyPassword(currentPassword, users[index].passwordHash)) {
+    if (index === -1 || !(await verifyPasswordAsync(currentPassword, users[index].passwordHash))) {
       return json(res, 403, { error: "Current password is incorrect" });
     }
 
@@ -4320,6 +4339,7 @@ function safeUser(user, viewer = null) {
     phone: user.phone || "",
     grade: normalizeGrade(user.grade || ""),
     gradeUpdatedAt: user.gradeUpdatedAt || "",
+    contactUpdatedAt: user.contactUpdatedAt || "",
     mutedUntil: user.mutedUntil || "",
     muted: isUserMuted(user),
     shadowMuted: Boolean(user.shadowMuted),
@@ -4373,6 +4393,7 @@ function defaultProfile(username) {
     invisible: false,
     grade: "",
     gradeUpdatedAt: "",
+    contactUpdatedAt: "",
     theme: "system",
     customTheme: defaultCustomTheme(),
     createdAt: new Date().toISOString(),
@@ -4390,6 +4411,7 @@ function sanitizeProfile(profile) {
     customStatus: String(profile.customStatus || "").trim().slice(0, 80),
     grade: normalizeGrade(profile.grade || ""),
     gradeUpdatedAt: profile.gradeUpdatedAt || "",
+    contactUpdatedAt: profile.contactUpdatedAt || "",
     status: normalizePresenceStatus(profile.status),
     invisible: Boolean(profile.invisible),
     theme: normalizeRoomTheme(profile.theme),
@@ -4903,7 +4925,7 @@ async function requestLoginStatus(usernameValue, passwordValue) {
   const request = requests
     .map(sanitizeAccountRequest)
     .find((entry) => entry.username.toLowerCase() === username.toLowerCase());
-  if (!request || !request.passwordHash || !verifyPassword(passwordValue, request.passwordHash)) return null;
+  if (!request || !request.passwordHash || !(await verifyPasswordAsync(passwordValue, request.passwordHash))) return null;
   if (request.status === "pending" || request.status === "reviewing") {
     return {
       status: request.status,
@@ -6526,6 +6548,18 @@ function verifyPassword(password, passwordRecord) {
   const actual = crypto.scryptSync(password, salt, 64);
   const expectedBuffer = Buffer.from(expected, "hex");
   return expectedBuffer.length === actual.length && crypto.timingSafeEqual(expectedBuffer, actual);
+}
+
+function verifyPasswordAsync(password, passwordRecord) {
+  const [salt, expected] = String(passwordRecord || "").split(":");
+  if (!salt || !expected) return Promise.resolve(false);
+  const expectedBuffer = Buffer.from(expected, "hex");
+  return new Promise((resolve) => {
+    crypto.scrypt(String(password || ""), salt, 64, (error, actual) => {
+      if (error || expectedBuffer.length !== actual.length) return resolve(false);
+      resolve(crypto.timingSafeEqual(expectedBuffer, actual));
+    });
+  });
 }
 
 async function readJsonBody(req) {

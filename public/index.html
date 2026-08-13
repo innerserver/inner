@@ -602,8 +602,25 @@
               <label>Report alert emails<input id="emailReports" maxlength="500" placeholder="reports@school.com, admin@school.com" /></label>
               <label>Account request/signup emails<input id="emailAccounts" maxlength="500" placeholder="accounts@school.com, admissions@school.com" /></label>
               <label>Announcement emails<input id="emailAnnouncements" maxlength="500" placeholder="announcements@school.com" /></label>
-              <label>Failed login emails<input id="emailLoginFailures" maxlength="500" placeholder="security@school.com" /></label>
+              <label>Security/admin fallback emails<input id="emailLoginFailures" maxlength="500" placeholder="security@school.com" /></label>
               <label>Admin test/general emails<input id="emailGeneral" maxlength="500" placeholder="admin@school.com" /></label>
+              <div class="email-contact-grid">
+                <label>Noreply sender<input id="emailContactNoreply" type="email" maxlength="160" placeholder="noreply@connectifi.in" /></label>
+                <label>Security contact<input id="emailContactSecurity" type="email" maxlength="160" placeholder="security@connectifi.in" /></label>
+                <label>Support contact<input id="emailContactSupport" type="email" maxlength="160" placeholder="support@connectifi.in" /></label>
+                <label>Admin contact<input id="emailContactAdmin" type="email" maxlength="160" placeholder="admin@connectifi.in" /></label>
+              </div>
+              <p class="panel-note">Email footers tell users which address replies go to. Cloudflare forwards those aliases to the Gmail accounts you connected.</p>
+              <div class="split-fields">
+                <label>Test route<select id="testEmailRoute">
+                  <option value="general">General/admin</option>
+                  <option value="reports">Reports/security</option>
+                  <option value="accountRequests">Account requests</option>
+                  <option value="announcements">Announcements</option>
+                  <option value="loginFailures">Security fallback</option>
+                </select></label>
+                <label>Test action<span class="fake-label-spacer"></span><button id="testEmailButton" class="secondary-button" type="button">Send test email</button></label>
+              </div>
               <label>Reports stay for days<input id="reportRetentionDays" type="number" min="1" max="3650" value="30" /></label>
               <label>Main game link<input id="chessUrlInput" maxlength="300" placeholder="https://chessverse.co.in/" /></label>
               <label>Games links<textarea id="gameLinksInput" rows="4" maxlength="1600" placeholder="ChessVerse | https://chessverse.co.in/ | admin,dev&#10;Cool Math | https://www.coolmathgames.com/ | everyone"></textarea></label>
@@ -611,7 +628,6 @@
               <label>Persistent grades<input id="persistentGrades" maxlength="160" placeholder="9, 10, 11, staff" /></label>
               <label>Persistent roles/classes<input id="persistentRoles" maxlength="160" placeholder="member, moderator" /></label>
               <label>Persistent rooms<input id="persistentRooms" maxlength="300" placeholder="room names or room ids, comma separated" /></label>
-              <button id="testEmailButton" class="secondary-button" type="button">Send test email</button>
               <p id="emailStatusText" class="panel-note">Email status is checking.</p>
               <label class="switch-row"><input id="serverEnabled" type="checkbox" /><span>Server enabled</span></label>
               <button id="saveServerButton" class="primary-button" type="submit">Save server</button>

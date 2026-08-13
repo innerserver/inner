@@ -404,6 +404,11 @@ function cacheElements() {
     "emailAnnouncements",
     "emailLoginFailures",
     "emailGeneral",
+    "emailContactNoreply",
+    "emailContactSecurity",
+    "emailContactSupport",
+    "emailContactAdmin",
+    "testEmailRoute",
     "reportRetentionDays",
     "chessUrlInput",
     "gameLinksInput",
@@ -1783,6 +1788,12 @@ function serverSettingsPayload(extra = {}) {
       loginFailures: splitEmailList(els.emailLoginFailures ? els.emailLoginFailures.value : ""),
       general: splitEmailList(els.emailGeneral ? els.emailGeneral.value : ""),
     },
+    emailContacts: {
+      noreply: cleanEmailInput(els.emailContactNoreply ? els.emailContactNoreply.value : ""),
+      security: cleanEmailInput(els.emailContactSecurity ? els.emailContactSecurity.value : ""),
+      support: cleanEmailInput(els.emailContactSupport ? els.emailContactSupport.value : ""),
+      admin: cleanEmailInput(els.emailContactAdmin ? els.emailContactAdmin.value : ""),
+    },
     reportRetentionDays: Math.max(1, Math.min(3650, Number(els.reportRetentionDays ? els.reportRetentionDays.value : state.settings.reportRetentionDays || 30))),
     chessUrl: normalizeExternalUrl(els.chessUrlInput ? els.chessUrlInput.value : ""),
     gameLinks: parseGameLinksInput(els.gameLinksInput ? els.gameLinksInput.value : ""),
@@ -1802,6 +1813,11 @@ function splitEmailList(value) {
     .map((entry) => entry.trim())
     .filter((entry) => entry.includes("@"))
     .slice(0, 10);
+}
+
+function cleanEmailInput(value) {
+  const email = String(value || "").trim();
+  return email.includes("@") ? email : "";
 }
 
 function parseGameLinksInput(value) {
@@ -1862,10 +1878,11 @@ async function sendTestEmail() {
       method: "POST",
       json: serverSettingsPayload(),
     });
-    const data = await api("/api/email/test", { method: "POST" });
+    const route = els.testEmailRoute ? els.testEmailRoute.value : "general";
+    const data = await api("/api/email/test", { method: "POST", json: { route } });
     state.emailStatus = data.email || state.emailStatus;
     renderEmailStatus();
-    const provider = data.email && data.email.providers && data.email.providers.brevo ? "Brevo" : "email provider";
+    const provider = data.result && data.result.provider ? data.result.provider : "email provider";
     notify(`Test email sent with ${provider}`);
   } catch (error) {
     refreshEmailStatus().catch(() => {});
@@ -5635,6 +5652,11 @@ function renderServer() {
   if (els.emailAnnouncements) els.emailAnnouncements.value = Array.isArray(routes.announcements) ? routes.announcements.join(", ") : "";
   if (els.emailLoginFailures) els.emailLoginFailures.value = Array.isArray(routes.loginFailures) ? routes.loginFailures.join(", ") : "";
   if (els.emailGeneral) els.emailGeneral.value = Array.isArray(routes.general) ? routes.general.join(", ") : "";
+  const contacts = state.settings.emailContacts || {};
+  if (els.emailContactNoreply) els.emailContactNoreply.value = contacts.noreply || "noreply@connectifi.in";
+  if (els.emailContactSecurity) els.emailContactSecurity.value = contacts.security || "security@connectifi.in";
+  if (els.emailContactSupport) els.emailContactSupport.value = contacts.support || "support@connectifi.in";
+  if (els.emailContactAdmin) els.emailContactAdmin.value = contacts.admin || "admin@connectifi.in";
   if (els.reportRetentionDays) els.reportRetentionDays.value = String(Math.max(1, Math.min(3650, Number(state.settings.reportRetentionDays || 30))));
   if (els.chessUrlInput) els.chessUrlInput.value = currentChessUrl();
   if (els.gameLinksInput && document.activeElement !== els.gameLinksInput) {
@@ -5651,7 +5673,7 @@ function renderServer() {
   if (els.newAccountPersistent) els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
 
   const admin = isOwner();
-  [els.roomNameInput, els.signupMode, els.requireContact, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.reportEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.emailGeneral, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+  [els.roomNameInput, els.signupMode, els.requireContact, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.reportEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.emailGeneral, els.emailContactNoreply, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
   });
@@ -5672,6 +5694,7 @@ function renderEmailStatus() {
     .map(([name]) => name.charAt(0).toUpperCase() + name.slice(1));
   const recipients = Array.isArray(status.recipients) ? status.recipients : [];
   const from = status.from || "not set";
+  const contacts = status.contacts || state.settings.emailContacts || {};
   if (!recipients.length) {
     els.emailStatusText.textContent = "Email alerts need at least one report email in this box.";
     return;
@@ -5680,7 +5703,7 @@ function renderEmailStatus() {
     els.emailStatusText.textContent = "Email alerts need SMTP settings, BREVO_API_KEY, RESEND_API_KEY, SENDGRID_API_KEY, or INNER_EMAIL_WEBHOOK_URL in Render.";
     return;
   }
-  els.emailStatusText.textContent = `Email alerts: ${enabledProviders.join(", ")} configured. Sending from ${from}. Default recipients: ${recipients.join(", ")}. Route-specific boxes override this per email type.`;
+  els.emailStatusText.textContent = `Email alerts: ${enabledProviders.join(", ")} configured. Sending from ${from}. Default recipients: ${recipients.join(", ")}. Contacts: security ${contacts.security || "-"}, support ${contacts.support || "-"}, admin ${contacts.admin || "-"}.`;
 }
 
 async function refreshEmailStatus() {

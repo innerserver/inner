@@ -405,6 +405,7 @@ async function ensureStorage() {
     passwordResetEnabled: true,
     reportEmails: REPORT_EMAILS,
     emailRoutes: {},
+    emailContacts: defaultEmailContacts(),
     reportRetentionDays: 30,
     featureLocks: {},
     featureVisibility: {},
@@ -671,6 +672,13 @@ async function ensureSettings() {
     next.emailRoutes = {};
     changed = true;
   }
+  if (!next.emailContacts || typeof next.emailContacts !== "object" || Array.isArray(next.emailContacts)) {
+    next.emailContacts = defaultEmailContacts();
+    changed = true;
+  } else {
+    next.emailContacts = sanitizeEmailContacts(next.emailContacts);
+    changed = true;
+  }
   if (!Number.isFinite(Number(next.reportRetentionDays)) || Number(next.reportRetentionDays) < 1) {
     next.reportRetentionDays = 30;
     changed = true;
@@ -782,12 +790,18 @@ async function routeApi(req, res, requestUrl) {
         return json(res, 403, { error: requestLogin.message, requestStatus: requestLogin.status });
       }
       await addSystemLog("login.failed", String(body.username || "unknown").slice(0, 80), { reason: "Invalid username or password" }, req);
-      await notifyAdminEmails("Inner failed login attempt", [
-        `Username tried: ${String(body.username || "unknown").slice(0, 80)}`,
-        `IP: ${getClientIp(req) || "unknown"}`,
-        `Device: ${deviceSignature(req)}`,
-        `Time: ${new Date().toISOString()}`,
-      ].join("\n"), { route: "loginFailures" });
+      if (user && String(user.email || "").includes("@")) {
+        await sendDirectEmail([user.email], "Inner failed login attempt", [
+          `Hi ${user.username},`,
+          "",
+          "Someone tried to sign in to your Inner account and the password was incorrect.",
+          `IP: ${getClientIp(req) || "unknown"}`,
+          `Device: ${deviceSignature(req)}`,
+          `Time: ${new Date().toISOString()}`,
+          "",
+          "If this was you, you can ignore this. If it was not you, reset your password or contact an admin.",
+        ].join("\n"));
+      }
       return json(res, 401, { error: "Invalid username or password" });
     }
 
@@ -2805,6 +2819,7 @@ async function routeApi(req, res, requestUrl) {
           ? settings.reportEmails.slice(0, 4)
           : REPORT_EMAILS,
       emailRoutes: sanitizeEmailRoutes(body.emailRoutes && typeof body.emailRoutes === "object" ? body.emailRoutes : settings.emailRoutes || {}),
+      emailContacts: sanitizeEmailContacts(body.emailContacts && typeof body.emailContacts === "object" ? body.emailContacts : settings.emailContacts || {}),
       reportRetentionDays: Math.max(1, Math.min(3650, Number(body.reportRetentionDays || settings.reportRetentionDays || 30))),
       chessUrl: sanitizeExternalUrl(body.chessUrl) || sanitizeExternalUrl(settings.chessUrl) || "https://chessverse.co.in/",
       gameLinks: sanitizeGameLinks(body.gameLinks !== undefined ? body.gameLinks : settings.gameLinks || []),
@@ -3007,10 +3022,18 @@ async function routeApi(req, res, requestUrl) {
 
   if (req.method === "POST" && pathname === "/api/email/test") {
     if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
+    const body = await readJsonBody(req);
+    const route = sanitizeEmailRouteKey(body.route || "general");
+    const contactType = contactTypeForEmailRoute(route);
+    const contacts = sanitizeEmailContacts((await readJson(FILES.settings, {})).emailContacts || {});
     const result = await notifyAdminEmails(
-      "Inner test email",
-      `This is a test email from Inner.\n\nSent by ${user.username} at ${new Date().toISOString()}.\nIf you received this, email delivery is working.`,
-      { detailed: true }
+      `Inner ${emailRouteLabel(route)} test email`,
+      [
+        `This is a test email from Inner for ${emailRouteLabel(route)}.`,
+        `Sent by ${user.username} at ${new Date().toISOString()}.`,
+        "If you received this, that email route is working.",
+      ].join("\n\n"),
+      { detailed: true, route, contactType, actionLabel: "Email route test", ctaUrl: publicBaseUrl(req) }
     );
     if (!result.ok) {
       const status = emailProviderStatus(result.recipients || []);
@@ -5220,6 +5243,8 @@ function normalizeAccountRequestStatus(status) {
 function safeSettings(settings) {
   return {
     ...settings,
+    emailRoutes: sanitizeEmailRoutes(settings.emailRoutes || {}),
+    emailContacts: sanitizeEmailContacts(settings.emailContacts || {}),
     gameLinks: sanitizeGameLinks(settings.gameLinks || []),
     customizations: sanitizeCustomizations(settings.customizations || {}),
     serviceScale: sanitizeServiceScale(settings.serviceScale || {}),
@@ -6186,8 +6211,9 @@ async function notifyAdminEmails(subject, body, options = {}) {
 }
 
 function recipientsForEmailRoute(settings, route) {
+  const cleanRoute = sanitizeEmailRouteKey(route || "general");
   const routes = settings && settings.emailRoutes && typeof settings.emailRoutes === "object" ? settings.emailRoutes : {};
-  const routeList = Array.isArray(routes[route]) ? routes[route] : [];
+  const routeList = Array.isArray(routes[cleanRoute]) ? routes[cleanRoute] : [];
   const fallbackList = Array.isArray(settings && settings.reportEmails) ? settings.reportEmails : [];
   const clean = routeList.map(cleanEmailAddress).filter(Boolean);
   const fallback = fallbackList.map(cleanEmailAddress).filter(Boolean);
@@ -6200,13 +6226,79 @@ function cleanEmailAddress(value) {
 }
 
 function sanitizeEmailRoutes(routes = {}) {
-  const allowed = ["reports", "accountRequests", "signups", "accountApprovals", "accountCreated", "announcements", "loginFailures", "general"];
+  const allowed = emailRouteKeys();
   const next = {};
   allowed.forEach((key) => {
     const list = Array.isArray(routes[key]) ? routes[key] : [];
     next[key] = list.map(cleanEmailAddress).filter(Boolean).slice(0, 10);
   });
   return next;
+}
+
+function emailRouteKeys() {
+  return ["reports", "accountRequests", "signups", "accountApprovals", "accountCreated", "announcements", "loginFailures", "general"];
+}
+
+function sanitizeEmailRouteKey(route) {
+  const key = String(route || "").trim();
+  return emailRouteKeys().includes(key) ? key : "general";
+}
+
+function emailRouteLabel(route) {
+  return {
+    reports: "report alert",
+    accountRequests: "account request",
+    signups: "signup",
+    accountApprovals: "account approval",
+    accountCreated: "account creation",
+    announcements: "announcement",
+    loginFailures: "security",
+    general: "general",
+  }[sanitizeEmailRouteKey(route)] || "general";
+}
+
+function defaultEmailContacts() {
+  const fromEmail = parseEmailFrom(EMAIL_FROM).email;
+  return {
+    noreply: cleanEmailAddress(firstEnvValue("INNER_NOREPLY_EMAIL") || fromEmail || "noreply@connectifi.in") || "",
+    security: cleanEmailAddress(firstEnvValue("INNER_SECURITY_EMAIL") || "security@connectifi.in") || "",
+    support: cleanEmailAddress(firstEnvValue("INNER_SUPPORT_EMAIL") || EMAIL_REPLY_TO || "support@connectifi.in") || "",
+    admin: cleanEmailAddress(firstEnvValue("INNER_ADMIN_CONTACT_EMAIL") || REPORT_EMAILS[0] || "admin@connectifi.in") || "",
+  };
+}
+
+function sanitizeEmailContacts(source = {}) {
+  const defaults = defaultEmailContacts();
+  return {
+    noreply: cleanEmailAddress(source.noreply) || defaults.noreply,
+    security: cleanEmailAddress(source.security) || defaults.security,
+    support: cleanEmailAddress(source.support) || defaults.support,
+    admin: cleanEmailAddress(source.admin) || defaults.admin,
+  };
+}
+
+function contactTypeForEmailRoute(route) {
+  return {
+    reports: "security",
+    loginFailures: "security",
+    accountRequests: "admin",
+    signups: "admin",
+    accountApprovals: "admin",
+    accountCreated: "admin",
+    announcements: "support",
+    general: "support",
+  }[sanitizeEmailRouteKey(route)] || "support";
+}
+
+function contactForEmail(settings, options = {}) {
+  const contacts = sanitizeEmailContacts(settings && settings.emailContacts ? settings.emailContacts : {});
+  const type = ["noreply", "security", "support", "admin"].includes(options.contactType) ? options.contactType : contactTypeForEmailRoute(options.route || "general");
+  return {
+    type,
+    email: contacts[type] || contacts.support || EMAIL_REPLY_TO || "",
+    from: contacts.noreply || parseEmailFrom(EMAIL_FROM).email || "",
+    contacts,
+  };
 }
 
 async function sendDirectEmail(recipients, subject, body, options = {}) {
@@ -6217,6 +6309,8 @@ async function sendDirectEmail(recipients, subject, body, options = {}) {
 }
 
 async function sendEmailToRecipients(recipients, subject, body, options = {}) {
+  const settings = await readJson(FILES.settings, {}).catch(() => ({}));
+  const contact = contactForEmail(settings, options);
   if (!recipients.length && !EMAIL_WEBHOOK_URL) {
     await addSystemLog("email.skipped", "system", { subject, reason: "No recipients configured" });
     const result = { ok: false, reason: "No recipients configured", recipients, provider: "", status: 0 };
@@ -6225,6 +6319,10 @@ async function sendEmailToRecipients(recipients, subject, body, options = {}) {
   const payload = {
     subject,
     body,
+    from: emailFromForContact(contact),
+    html: buildEmailHtml(subject, body, { ...options, contact }),
+    replyTo: options.replyTo || contact.email || EMAIL_REPLY_TO || "",
+    contact,
     recipients,
     app: "Inner",
     createdAt: new Date().toISOString(),
@@ -6293,11 +6391,12 @@ async function sendResendEmail(payload) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: EMAIL_FROM,
+      from: payload.from || EMAIL_FROM,
       to: payload.recipients,
       subject: payload.subject,
       text: payload.body,
-      reply_to: EMAIL_REPLY_TO || undefined,
+      html: payload.html,
+      reply_to: payload.replyTo || undefined,
     }),
   });
   const data = await response.json().catch(() => ({}));
@@ -6314,7 +6413,7 @@ function smtpConfigured() {
 }
 
 async function sendSmtpEmail(payload) {
-  const { email, name } = parseEmailFrom(EMAIL_FROM || SMTP_USER);
+  const { email, name } = parseEmailFrom(payload.from || EMAIL_FROM || SMTP_USER);
   if (!email || !email.includes("@")) {
     return { provider: "smtp", ok: false, status: 0, error: "INNER_EMAIL_FROM must be a real email sender" };
   }
@@ -6329,10 +6428,20 @@ async function sendSmtpEmail(payload) {
     `Subject: ${subject}`,
     `Date: ${new Date().toUTCString()}`,
     "MIME-Version: 1.0",
+    `Reply-To: ${payload.replyTo || EMAIL_REPLY_TO || email}`,
+    "Content-Type: multipart/alternative; boundary=inner-email-boundary",
+    "",
+    "--inner-email-boundary",
     "Content-Type: text/plain; charset=UTF-8",
     "Content-Transfer-Encoding: 8bit",
     "",
-    payload.body,
+    emailTextWithFooter(payload),
+    "--inner-email-boundary",
+    "Content-Type: text/html; charset=UTF-8",
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    payload.html,
+    "--inner-email-boundary--",
   ].join("\r\n").replace(/\r?\n\./g, "\r\n..");
 
   let socket;
@@ -6445,7 +6554,7 @@ function sanitizeMailHeader(value) {
 }
 
 async function sendBrevoEmail(payload) {
-  const { email, name } = parseEmailFrom(EMAIL_FROM);
+  const { email, name } = parseEmailFrom(payload.from || EMAIL_FROM);
   if (!email || !email.includes("@")) {
     return {
       provider: "brevo",
@@ -6465,8 +6574,9 @@ async function sendBrevoEmail(payload) {
       sender: { email, name: name || "Inner" },
       to: payload.recipients.map((address) => ({ email: address })),
       subject: payload.subject,
-      textContent: payload.body,
-      replyTo: EMAIL_REPLY_TO ? { email: EMAIL_REPLY_TO } : undefined,
+      textContent: emailTextWithFooter(payload),
+      htmlContent: payload.html,
+      replyTo: payload.replyTo ? { email: payload.replyTo } : undefined,
     }),
   });
   const data = await response.json().catch(() => ({}));
@@ -6479,7 +6589,7 @@ async function sendBrevoEmail(payload) {
 }
 
 async function sendSendGridEmail(payload) {
-  const { email, name } = parseEmailFrom(EMAIL_FROM);
+  const { email, name } = parseEmailFrom(payload.from || EMAIL_FROM);
   const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
     method: "POST",
     headers: {
@@ -6489,9 +6599,12 @@ async function sendSendGridEmail(payload) {
     body: JSON.stringify({
       personalizations: [{ to: payload.recipients.map((address) => ({ email: address })) }],
       from: { email, name: name || "Inner" },
-      reply_to: EMAIL_REPLY_TO ? { email: EMAIL_REPLY_TO } : undefined,
+      reply_to: payload.replyTo ? { email: payload.replyTo } : undefined,
       subject: payload.subject,
-      content: [{ type: "text/plain", value: payload.body }],
+      content: [
+        { type: "text/plain", value: emailTextWithFooter(payload) },
+        { type: "text/html", value: payload.html },
+      ],
     }),
   });
   const text = await response.text().catch(() => "");
@@ -6546,6 +6659,7 @@ function emailProviderStatus(recipients = []) {
     from: EMAIL_FROM,
     fromEmail: parsedFrom.email,
     replyTo: EMAIL_REPLY_TO || "",
+    contacts: sanitizeEmailContacts(),
     providers: {
       smtp: smtpConfigured(),
       brevo: Boolean(BREVO_API_KEY),
@@ -6554,6 +6668,68 @@ function emailProviderStatus(recipients = []) {
       webhook: Boolean(EMAIL_WEBHOOK_URL),
     },
   };
+}
+
+function emailTextWithFooter(payload) {
+  const replyTo = payload.replyTo || (payload.contact && payload.contact.email) || EMAIL_REPLY_TO || "";
+  const footer = replyTo
+    ? `\n\nReplying to this email goes to ${replyTo}.`
+    : "\n\nReplying to this email may not reach the right team until a reply-to address is configured.";
+  return `${payload.body || ""}${footer}\n\nInner`;
+}
+
+function emailFromForContact(contact = {}) {
+  const email = cleanEmailAddress(contact.from) || cleanEmailAddress(contact.email) || parseEmailFrom(EMAIL_FROM).email;
+  return email ? `Inner <${email}>` : EMAIL_FROM;
+}
+
+function buildEmailHtml(subject, body, options = {}) {
+  const contact = options.contact || {};
+  const replyTo = contact.email || EMAIL_REPLY_TO || "";
+  const label = options.actionLabel || emailRouteLabel(options.route || "general");
+  const ctaUrl = sanitizeExternalUrl(options.ctaUrl || "");
+  const bodyHtml = String(body || "")
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+  const cta = ctaUrl
+    ? `<a href="${escapeHtml(ctaUrl)}" style="display:inline-block;background:#151515;color:#fff;text-decoration:none;border-radius:8px;padding:12px 16px;font-weight:700;">Open Inner</a>`
+    : "";
+  const replyLine = replyTo
+    ? `Replying to this email goes to <strong>${escapeHtml(replyTo)}</strong>.`
+    : "Replies are not connected until a reply-to/contact email is configured.";
+  return `<!doctype html>
+<html>
+  <body style="margin:0;background:#f6f6f2;color:#151515;font-family:Inter,Arial,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f6f2;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border:1px solid #deded6;border-radius:14px;overflow:hidden;">
+            <tr>
+              <td style="padding:22px 24px;background:#151515;color:#ffffff;">
+                <div style="font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#a6d7ca;">Inner</div>
+                <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2;">${escapeHtml(subject)}</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;font-size:16px;line-height:1.55;">
+                <div style="display:inline-block;margin-bottom:14px;padding:6px 10px;border:1px solid #d8ded8;border-radius:999px;color:#245c4f;background:#eef6f3;font-size:13px;font-weight:800;">${escapeHtml(label)}</div>
+                ${bodyHtml}
+                ${cta ? `<div style="margin-top:20px;">${cta}</div>` : ""}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 24px;border-top:1px solid #e6e6df;color:#5d625f;font-size:13px;line-height:1.45;">
+                ${replyLine}<br>
+                Contact type: ${escapeHtml(contact.type || "support")}. Sent by Inner.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
 }
 
 function emailFailureMessage(result, status) {

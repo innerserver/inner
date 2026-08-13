@@ -2,7 +2,7 @@
   "name": "Inner",
   "short_name": "Inner",
   "description": "Private workspace for rooms, DMs, files, screen sharing, admin controls, backups, and VPN profile settings.",
-  "start_url": "/",
+  "start_url": "/?v=inner-93-input-contact-cachefix",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f7f7f4",
@@ -16,3 +16,5 @@
     }
   ]
 }
+
+

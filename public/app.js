@@ -127,12 +127,14 @@ const viewRoutes = {
 };
 
 const els = {};
+const inputDrafts = new WeakMap();
 
 document.addEventListener("DOMContentLoaded", () => {
   state.notificationsEnabled = getStoredFlag("innerNotifications");
   restoreUiState();
   cacheElements();
   bindEvents();
+  bindInputDraftProtection();
   refreshSignupStatus().catch(() => {});
   if (handlePasswordResetTokenFromUrl()) return;
   loadState().catch((error) => showLogin(error.status === 401 ? "" : error.message));
@@ -853,6 +855,35 @@ function bindEvents() {
   }
 }
 
+function bindInputDraftProtection() {
+  document.addEventListener("input", captureInputDraft, true);
+  document.addEventListener("change", captureInputDraft, true);
+  document.addEventListener("submit", (event) => clearFormDrafts(event.target), true);
+  document.addEventListener("reset", (event) => window.setTimeout(() => clearFormDrafts(event.target), 0), true);
+}
+
+function captureInputDraft(event) {
+  const input = event.target;
+  if (!isDraftableInput(input)) return;
+  inputDrafts.set(input, {
+    value: input.value,
+    checked: input.type === "checkbox" ? input.checked : undefined,
+    selectionStart: typeof input.selectionStart === "number" ? input.selectionStart : null,
+    selectionEnd: typeof input.selectionEnd === "number" ? input.selectionEnd : null,
+  });
+}
+
+function clearFormDrafts(form) {
+  if (!form || typeof form.querySelectorAll !== "function") return;
+  form.querySelectorAll("input, textarea, select").forEach((input) => inputDrafts.delete(input));
+}
+
+function isDraftableInput(input) {
+  if (!input || !input.matches || !input.matches("input, textarea, select")) return false;
+  if (["button", "submit", "reset", "file", "hidden"].includes(input.type)) return false;
+  return Boolean(input.id || input.name);
+}
+
 async function handleLogin(event) {
   event.preventDefault();
   els.loginError.textContent = "";
@@ -1561,8 +1592,8 @@ function renderBrowserPolicy() {
   if (!els.browserPolicyForm) return;
   const policy = state.settings.browserPolicy || {};
   if (els.browserAllowOnly) els.browserAllowOnly.checked = Boolean(policy.allowOnly);
-  if (els.browserAllowedSites) els.browserAllowedSites.value = Array.isArray(policy.allowedSites) ? policy.allowedSites.join("\n") : "";
-  if (els.browserBlockedSites) els.browserBlockedSites.value = Array.isArray(policy.blockedSites) ? policy.blockedSites.join("\n") : "";
+  setInputIfNotFocused(els.browserAllowedSites, Array.isArray(policy.allowedSites) ? policy.allowedSites.join("\n") : "");
+  setInputIfNotFocused(els.browserBlockedSites, Array.isArray(policy.blockedSites) ? policy.blockedSites.join("\n") : "");
 }
 
 function splitDomainList(value) {
@@ -3874,7 +3905,7 @@ function renderAll() {
 
 function preserveFocusedField(callback) {
   const active = document.activeElement;
-  const canPreserve = active && active.dataset && active.matches("input, textarea, select");
+  const canPreserve = isDraftableInput(active);
   const snapshot = canPreserve
     ? {
         element: active,
@@ -3887,15 +3918,16 @@ function preserveFocusedField(callback) {
   callback();
   if (!snapshot || !snapshot.element.isConnected) return;
   const element = snapshot.element;
+  const draft = inputDrafts.get(element) || snapshot;
   if (document.activeElement !== element) element.focus({ preventScroll: true });
   if (element.type === "checkbox") {
-    element.checked = snapshot.checked;
+    element.checked = draft.checked;
     return;
   }
-  if (element.value !== snapshot.value) element.value = snapshot.value;
-  if (snapshot.selectionStart !== null && typeof element.setSelectionRange === "function") {
+  if (element.value !== draft.value) element.value = draft.value;
+  if (draft.selectionStart !== null && typeof element.setSelectionRange === "function") {
     try {
-      element.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+      element.setSelectionRange(draft.selectionStart, draft.selectionEnd);
     } catch (error) {
       // Some input types do not support text selection.
     }
@@ -4983,12 +5015,12 @@ function renderProfile() {
   setInputIfNotFocused(els.profileAvatarUrl, profile.avatarUrl || "");
   setInputIfNotFocused(els.profileBannerUrl, profile.bannerUrl || "");
   setInputIfNotFocused(els.profileBadges, Array.isArray(profile.badges) ? profile.badges.join(", ") : "");
-  els.profileStatus.value = profile.invisible ? "invisible" : profile.status || "online";
+  setInputIfNotFocused(els.profileStatus, profile.invisible ? "invisible" : profile.status || "online");
   setInputIfNotFocused(els.profileCustomStatus, profile.customStatus || "");
   setInputIfNotFocused(els.profileGrade, profile.grade || state.user.grade || "");
   setInputIfNotFocused(els.profileEmail, state.user.email || "");
   setInputIfNotFocused(els.profilePhone, state.user.phone || "");
-  els.profileTheme.value = profile.theme || "system";
+  setInputIfNotFocused(els.profileTheme, profile.theme || "system");
   setInputIfNotFocused(els.profileThemeBg, safeColor(customTheme.bg, "#f7f7f4"));
   setInputIfNotFocused(els.profileThemeSurface, safeColor(customTheme.surface, "#ffffff"));
   setInputIfNotFocused(els.profileThemeInk, safeColor(customTheme.ink, "#151515"));
@@ -5643,8 +5675,8 @@ function renderVpn() {
     })
   );
 
-  els.vpnUsername.value = state.vpn.username || "";
-  els.vpnLocation.value = state.vpn.location || state.locations[0] || "United States";
+  setInputIfNotFocused(els.vpnUsername, state.vpn.username || "");
+  setInputIfNotFocused(els.vpnLocation, state.vpn.location || state.locations[0] || "United States");
   els.vpnEnabled.checked = Boolean(state.vpn.enabled);
   els.vpnState.textContent = state.vpn.enabled ? "Enabled" : "Off";
   els.vpnLocationStatus.textContent = state.vpn.location || "-";
@@ -5663,7 +5695,7 @@ function renderServer() {
     ? "Active"
     : `Shutdown${state.settings.shutdownBy ? ` by ${state.settings.shutdownBy}` : ""}`;
   setInputIfNotFocused(els.roomNameInput, state.settings.roomName || "Inner");
-  els.signupMode.value = state.settings.signupMode || "request";
+  setInputIfNotFocused(els.signupMode, state.settings.signupMode || "request");
   els.requireContact.checked = state.settings.requireContact !== false;
   if (els.requireProfileUpdate) els.requireProfileUpdate.checked = Boolean(state.settings.requireProfileUpdate);
   setInputIfNotFocused(els.adminContactEmail, state.settings.adminContactEmail || "");
@@ -5691,9 +5723,7 @@ function renderServer() {
   setInputIfNotFocused(els.emailContactAdmin, contacts.admin || "admin@connectifi.in");
   setInputIfNotFocused(els.reportRetentionDays, String(Math.max(1, Math.min(3650, Number(state.settings.reportRetentionDays || 30)))));
   setInputIfNotFocused(els.chessUrlInput, currentChessUrl());
-  if (els.gameLinksInput && document.activeElement !== els.gameLinksInput) {
-    els.gameLinksInput.value = gameLinksInputValue(state.settings.gameLinks || []);
-  }
+  setInputIfNotFocused(els.gameLinksInput, gameLinksInputValue(state.settings.gameLinks || []));
   const persistent = state.settings.persistentLogin || {};
   if (els.persistentDefaultEnabled) els.persistentDefaultEnabled.checked = persistent.defaultEnabled !== false;
   setInputIfNotFocused(els.persistentGrades, Array.isArray(persistent.grades) ? persistent.grades.join(", ") : "");
@@ -5714,7 +5744,7 @@ function renderServer() {
 }
 
 function setInputIfNotFocused(input, value) {
-  if (!input || document.activeElement === input) return;
+  if (!input || document.activeElement === input || inputDrafts.has(input)) return;
   input.value = value == null ? "" : String(value);
 }
 
@@ -5756,19 +5786,19 @@ function renderQuickEdit() {
   els.quickEditForm.classList.toggle("hidden", !admin);
   if (!admin) return;
   const custom = state.settings.customizations || {};
-  els.quickAppName.value = custom.appName || "";
-  els.quickConnectedLabel.value = custom.connectedLabel || "";
-  els.quickDisconnectedLabel.value = custom.disconnectedLabel || "";
-  els.quickServerOnLabel.value = custom.serverOnLabel || "";
-  els.quickServerOffLabel.value = custom.serverOffLabel || "";
-  els.quickVersionLabel.value = custom.versionLabel || "";
-  if (els.quickUpdateTitle) els.quickUpdateTitle.value = custom.updateTitle || "";
-  if (els.quickUpdateNote) els.quickUpdateNote.value = custom.updateNote || "";
-  els.quickNotice.value = custom.notice || "";
-  els.quickAccent.value = /^#[0-9a-f]{6}$/i.test(custom.accent || "") ? custom.accent : "#245c4f";
-  els.quickDensity.value = custom.density || "comfortable";
+  setInputIfNotFocused(els.quickAppName, custom.appName || "");
+  setInputIfNotFocused(els.quickConnectedLabel, custom.connectedLabel || "");
+  setInputIfNotFocused(els.quickDisconnectedLabel, custom.disconnectedLabel || "");
+  setInputIfNotFocused(els.quickServerOnLabel, custom.serverOnLabel || "");
+  setInputIfNotFocused(els.quickServerOffLabel, custom.serverOffLabel || "");
+  setInputIfNotFocused(els.quickVersionLabel, custom.versionLabel || "");
+  setInputIfNotFocused(els.quickUpdateTitle, custom.updateTitle || "");
+  setInputIfNotFocused(els.quickUpdateNote, custom.updateNote || "");
+  setInputIfNotFocused(els.quickNotice, custom.notice || "");
+  setInputIfNotFocused(els.quickAccent, /^#[0-9a-f]{6}$/i.test(custom.accent || "") ? custom.accent : "#245c4f");
+  setInputIfNotFocused(els.quickDensity, custom.density || "comfortable");
   els.quickRounded.checked = custom.rounded !== false;
-  els.quickCustomCss.value = custom.customCss || "";
+  setInputIfNotFocused(els.quickCustomCss, custom.customCss || "");
 }
 
 function renderUsers() {
@@ -6580,8 +6610,8 @@ function contactLine(label, contact) {
 
 function renderLogs() {
   if (!els.logList || !isOwner()) return;
-  if (document.activeElement !== els.logSearchInput) els.logSearchInput.value = state.logSearch || "";
-  if (document.activeElement !== els.logDateInput) els.logDateInput.value = state.logDate || "";
+  setInputIfNotFocused(els.logSearchInput, state.logSearch || "");
+  setInputIfNotFocused(els.logDateInput, state.logDate || "");
   els.logList.replaceChildren();
   const visibleLogs = filteredSystemLogs();
   if (!state.logs.length) {
@@ -6621,7 +6651,7 @@ function renderHmd() {
   );
   els.devEmergencyMode.checked = Boolean(config.emergencyMode);
   els.devMetricsEnabled.checked = config.metricsEnabled !== false;
-  els.devTheme.value = config.theme || "midnight";
+  setInputIfNotFocused(els.devTheme, config.theme || "midnight");
 
   els.databaseList.replaceChildren(
     adminCard("Rooms", String(counts.rooms || state.rooms.length || 0), ["Room/channel records"]),
@@ -6641,9 +6671,9 @@ function renderHmd() {
   renderSimpleList(els.pluginList, state.plugins, "No plugins", (plugin) => adminCard(plugin.name, plugin.enabled ? "Enabled" : "Off", [plugin.hook || "", plugin.notes || ""].filter(Boolean)));
 
   els.automodEnabled.checked = Boolean(state.automod.enabled);
-  els.automodWindow.value = state.automod.spamWindowSeconds || 8;
-  els.automodMax.value = state.automod.maxMessagesPerWindow || 6;
-  els.automodWords.value = (state.automod.mutedWords || []).join("\n");
+  setInputIfNotFocused(els.automodWindow, state.automod.spamWindowSeconds || 8);
+  setInputIfNotFocused(els.automodMax, state.automod.maxMessagesPerWindow || 6);
+  setInputIfNotFocused(els.automodWords, (state.automod.mutedWords || []).join("\n"));
 }
 
 function renderAdminAutomod() {
@@ -6652,9 +6682,9 @@ function renderAdminAutomod() {
   els.adminAutomodForm.classList.toggle("hidden", !admin);
   if (!admin) return;
   els.adminAutomodEnabled.checked = Boolean(state.automod.enabled);
-  els.adminAutomodWindow.value = state.automod.spamWindowSeconds || 8;
-  els.adminAutomodMax.value = state.automod.maxMessagesPerWindow || 6;
-  els.adminAutomodWords.value = (state.automod.mutedWords || []).join("\n");
+  setInputIfNotFocused(els.adminAutomodWindow, state.automod.spamWindowSeconds || 8);
+  setInputIfNotFocused(els.adminAutomodMax, state.automod.maxMessagesPerWindow || 6);
+  setInputIfNotFocused(els.adminAutomodWords, (state.automod.mutedWords || []).join("\n"));
 }
 
 function renderLocalhostTools(local) {

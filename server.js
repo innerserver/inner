@@ -745,6 +745,15 @@ async function route(req, res) {
     return serveStatic(res, path.join(PUBLIC_DIR, "index.html"));
   }
 
+  if (req.method === "GET" && pathname === "/accessibility.html") {
+    res.writeHead(302, {
+      Location: "/contact.html",
+      "Cache-Control": "no-store",
+    });
+    res.end();
+    return;
+  }
+
   if (pathname.startsWith("/api/")) {
     return routeApi(req, res, requestUrl);
   }

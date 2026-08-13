@@ -839,16 +839,6 @@ async function routeApi(req, res, requestUrl) {
     }
 
     await addSystemLog("login.success", user.username, { role: normalizeRole(user.role), persistent, persistentReason: persistentLoginReason(user, settings, rooms) }, req);
-    await notifyAdminEmails(differentLogin ? "Inner different login alert" : "Inner login alert", [
-      `${user.username} signed in.`,
-      `Role: ${normalizeRole(user.role)}`,
-      `IP: ${currentLoginIp || "unknown"}`,
-      `Device: ${currentLoginDevice}`,
-      `Previous IP: ${previousLoginIp || "none"}`,
-      `Previous device: ${previousLoginDevice || "none"}`,
-      `Different login: ${differentLogin ? "yes" : "no"}`,
-      `Time: ${new Date().toISOString()}`,
-    ].join("\n"));
     res.setHeader("Set-Cookie", sessionCookie(token, req, persistent ? Math.floor(SESSION_PERSISTENT_MS / 1000) : null));
     return json(res, 200, { user: safeUser(user) });
   }

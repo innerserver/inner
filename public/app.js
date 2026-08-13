@@ -2574,7 +2574,7 @@ function connectSocket() {
       if (state.ws === ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "ping", at: Date.now() }));
       }
-    }, 25000);
+    }, 15000);
   });
   ws.addEventListener("close", () => {
     if (state.ws !== ws) return;
@@ -2674,17 +2674,20 @@ function scheduleSocketRefresh() {
 
 function startSessionKeepAlive() {
   clearInterval(state.sessionKeepAliveTimer);
-  state.sessionKeepAliveTimer = setInterval(() => {
+  const pingSession = () => {
     if (!state.loggedIn) return;
     fetch("/api/session/ping", { credentials: "same-origin", cache: "no-store" })
       .then((response) => {
         if (response.ok) {
           state.lastLiveAt = Date.now();
+          setConnection("Live");
           if (!isRealtimeReady()) connectSocket();
         }
       })
       .catch(() => {});
-  }, 10 * 60 * 1000);
+  };
+  pingSession();
+  state.sessionKeepAliveTimer = setInterval(pingSession, 2 * 60 * 1000);
 }
 
 function stopSessionKeepAlive() {

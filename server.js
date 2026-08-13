@@ -88,6 +88,7 @@ const SESSION_IDLE_MS = Math.max(60 * 60 * 1000, Number(process.env.INNER_SESSIO
 const SESSION_PERSISTENT_MS = 180 * 24 * 60 * 60 * 1000;
 const sessions = new Map();
 const wsClients = new Map();
+let wsHeartbeatTimer = null;
 const messageRateLimits = new Map();
 const banExpiryTimers = new Map();
 const serverStartedAt = new Date().toISOString();
@@ -257,6 +258,7 @@ async function main() {
   });
 
   server.on("upgrade", handleUpgrade);
+  startWsHeartbeat();
 
   server.listen(PORT, HOST, () => {
     const scheme = server.isInnerHttps ? "https" : "http";
@@ -3680,6 +3682,8 @@ async function handleUpgrade(req, socket) {
     deafened: false,
     videoEnabled: false,
     cameraOff: true,
+    lastPongAt: Date.now(),
+    missedHeartbeats: 0,
   };
   wsClients.set(id, client);
 
@@ -3742,6 +3746,12 @@ function handleWsData(client, chunk) {
 
     if (opcode === 0x9) {
       sendFrame(client.socket, Buffer.alloc(0), 0xA);
+      continue;
+    }
+
+    if (opcode === 0xA) {
+      client.lastPongAt = Date.now();
+      client.missedHeartbeats = 0;
       continue;
     }
 
@@ -3983,6 +3993,32 @@ async function removeClient(id) {
   }
 }
 
+function startWsHeartbeat() {
+  clearInterval(wsHeartbeatTimer);
+  wsHeartbeatTimer = setInterval(() => {
+    const now = Date.now();
+    for (const client of Array.from(wsClients.values())) {
+      if (!client.socket || client.socket.destroyed) {
+        removeClient(client.id);
+        continue;
+      }
+      if (now - Number(client.lastPongAt || client.connectedAt || now) > 90000) {
+        client.missedHeartbeats = Number(client.missedHeartbeats || 0) + 1;
+      }
+      if (client.missedHeartbeats >= 3) {
+        closeWs(client);
+        continue;
+      }
+      try {
+        sendFrame(client.socket, Buffer.alloc(0), 0x9);
+      } catch (error) {
+        closeWs(client);
+      }
+    }
+  }, 20000);
+  if (typeof wsHeartbeatTimer.unref === "function") wsHeartbeatTimer.unref();
+}
+
 function expireUserSessions(username) {
   const lower = String(username || "").toLowerCase();
   for (const [token, session] of sessions) {
@@ -4185,10 +4221,15 @@ function broadcastFileNew(file) {
 
 function sendWs(client, payload) {
   if (!client.socket || client.socket.destroyed) return;
-  sendFrame(client.socket, Buffer.from(JSON.stringify(payload), "utf8"), 0x1);
+  try {
+    sendFrame(client.socket, Buffer.from(JSON.stringify(payload), "utf8"), 0x1);
+  } catch (error) {
+    closeWs(client);
+  }
 }
 
 function sendFrame(socket, payload, opcode) {
+  if (!socket || socket.destroyed || !socket.writable) return;
   const length = payload.length;
   let header;
 

@@ -5630,43 +5630,43 @@ function renderServer() {
   els.serverStateText.textContent = enabled
     ? "Active"
     : `Shutdown${state.settings.shutdownBy ? ` by ${state.settings.shutdownBy}` : ""}`;
-  els.roomNameInput.value = state.settings.roomName || "Inner";
+  setInputIfNotFocused(els.roomNameInput, state.settings.roomName || "Inner");
   els.signupMode.value = state.settings.signupMode || "request";
   els.requireContact.checked = state.settings.requireContact !== false;
   if (els.requireProfileUpdate) els.requireProfileUpdate.checked = Boolean(state.settings.requireProfileUpdate);
-  if (els.adminContactEmail) els.adminContactEmail.value = state.settings.adminContactEmail || "";
+  setInputIfNotFocused(els.adminContactEmail, state.settings.adminContactEmail || "");
   if (els.passwordResetEnabled) els.passwordResetEnabled.checked = state.settings.passwordResetEnabled !== false;
   if (els.triggerProfileUpdateButton) {
     const requestedAt = state.settings.profileUpdateRequestedAt ? `Last triggered ${formatDate(state.settings.profileUpdateRequestedAt)}` : "Trigger profile update now";
     els.triggerProfileUpdateButton.textContent = requestedAt;
   }
-  els.reportEmails.value = Array.isArray(state.settings.reportEmails) ? state.settings.reportEmails.join(", ") : "";
+  setInputIfNotFocused(els.reportEmails, Array.isArray(state.settings.reportEmails) ? state.settings.reportEmails.join(", ") : "");
   const routes = state.settings.emailRoutes || {};
-  if (els.emailReports) els.emailReports.value = Array.isArray(routes.reports) ? routes.reports.join(", ") : "";
+  setInputIfNotFocused(els.emailReports, Array.isArray(routes.reports) ? routes.reports.join(", ") : "");
   if (els.emailAccounts) {
     const accounts = Array.isArray(routes.accountRequests) && routes.accountRequests.length
       ? routes.accountRequests
       : Array.isArray(routes.signups) ? routes.signups : [];
-    els.emailAccounts.value = accounts.join(", ");
+    setInputIfNotFocused(els.emailAccounts, accounts.join(", "));
   }
-  if (els.emailAnnouncements) els.emailAnnouncements.value = Array.isArray(routes.announcements) ? routes.announcements.join(", ") : "";
-  if (els.emailLoginFailures) els.emailLoginFailures.value = Array.isArray(routes.loginFailures) ? routes.loginFailures.join(", ") : "";
-  if (els.emailGeneral) els.emailGeneral.value = Array.isArray(routes.general) ? routes.general.join(", ") : "";
+  setInputIfNotFocused(els.emailAnnouncements, Array.isArray(routes.announcements) ? routes.announcements.join(", ") : "");
+  setInputIfNotFocused(els.emailLoginFailures, Array.isArray(routes.loginFailures) ? routes.loginFailures.join(", ") : "");
+  setInputIfNotFocused(els.emailGeneral, Array.isArray(routes.general) ? routes.general.join(", ") : "");
   const contacts = state.settings.emailContacts || {};
-  if (els.emailContactNoreply) els.emailContactNoreply.value = contacts.noreply || "noreply@connectifi.in";
-  if (els.emailContactSecurity) els.emailContactSecurity.value = contacts.security || "security@connectifi.in";
-  if (els.emailContactSupport) els.emailContactSupport.value = contacts.support || "support@connectifi.in";
-  if (els.emailContactAdmin) els.emailContactAdmin.value = contacts.admin || "admin@connectifi.in";
-  if (els.reportRetentionDays) els.reportRetentionDays.value = String(Math.max(1, Math.min(3650, Number(state.settings.reportRetentionDays || 30))));
-  if (els.chessUrlInput) els.chessUrlInput.value = currentChessUrl();
+  setInputIfNotFocused(els.emailContactNoreply, contacts.noreply || "noreply@connectifi.in");
+  setInputIfNotFocused(els.emailContactSecurity, contacts.security || "security@connectifi.in");
+  setInputIfNotFocused(els.emailContactSupport, contacts.support || "support@connectifi.in");
+  setInputIfNotFocused(els.emailContactAdmin, contacts.admin || "admin@connectifi.in");
+  setInputIfNotFocused(els.reportRetentionDays, String(Math.max(1, Math.min(3650, Number(state.settings.reportRetentionDays || 30)))));
+  setInputIfNotFocused(els.chessUrlInput, currentChessUrl());
   if (els.gameLinksInput && document.activeElement !== els.gameLinksInput) {
     els.gameLinksInput.value = gameLinksInputValue(state.settings.gameLinks || []);
   }
   const persistent = state.settings.persistentLogin || {};
   if (els.persistentDefaultEnabled) els.persistentDefaultEnabled.checked = persistent.defaultEnabled !== false;
-  if (els.persistentGrades && document.activeElement !== els.persistentGrades) els.persistentGrades.value = Array.isArray(persistent.grades) ? persistent.grades.join(", ") : "";
-  if (els.persistentRoles && document.activeElement !== els.persistentRoles) els.persistentRoles.value = Array.isArray(persistent.roles) ? persistent.roles.join(", ") : "";
-  if (els.persistentRooms && document.activeElement !== els.persistentRooms) els.persistentRooms.value = Array.isArray(persistent.rooms) ? persistent.rooms.join(", ") : "";
+  setInputIfNotFocused(els.persistentGrades, Array.isArray(persistent.grades) ? persistent.grades.join(", ") : "");
+  setInputIfNotFocused(els.persistentRoles, Array.isArray(persistent.roles) ? persistent.roles.join(", ") : "");
+  setInputIfNotFocused(els.persistentRooms, Array.isArray(persistent.rooms) ? persistent.rooms.join(", ") : "");
   renderGames();
   if (els.chessFrame && !els.chessFrame.src) els.chessFrame.src = selectedGameLink().url;
   els.serverEnabled.checked = enabled;
@@ -5679,6 +5679,11 @@ function renderServer() {
   });
   els.shutdownServerButton.disabled = !admin || !enabled;
   els.restartServerButton.disabled = !admin || enabled;
+}
+
+function setInputIfNotFocused(input, value) {
+  if (!input || document.activeElement === input) return;
+  input.value = value == null ? "" : String(value);
 }
 
 function renderEmailStatus() {

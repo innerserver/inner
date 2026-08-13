@@ -1224,9 +1224,18 @@ textarea:focus {
 
 .report-dashboard-alert {
   background: #fff0f0;
-  border: 2px solid #b42318;
+  border: 3px solid #b42318;
   color: #7a160f;
-  font-weight: 800;
+  font-weight: 900;
+  box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.14);
+  order: -10;
+}
+
+.report-dashboard-alert strong,
+.report-dashboard-alert span,
+.report-dashboard-alert p {
+  color: #7a160f;
+  font-weight: 900;
 }
 
 .report-dashboard-alert .tag {

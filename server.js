@@ -84,7 +84,7 @@ const FILES = {
 const MAX_JSON_BYTES = 1024 * 1024;
 const MAX_UPLOAD_BYTES = 250 * 1024 * 1024;
 const SESSION_COOKIE = "server_app_session";
-const SESSION_IDLE_MS = 30 * 60 * 1000;
+const SESSION_IDLE_MS = Math.max(60 * 60 * 1000, Number(process.env.INNER_SESSION_IDLE_MS || 12 * 60 * 60 * 1000));
 const SESSION_PERSISTENT_MS = 180 * 24 * 60 * 60 * 1000;
 const sessions = new Map();
 const wsClients = new Map();
@@ -883,6 +883,12 @@ async function routeApi(req, res, requestUrl) {
         error: persistence.error,
       },
     });
+  }
+
+  if (req.method === "GET" && pathname === "/api/session/ping") {
+    const pingUser = requireUser(req, res);
+    if (!pingUser) return;
+    return json(res, 200, { ok: true, live: true, user: safeUser(pingUser) });
   }
 
   if (req.method === "GET" && pathname === "/api/signup-status") {
@@ -2358,6 +2364,7 @@ async function routeApi(req, res, requestUrl) {
     if (index === -1) return json(res, 404, { error: "Account request not found" });
     const request = sanitizeAccountRequest(requests[index]);
     const grantedRole = normalizeRole(body.role || request.requestedRole || "member");
+    if (grantedRole === "admin") return json(res, 403, { error: "Creating new admin accounts is locked. Use the existing admin accounts only." });
     if (["hmd", "dev"].includes(grantedRole) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
     if (request.status === "approved") return json(res, 409, { error: "Request already approved" });
     const nextPasswordHash = password.length >= 4 ? hashPassword(password) : request.passwordHash;
@@ -2429,6 +2436,7 @@ async function routeApi(req, res, requestUrl) {
     const role = normalizeRole(body.role);
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
     if (username.toLowerCase() === "admin") return json(res, 400, { error: "The admin account already exists" });
+    if (role === "admin") return json(res, 403, { error: "Creating new admin accounts is locked. Use the existing admin accounts only." });
     if (["hmd", "dev"].includes(role) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
     if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
 
@@ -2483,6 +2491,9 @@ async function routeApi(req, res, requestUrl) {
     const nextRole = username.toLowerCase() === "admin" ? "admin" : normalizeRole(body.role);
     const nextGrade = body.grade !== undefined ? normalizeGrade(body.grade) : normalizeGrade(previous.grade || "");
     const gradeChanged = nextGrade !== normalizeGrade(previous.grade || "");
+    if (nextRole === "admin" && normalizeRole(previous.role) !== "admin") {
+      return json(res, 403, { error: "Promoting accounts to admin is locked. Existing admins only." });
+    }
     if (["hmd", "dev"].includes(nextRole) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
     users[index] = {
       ...previous,

@@ -70,8 +70,14 @@ const state = {
   ws: null,
   reconnectTimer: null,
   wsPingTimer: null,
+  wsStatusTimer: null,
+  wsRefreshTimer: null,
+  sessionKeepAliveTimer: null,
   wsOutbox: [],
   wsEverConnected: false,
+  lastLiveAt: 0,
+  reconnectDelay: 1600,
+  lastReportAlertCount: 0,
   restoredScrollKeys: new Set(),
   clientId: "",
   peers: new Map(),
@@ -969,6 +975,7 @@ function fallbackAccountLocation(reason) {
 
 async function handleLogout() {
   state.loggedIn = false;
+  stopSessionKeepAlive();
   leaveVoice();
   closeSocket();
   stopShare({ silent: true });
@@ -1018,6 +1025,7 @@ async function loadState() {
   state.aiRequests = data.aiRequests || [];
   state.aiConfigured = Boolean(data.aiConfigured);
   state.loggedIn = true;
+  state.lastReportAlertCount = activeReports().length;
   state.activeView = viewFromPath() || "dashboard";
   applyProfileTheme();
   restorePendingSends();
@@ -1026,6 +1034,7 @@ async function loadState() {
   showApp();
   showView(state.activeView, { updateHistory: false });
   renderAll();
+  maybeAlertReportThreshold(0, activeReports().length);
   connectSocket();
   flushPendingSends();
   joinInviteFromUrl();
@@ -1034,6 +1043,7 @@ async function loadState() {
 
 function showLogin(message = "") {
   state.loggedIn = false;
+  stopSessionKeepAlive();
   applyProfileTheme("system");
   els.loginView.classList.remove("hidden");
   closeSignupChoice();
@@ -2520,7 +2530,13 @@ function connectSocket() {
   ws.addEventListener("open", () => {
     const wasReconnect = state.wsEverConnected;
     state.wsEverConnected = true;
+    state.lastLiveAt = Date.now();
+    state.reconnectDelay = 1600;
+    clearTimeout(state.wsStatusTimer);
+    state.wsStatusTimer = null;
     setConnection("Live");
+    scheduleSocketRefresh();
+    startSessionKeepAlive();
     sendWs({ type: "client:network", network: browserNetworkInfo() });
     flushWsOutbox();
     recoverRealtimeState(wasReconnect).catch(() => {});
@@ -2535,13 +2551,19 @@ function connectSocket() {
     if (state.ws !== ws) return;
     clearInterval(state.wsPingTimer);
     state.wsPingTimer = null;
-    setConnection("Not live");
     if (state.loggedIn) {
       clearTimeout(state.reconnectTimer);
-      state.reconnectTimer = setTimeout(connectSocket, 1600);
+      scheduleConnectionDowngrade();
+      state.reconnectTimer = setTimeout(connectSocket, state.reconnectDelay);
+      state.reconnectDelay = Math.min(15000, Math.round(state.reconnectDelay * 1.5));
+    } else {
+      setConnection("Not live");
     }
   });
-  ws.addEventListener("error", () => setConnection("Not live"));
+  ws.addEventListener("error", () => {
+    if (!state.loggedIn) setConnection("Not live");
+    else scheduleConnectionDowngrade();
+  });
   ws.addEventListener("message", (event) => {
     try {
       handleSocketMessage(JSON.parse(event.data));
@@ -2556,6 +2578,10 @@ function closeSocket() {
   state.reconnectTimer = null;
   clearInterval(state.wsPingTimer);
   state.wsPingTimer = null;
+  clearTimeout(state.wsRefreshTimer);
+  state.wsRefreshTimer = null;
+  clearTimeout(state.wsStatusTimer);
+  state.wsStatusTimer = null;
   if (state.ws) {
     const ws = state.ws;
     state.ws = null;
@@ -2565,6 +2591,71 @@ function closeSocket() {
   state.voicePeers = [];
   state.peerLocations.clear();
   renderPeers();
+}
+
+function scheduleConnectionDowngrade() {
+  clearTimeout(state.wsStatusTimer);
+  const graceMs = state.wsEverConnected
+    ? Math.max(0, (state.lastLiveAt || Date.now()) + 20000 - Date.now())
+    : 5000;
+  state.wsStatusTimer = setTimeout(() => {
+    if (!isRealtimeReady()) verifyLiveBeforeDowngrade();
+  }, graceMs);
+}
+
+async function verifyLiveBeforeDowngrade() {
+  try {
+    const response = await fetch("/api/session/ping", { credentials: "same-origin", cache: "no-store" });
+    if (response.ok) {
+      state.lastLiveAt = Date.now();
+      setConnection("Live");
+      if (!isRealtimeReady() && state.loggedIn) connectSocket();
+      return;
+    }
+  } catch {}
+  try {
+    const response = await fetch("/api/health", { cache: "no-store" });
+    if (response.ok) {
+      state.lastLiveAt = Date.now();
+      setConnection("Live");
+      if (!isRealtimeReady() && state.loggedIn) connectSocket();
+      return;
+    }
+  } catch {}
+  if (!isRealtimeReady()) setConnection("Not live");
+}
+
+function scheduleSocketRefresh() {
+  clearTimeout(state.wsRefreshTimer);
+  state.wsRefreshTimer = setTimeout(() => {
+    if (!state.loggedIn) return;
+    if (isRealtimeReady()) {
+      connectSocket();
+    } else {
+      scheduleConnectionDowngrade();
+      connectSocket();
+    }
+  }, 4 * 60 * 60 * 1000);
+}
+
+function startSessionKeepAlive() {
+  clearInterval(state.sessionKeepAliveTimer);
+  state.sessionKeepAliveTimer = setInterval(() => {
+    if (!state.loggedIn) return;
+    fetch("/api/session/ping", { credentials: "same-origin", cache: "no-store" })
+      .then((response) => {
+        if (response.ok) {
+          state.lastLiveAt = Date.now();
+          if (!isRealtimeReady()) connectSocket();
+        }
+      })
+      .catch(() => {});
+  }, 10 * 60 * 1000);
+}
+
+function stopSessionKeepAlive() {
+  clearInterval(state.sessionKeepAliveTimer);
+  state.sessionKeepAliveTimer = null;
 }
 
 function handleSocketMessage(message) {
@@ -2776,7 +2867,9 @@ function handleSocketMessage(message) {
   }
 
   if (message.type === "reports:update" && isModerator()) {
+    const previousCount = activeReports().length;
     state.reports = message.reports || [];
+    maybeAlertReportThreshold(previousCount, activeReports().length);
     renderReports();
     renderDashboard();
     return;
@@ -3664,7 +3757,6 @@ function renderShell() {
   const enabled = Boolean(state.settings.serverEnabled);
   const custom = state.settings.customizations || {};
   els.roomName.textContent = (state.settings.customizations && state.settings.customizations.appName) || state.settings.roomName || "Inner";
-  setConnection(isRealtimeReady() ? "Live" : "Not live");
   els.serverPill.textContent = enabled ? (custom.serverOnLabel || "Server on") : (custom.serverOffLabel || "Server off");
   els.serverPill.classList.toggle("on", enabled);
   els.serverPill.classList.toggle("off", !enabled);
@@ -3713,6 +3805,7 @@ function renderDashboard() {
     ]);
     alert.classList.add("report-dashboard-alert");
     alert.setAttribute("role", "alert");
+    alert.addEventListener("click", () => showView("admin"));
     els.dashboardGrid.prepend(alert);
   }
   const gradeReminder = yearlyGradeReminder();
@@ -5458,7 +5551,7 @@ function renderUsers() {
     const roleButton = accountButton(`Change to ${nextRoleLabel(user.role)}`, () =>
       updateUser(user.username, { role: nextRole(user.role) })
     );
-    roleButton.disabled = isMainAdmin;
+    roleButton.disabled = isMainAdmin || String(user.role || "").toLowerCase() === "admin";
     const persistentButton = accountButton(user.allowPersistentLogin ? "Disable persistent" : "Allow persistent", () =>
       updateUser(user.username, { allowPersistentLogin: !user.allowPersistentLogin })
     );
@@ -5692,6 +5785,16 @@ async function wipeSelectedAccountBrowserHistory() {
 
 function activeReports() {
   return (state.reports || []).filter((report) => !reportClosed(report));
+}
+
+function maybeAlertReportThreshold(previousCount, currentCount) {
+  if (!isModerator() || currentCount < 3 || currentCount <= previousCount) return;
+  const previousBucket = Math.floor(Math.max(0, previousCount) / 3);
+  const currentBucket = Math.floor(currentCount / 3);
+  if (currentBucket <= previousBucket && currentCount !== 3) return;
+  state.lastReportAlertCount = currentCount;
+  notify(`URGENT: ${currentCount} active reports need review`);
+  showLiveAlert(`${currentCount} active reports need review`, { title: "Moderation alert" });
 }
 
 function reportClosed(report) {
@@ -6091,6 +6194,7 @@ function renderReports() {
           report.reason,
           formatDate(report.createdAt),
         ]);
+        card.classList.add("report-dashboard-alert");
         const actions = document.createElement("div");
         actions.className = "account-actions";
         actions.append(
@@ -6905,7 +7009,7 @@ async function approveAccountRequest(id, username, requestedRole = "member") {
 
 function normalizeRoleInput(role) {
   const value = String(role || "member").trim().toLowerCase();
-  return ["member", "moderator", "admin", "hmd", "dev"].includes(value) ? value : "member";
+  return ["member", "moderator", "hmd", "dev"].includes(value) ? value : "member";
 }
 
 function accountButton(label, onClick) {
@@ -6938,7 +7042,8 @@ function normalizeClientGrade(grade) {
 }
 
 function nextRole(role) {
-  const roles = isDev() ? ["member", "moderator", "admin", "hmd", "dev"] : ["member", "moderator", "admin"];
+  if (role === "admin") return "admin";
+  const roles = isDev() ? ["member", "moderator", "hmd", "dev"] : ["member", "moderator"];
   const index = roles.indexOf(role);
   return roles[(index + 1) % roles.length];
 }

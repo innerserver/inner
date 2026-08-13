@@ -65,7 +65,7 @@ The public Browser label says it is private from other users and admin-audited, 
 
 Friends are grade-aware.
 
-Normal users see same-grade people by default. To find someone outside the grade, search their exact username, email, or phone.
+Normal users see same-grade people by default. To find someone outside the grade, search their exact username.
 
 Use Friends > Grade dropdown > Search grade to list allowed candidates for that grade.
 

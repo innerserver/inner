@@ -316,6 +316,8 @@ function cacheElements() {
     "profileStatus",
     "profileCustomStatus",
     "profileGrade",
+    "profileEmail",
+    "profilePhone",
     "profileTheme",
     "customThemeFields",
     "profileThemeBg",
@@ -371,6 +373,7 @@ function cacheElements() {
     "roomNameInput",
     "signupMode",
     "requireContact",
+    "requireProfileUpdate",
     "reportEmails",
     "reportRetentionDays",
     "chessUrlInput",
@@ -1626,6 +1629,7 @@ function serverSettingsPayload(extra = {}) {
     serverEnabled: els.serverEnabled.checked,
     signupMode: els.signupMode.value,
     requireContact: els.requireContact.checked,
+    requireProfileUpdate: Boolean(els.requireProfileUpdate && els.requireProfileUpdate.checked),
     reportEmails: els.reportEmails.value.split(",").map((entry) => entry.trim()).filter(Boolean),
     reportRetentionDays: Math.max(1, Math.min(3650, Number(els.reportRetentionDays ? els.reportRetentionDays.value : state.settings.reportRetentionDays || 30))),
     chessUrl: normalizeExternalUrl(els.chessUrlInput ? els.chessUrlInput.value : ""),
@@ -3660,6 +3664,7 @@ function renderShell() {
   const enabled = Boolean(state.settings.serverEnabled);
   const custom = state.settings.customizations || {};
   els.roomName.textContent = (state.settings.customizations && state.settings.customizations.appName) || state.settings.roomName || "Inner";
+  setConnection(isRealtimeReady() ? "Live" : "Not live");
   els.serverPill.textContent = enabled ? (custom.serverOnLabel || "Server on") : (custom.serverOffLabel || "Server off");
   els.serverPill.classList.toggle("on", enabled);
   els.serverPill.classList.toggle("off", !enabled);
@@ -3713,6 +3718,12 @@ function renderDashboard() {
   const gradeReminder = yearlyGradeReminder();
   if (gradeReminder) {
     els.dashboardGrid.prepend(adminCard("Grade check", "Update profile", [gradeReminder]));
+  }
+  const profileUpdateReminder = requiredProfileUpdateReminder();
+  if (profileUpdateReminder) {
+    const prompt = adminCard("Profile update needed", "Grade, class, and contact", [profileUpdateReminder]);
+    prompt.addEventListener("click", () => showView("profile"));
+    els.dashboardGrid.prepend(prompt);
   }
 
   els.presenceList.replaceChildren();
@@ -3817,7 +3828,7 @@ function onboardingGuideForRole(role) {
     subtitle: "Start here if you are using Inner for chats, files, friends, and docs.",
     steps: [
       { title: "Set up your profile", detail: "Add display name, grade, status, profile picture, and theme.", view: "profile", action: "Edit profile" },
-      { title: "Add friends", detail: "Same-grade users show by default. Search exact username, email, or phone to find someone outside your grade.", view: "friends", action: "Find friends" },
+      { title: "Add friends", detail: "Same-grade users show by default. Search exact username to find someone outside your grade.", view: "friends", action: "Find friends" },
       { title: "Use messages and DMs", detail: "Use Messages for rooms and DMs for private or group conversations with accepted friends.", view: "messages", action: "Open messages" },
       { title: "Upload and share files", detail: "Use Files for photos, videos, audio, and documents. Turn on Private if only you and admins should see it.", view: "files", action: "Open files" },
       { title: "Use Docs, Slides, and Sheets", detail: "Use the Google Workspace tab for school work directly inside Inner.", view: "googleWorkspace", action: "Open Workspace" },
@@ -3950,6 +3961,17 @@ function yearlyGradeReminder() {
   const updatedAt = Date.parse(profile.gradeUpdatedAt || state.user.gradeUpdatedAt || "");
   if (Number.isFinite(updatedAt) && updatedAt >= augustFirst.getTime()) return "";
   return "Every August 1, confirm your grade in Profile so friends, rooms, and admin filters stay current.";
+}
+
+function requiredProfileUpdateReminder() {
+  if (!state.user || !state.settings.requireProfileUpdate) return "";
+  const profile = state.profiles[state.user.username] || {};
+  const missing = [];
+  if (!normalizeClientGrade(profile.grade || state.user.grade || "")) missing.push("grade/class");
+  if (!String(state.user.email || "").trim()) missing.push("email");
+  if (!String(state.user.phone || "").trim()) missing.push("phone");
+  if (!missing.length) return "";
+  return `Admin requested updated ${missing.join(", ")}. Open Profile and save your latest details.`;
 }
 
 function renderDashboardAnnouncements() {
@@ -4473,7 +4495,7 @@ function renderFriends() {
   const friendNames = new Set((state.friends.friends || []).map((entry) => entry.username));
   const candidates = friendCandidatePeople().filter((person) => !friendNames.has(person.username));
   els.friendUserSelect.replaceChildren(
-    optionElement("", candidates.length ? "Choose a person" : "Search exact username/email/phone"),
+    optionElement("", candidates.length ? "Choose a person" : "Search exact username"),
     ...candidates
       .map((person) => {
         const option = document.createElement("option");
@@ -4486,10 +4508,10 @@ function renderFriends() {
     const search = String(state.friendSearch || "").trim();
     const grade = String(state.friendGradeFilter || "").trim();
     els.friendState.textContent = search
-      ? "Exact username/email/phone search can find people outside your grade."
+      ? "Exact username search can find people outside your grade."
       : grade
         ? `Showing grade ${grade} candidates you are allowed to add.`
-        : "Same-grade people show here. Search exact username, email, or phone for anyone else.";
+        : "Same-grade people show here. Search exact username for anyone else.";
   }
 
   els.friendList.replaceChildren();
@@ -4597,6 +4619,8 @@ function renderProfile() {
   els.profileStatus.value = profile.invisible ? "invisible" : profile.status || "online";
   els.profileCustomStatus.value = profile.customStatus || "";
   if (els.profileGrade) els.profileGrade.value = profile.grade || state.user.grade || "";
+  if (els.profileEmail) els.profileEmail.value = state.user.email || "";
+  if (els.profilePhone) els.profilePhone.value = state.user.phone || "";
   els.profileTheme.value = profile.theme || "system";
   els.profileThemeBg.value = safeColor(customTheme.bg, "#f7f7f4");
   els.profileThemeSurface.value = safeColor(customTheme.surface, "#ffffff");
@@ -5267,6 +5291,7 @@ function renderServer() {
   els.roomNameInput.value = state.settings.roomName || "Inner";
   els.signupMode.value = state.settings.signupMode || "request";
   els.requireContact.checked = state.settings.requireContact !== false;
+  if (els.requireProfileUpdate) els.requireProfileUpdate.checked = Boolean(state.settings.requireProfileUpdate);
   els.reportEmails.value = Array.isArray(state.settings.reportEmails) ? state.settings.reportEmails.join(", ") : "";
   if (els.reportRetentionDays) els.reportRetentionDays.value = String(Math.max(1, Math.min(3650, Number(state.settings.reportRetentionDays || 30))));
   if (els.chessUrlInput) els.chessUrlInput.value = currentChessUrl();
@@ -5284,7 +5309,7 @@ function renderServer() {
   if (els.newAccountPersistent) els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
 
   const admin = isOwner();
-  [els.roomNameInput, els.signupMode, els.requireContact, els.reportEmails, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+  [els.roomNameInput, els.signupMode, els.requireContact, els.requireProfileUpdate, els.reportEmails, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
   });
@@ -5620,6 +5645,11 @@ function loginHistoryCard(user) {
   const history = Array.isArray(user.loginHistory) ? user.loginHistory.slice(0, 10) : [];
   const card = document.createElement("article");
   card.className = "account-card";
+  const uniqueIps = Array.from(new Set(history.map((entry) => String(entry.ip || "").trim()).filter(Boolean)));
+  if (history.length && uniqueIps.length <= 1) {
+    card.append(textNode(`Last ${history.length} login${history.length === 1 ? "" : "s"} used ${uniqueIps[0] || "the same IP"}.`));
+    return card;
+  }
   const details = document.createElement("details");
   details.className = "login-history-details";
   const summary = document.createElement("summary");
@@ -7744,6 +7774,8 @@ async function saveProfile(event) {
         status: els.profileStatus.value,
         customStatus: els.profileCustomStatus.value,
         grade: els.profileGrade ? els.profileGrade.value : "",
+        email: els.profileEmail ? els.profileEmail.value : "",
+        phone: els.profilePhone ? els.profilePhone.value : "",
         theme: els.profileTheme.value,
         customTheme: currentProfileThemeEditor(),
         bio: els.profileBio.value,
@@ -7751,6 +7783,7 @@ async function saveProfile(event) {
       },
     });
     state.profiles = data.profiles || state.profiles;
+    state.user = { ...state.user, ...(data.user || {}), email: els.profileEmail ? els.profileEmail.value.trim() : state.user.email, phone: els.profilePhone ? els.profilePhone.value.trim() : state.user.phone };
     renderProfile();
     applyProfileTheme();
     notify("Profile saved");
@@ -7919,12 +7952,13 @@ function isModerator() {
 
 function setConnection(value) {
   if (!els.connectionStatus) return;
+  const custom = state.settings && state.settings.customizations ? state.settings.customizations : {};
   const normalized = String(value || "").toLowerCase();
   if ((normalized.includes("live") || normalized.includes("connected") || normalized.includes("online")) && !normalized.includes("offline") && !normalized.includes("not")) {
-    els.connectionStatus.textContent = "Live";
+    els.connectionStatus.textContent = custom.connectedLabel || "Live";
     return;
   }
-  els.connectionStatus.textContent = "Not live";
+  els.connectionStatus.textContent = custom.disconnectedLabel || "Not live";
 }
 
 function notify(message) {

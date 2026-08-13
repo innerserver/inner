@@ -17,7 +17,7 @@ Location permission is used for server allocation and admin review. If a browser
 
 1. Dashboard: read announcements, check the current server status, and use **Show guide** if the tutorial was dismissed.
 2. Profile: set display name, profile picture, grade, bio, status, and theme.
-3. Friends: search by grade for normal browsing, or search exact username, email, or phone to find someone outside your grade.
+3. Friends: search by grade for normal browsing, or search exact username to find someone outside your grade.
 4. DMs: create direct messages or group chats with accepted friends only.
 5. Messages: chat in rooms, reply/react without losing your typing area, and use the jump-to-bottom button when needed.
 6. Files: upload public or private files. Private files are visible to the uploader and admins.
@@ -76,4 +76,4 @@ Location permission is used for server allocation and admin review. If a browser
 - Admin, HMD, and Domain tabs are hidden from normal users.
 - Hidden features are also removed from normal sidebars unless the owner/admin allows a specific user.
 - Open signup always creates a normal member. Teachers/moderators are assigned manually by admins.
-- Users can only friend people in their grade unless they search exact username, email, or phone.
+- Users can only friend people in their grade unless they search exact username.

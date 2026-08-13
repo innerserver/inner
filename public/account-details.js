@@ -51,6 +51,13 @@
 
   function loginHistorySection(user) {
     const history = Array.isArray(user.loginHistory) ? user.loginHistory.slice(0, 10) : [];
+    const uniqueIps = Array.from(new Set(history.map((entry) => String(entry.ip || "").trim()).filter(Boolean)));
+    if (history.length && uniqueIps.length <= 1) {
+      return section("Login IP history", [
+        line("Recent login IP", uniqueIps[0] || "Same IP"),
+        line("Recent login count", history.length),
+      ]);
+    }
     const rows = history.length
       ? history.map((entry) => [
           line("Time", formatDate(entry.loggedInAt)),

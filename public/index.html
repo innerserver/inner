@@ -324,6 +324,8 @@
             <label>Status<select id="profileStatus"><option value="online">Online</option><option value="idle">Idle</option><option value="busy">Busy</option><option value="invisible">Invisible</option></select></label>
             <label>Custom status<input id="profileCustomStatus" maxlength="80" autocomplete="off" /></label>
             <label>Grade<select id="profileGrade"><option value="">Choose grade</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
+            <label>Email<input id="profileEmail" type="email" maxlength="120" autocomplete="email" /></label>
+            <label>Phone<input id="profilePhone" maxlength="40" autocomplete="tel" /></label>
             <label>Theme<select id="profileTheme"><option value="system">Light</option><option value="midnight">Night</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="custom">Custom</option></select></label>
             <div id="customThemeFields" class="theme-editor">
               <label>Background<input id="profileThemeBg" type="color" value="#f7f7f4" /></label>
@@ -567,6 +569,7 @@
               <label>Room name<input id="roomNameInput" maxlength="80" /></label>
               <label>Signup mode<select id="signupMode"><option value="request">Request approval</option><option value="open">Open signup</option></select></label>
               <label class="switch-row"><input id="requireContact" type="checkbox" /><span>Require contact details</span></label>
+              <label class="switch-row"><input id="requireProfileUpdate" type="checkbox" /><span>Tell users to update grade, class, email, and phone</span></label>
               <label>Report emails<input id="reportEmails" maxlength="300" placeholder="admin@email.com, helper@email.com" /></label>
               <label>Reports stay for days<input id="reportRetentionDays" type="number" min="1" max="3650" value="30" /></label>
               <label>Main game link<input id="chessUrlInput" maxlength="300" placeholder="https://chessverse.co.in/" /></label>

@@ -115,7 +115,7 @@ def build():
         shade_cell(cell, "EDF7F4")
         set_cell_text(cell, text, True)
     rows = [
-        ("Member / Student", "Set profile, find friends, use messages/DMs, upload files, use Google Workspace, share links.", "Can friend same-grade users normally or search exact username/email/phone."),
+        ("Member / Student", "Set profile, find friends, use messages/DMs, upload files, use Google Workspace, share links.", "Can friend same-grade users normally or search exact username."),
         ("Moderator / Teacher", "Use Messages, DMs, docs, and reports/mod tools when granted.", "Moderator accounts should be assigned manually by admins."),
         ("Admin", "Manage signup, accounts, announcements, hidden tabs, locks, paywalls, browser rules, logs, reports, and backups.", "Search accounts first; use Show all only when needed."),
         ("HMD / Dev", "Review health, storage, database, logs, localhost tools, bots, plugins, AI, and emergency controls.", "Use shutdown/recovery tools carefully."),

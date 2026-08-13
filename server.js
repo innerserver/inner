@@ -1160,7 +1160,7 @@ async function routeApi(req, res, requestUrl) {
       plugins,
       automod,
       announcements: safeAnnouncements(announcements, user, rooms),
-      presence: presenceList(profiles, user),
+      presence: presenceList(profiles, user, users, friends),
     });
   }
 
@@ -1396,11 +1396,17 @@ async function routeApi(req, res, requestUrl) {
     profiles[user.username] = next;
     const users = await readJson(FILES.users, []);
     const userIndex = users.findIndex((entry) => entry.username.toLowerCase() === user.username.toLowerCase());
-    if (userIndex !== -1 && users[userIndex].grade !== next.grade) {
+    if (userIndex !== -1) {
+      const nextEmail = String(body.email || users[userIndex].email || "").trim().slice(0, 120);
+      const nextPhone = String(body.phone || users[userIndex].phone || "").trim().slice(0, 40);
+      const contactParts = [nextEmail, nextPhone].filter(Boolean);
       users[userIndex] = {
         ...users[userIndex],
         grade: next.grade,
-        gradeUpdatedAt: next.gradeUpdatedAt,
+        gradeUpdatedAt: users[userIndex].grade !== next.grade ? next.gradeUpdatedAt : users[userIndex].gradeUpdatedAt,
+        email: nextEmail,
+        phone: nextPhone,
+        contact: contactParts.length ? contactParts.join(" / ") : users[userIndex].contact || "",
         updatedAt: new Date().toISOString(),
         updatedBy: user.username,
       };
@@ -1409,7 +1415,7 @@ async function routeApi(req, res, requestUrl) {
     }
     await writeJson(FILES.profiles, profiles);
     broadcast({ type: "profiles:update", profiles: safeProfiles(profiles, users, user) });
-    return json(res, 200, { profile: next, profiles: safeProfiles(profiles, users, user) });
+    return json(res, 200, { profile: next, profiles: safeProfiles(profiles, users, user), user: safeUser(users[userIndex] || user, user) });
   }
 
   if (req.method === "POST" && pathname === "/api/friends/request") {
@@ -1424,7 +1430,7 @@ async function routeApi(req, res, requestUrl) {
     const recipient = users.find((entry) => entry.username.toLowerCase() === to.toLowerCase());
     if (!recipient) return json(res, 404, { error: "Account not found" });
     if (!canOwn(user) && !friendGradeAllowed(user, recipient, searchProof)) {
-      return json(res, 403, { error: "You can only add people in your grade unless you search their exact username, email, or phone." });
+      return json(res, 403, { error: "You can only add people in your grade unless you search their exact username." });
     }
     const friends = await readJson(FILES.friends, { requests: [], friendships: [] });
     if (areFriends(friends, user.username, recipient.username)) return json(res, 409, { error: "Already friends" });
@@ -2668,6 +2674,7 @@ async function routeApi(req, res, requestUrl) {
         ? String(body.signupMode || settings.signupMode).toLowerCase()
         : DEFAULT_SIGNUP_MODE,
       requireContact: typeof body.requireContact === "boolean" ? body.requireContact : settings.requireContact !== false,
+      requireProfileUpdate: typeof body.requireProfileUpdate === "boolean" ? body.requireProfileUpdate : Boolean(settings.requireProfileUpdate),
       reportEmails: Array.isArray(body.reportEmails)
         ? body.reportEmails.map((entry) => String(entry || "").trim()).filter(Boolean).slice(0, 4)
         : Array.isArray(settings.reportEmails)
@@ -2923,8 +2930,7 @@ async function saveUpload(req, res, user) {
   const preferB2 = UPLOAD_PROVIDER === "b2" || UPLOAD_PROVIDER === "backblaze";
   const mustAvoidLocalDisk = cloudStorageRequired() && cloudinaryConfigured() && !preferB2 && UPLOAD_PROVIDER !== "mongodb";
   if (cloudStorageRequired() && !cloudinaryConfigured() && !b2Configured() && !persistence.ready) {
-    await addSystemLog("file.upload.blocked", user.username, { name: originalName, reason: "cloud storage missing" }, req);
-    return json(res, 503, { error: "Cloud storage is not connected. Set INNER_UPLOAD_PROVIDER=b2 plus INNER_B2_KEY_ID, INNER_B2_APPLICATION_KEY, and INNER_B2_BUCKET_NAME on Render." });
+    await addSystemLog("file.upload.fallback", user.username, { name: originalName, reason: "cloud storage missing; using local fallback" }, req);
   }
 
   if (mustAvoidLocalDisk) {
@@ -3071,9 +3077,6 @@ async function saveUpload(req, res, user) {
       fileRecord.persistence = inlineEnabled ? "disk+inline" : "disk";
       fileRecord.url = `/uploads/${encodeURIComponent(storedName)}`;
     }
-  } else if (cloudStorageRequired()) {
-    await fsp.rm(target, { force: true }).catch(() => {});
-    return json(res, 503, { error: "Cloud storage is not connected. Set INNER_UPLOAD_PROVIDER=b2 plus INNER_B2_KEY_ID, INNER_B2_APPLICATION_KEY, and INNER_B2_BUCKET_NAME so uploads survive redeploys." });
   }
 
   if (inlineEnabled && inlineChunks.length) {
@@ -3581,7 +3584,7 @@ function uploadMetadata(record) {
 }
 
 function cloudStorageRequired() {
-  return REQUIRE_CLOUD_STORAGE || (!LOCALHOST_MODE && Boolean(MONGODB_URI));
+  return REQUIRE_CLOUD_STORAGE;
 }
 
 async function handleUpgrade(req, socket) {
@@ -3654,10 +3657,10 @@ async function handleUpgrade(req, socket) {
     type: "hello",
     clientId: id,
     user: safeUser(user),
-    peers: peerList(id),
-    presence: presenceList(await readJson(FILES.profiles, {}), user),
+    peers: peerList(id, user, await readJson(FILES.users, []), await readJson(FILES.friends, { requests: [], friendships: [] })),
+    presence: presenceList(await readJson(FILES.profiles, {}), user, await readJson(FILES.users, []), await readJson(FILES.friends, { requests: [], friendships: [] })),
   });
-  broadcast({ type: "peer:joined", peer: peerSummary(client) }, id);
+  await broadcastPeerJoined(client, id);
 
   socket.on("data", (chunk) => handleWsData(client, chunk));
   socket.on("close", () => removeClient(id));
@@ -3758,7 +3761,7 @@ async function handleWsMessage(client, message) {
       });
       await writeJson(FILES.profiles, profiles);
     }
-    return broadcast({ type: "presence:update", presence: presenceList(profiles, client) });
+    return broadcastPresenceUpdate(profiles);
   }
 
   if (message.type === "typing") {
@@ -3985,9 +3988,10 @@ async function unmarkDeletedDefault(username, updatedBy) {
   });
 }
 
-function peerList(exceptId) {
+function peerList(exceptId, viewer, users = [], friends = { friendships: [] }) {
   return Array.from(wsClients.values())
     .filter((client) => client.id !== exceptId)
+    .filter((client) => canSeeOnlineUser(viewer, client, users, friends))
     .map(peerSummary);
 }
 
@@ -4050,6 +4054,29 @@ function canTargetRealtimeRoom(roomInfo, target) {
 function broadcast(payload, exceptId) {
   for (const client of wsClients.values()) {
     if (client.id !== exceptId) sendWs(client, payload);
+  }
+}
+
+async function broadcastPeerJoined(joinedClient, exceptId) {
+  const [users, friends] = await Promise.all([
+    readJson(FILES.users, []),
+    readJson(FILES.friends, { requests: [], friendships: [] }),
+  ]);
+  for (const client of wsClients.values()) {
+    if (client.id === exceptId) continue;
+    if (canSeeOnlineUser(client, joinedClient, users, friends)) {
+      sendWs(client, { type: "peer:joined", peer: peerSummary(joinedClient) });
+    }
+  }
+}
+
+async function broadcastPresenceUpdate(profiles) {
+  const [users, friends] = await Promise.all([
+    readJson(FILES.users, []),
+    readJson(FILES.friends, { requests: [], friendships: [] }),
+  ]);
+  for (const client of wsClients.values()) {
+    sendWs(client, { type: "presence:update", presence: presenceList(profiles, client, users, friends) });
   }
 }
 
@@ -4377,10 +4404,11 @@ function safeProfiles(profiles, users, viewer) {
   return result;
 }
 
-function presenceList(profiles, viewer) {
+function presenceList(profiles, viewer, users = [], friends = { friendships: [] }) {
   const online = new Map();
   for (const client of wsClients.values()) {
     if (client.invisible && (!viewer || viewer.username !== client.username)) continue;
+    if (!canSeeOnlineUser(viewer, client, users, friends)) continue;
     online.set(client.username, {
       username: client.username,
       role: normalizeRole(client.role),
@@ -4431,7 +4459,7 @@ function friendGradeAllowed(user, recipient, query) {
   const userGrade = normalizeGrade(user.grade || "");
   const recipientGrade = normalizeGrade(recipient.grade || "");
   if (userGrade && recipientGrade && userGrade === recipientGrade) return true;
-  return exactFriendIdentityMatch(recipient, query);
+  return exactFriendUsernameMatch(recipient, query);
 }
 
 function friendCandidateAllowed(user, candidate, query, profile = {}) {
@@ -4453,17 +4481,25 @@ function friendCandidateAllowed(user, candidate, query, profile = {}) {
     ].join(" ").toLowerCase();
     return haystack.includes(String(query).trim().toLowerCase());
   }
-  return exactFriendIdentityMatch(candidate, query);
+  return exactFriendUsernameMatch(candidate, query);
 }
 
-function exactFriendIdentityMatch(candidate, query) {
+function exactFriendUsernameMatch(candidate, query) {
   const text = String(query || "").trim().toLowerCase();
   if (!text) return false;
-  const digits = text.replace(/\D/g, "");
   const username = String(candidate.username || "").trim().toLowerCase();
-  const email = String(candidate.email || "").trim().toLowerCase();
-  const phoneDigits = String(candidate.phone || candidate.contact || "").replace(/\D/g, "");
-  return text === username || (email && text === email) || (digits.length >= 7 && phoneDigits && digits === phoneDigits);
+  return text === username;
+}
+
+function canSeeOnlineUser(viewer, target, users = [], friends = { friendships: [] }) {
+  if (!viewer || !target) return false;
+  if (String(viewer.username || "").toLowerCase() === String(target.username || "").toLowerCase()) return true;
+  if (canManage(viewer)) return true;
+  const targetUser = users.find((entry) => String(entry.username || "").toLowerCase() === String(target.username || "").toLowerCase()) || target;
+  const viewerGrade = normalizeGrade(viewer.grade || "");
+  const targetGrade = normalizeGrade(targetUser.grade || "");
+  if (viewerGrade && targetGrade && viewerGrade === targetGrade) return true;
+  return areFriends(friends, viewer.username, target.username);
 }
 
 function broadcastFriendUpdate(friends, ...usernames) {

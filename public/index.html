@@ -32,8 +32,31 @@
             <input id="loginPassword" name="password" type="password" autocomplete="current-password" required />
           </label>
           <button class="primary-button" type="submit">Sign in</button>
+          <button id="forgotPasswordButton" class="ghost-button" type="button">Forgot password?</button>
           <button id="signupEntryButton" class="secondary-button" type="button">Request account</button>
           <p id="loginError" class="form-error" role="alert"></p>
+        </form>
+
+        <form id="passwordResetRequestForm" class="login-panel request-panel hidden">
+          <div>
+            <h2>Reset password</h2>
+            <p>Enter your username or email. If an email is saved on your account, Inner will send a reset link.</p>
+          </div>
+          <label>Username or email<input id="passwordResetLookup" autocomplete="username" placeholder="username or email" /></label>
+          <button id="passwordResetRequestButton" class="secondary-button" type="submit">Send reset link</button>
+          <button id="passwordResetBackButton" class="ghost-button" type="button">Back to sign in</button>
+          <p id="passwordResetStatus" class="inline-status"></p>
+        </form>
+
+        <form id="passwordResetCompleteForm" class="login-panel request-panel hidden">
+          <div>
+            <h2>Choose new password</h2>
+            <p>This reset link expires after 30 minutes.</p>
+          </div>
+          <label>New password<input id="passwordResetNewPassword" type="password" autocomplete="new-password" /></label>
+          <button id="passwordResetCompleteButton" class="secondary-button" type="submit">Reset password</button>
+          <button id="passwordResetCompleteBackButton" class="ghost-button" type="button">Back to sign in</button>
+          <p id="passwordResetCompleteStatus" class="inline-status"></p>
         </form>
 
         <form id="accountRequestForm" class="login-panel request-panel hidden">
@@ -571,9 +594,16 @@
               <label>Room name<input id="roomNameInput" maxlength="80" /></label>
               <label>Signup mode<select id="signupMode"><option value="request">Request approval</option><option value="open">Open signup</option></select></label>
               <label class="switch-row"><input id="requireContact" type="checkbox" /><span>Require contact details</span></label>
+              <label>Admin contact email<input id="adminContactEmail" type="email" maxlength="160" placeholder="admin@yourdomain.com" /></label>
+              <label class="switch-row"><input id="passwordResetEnabled" type="checkbox" checked /><span>Allow users to reset passwords by email</span></label>
               <label class="switch-row"><input id="requireProfileUpdate" type="checkbox" /><span>Tell users to update grade, class, email, and phone</span></label>
               <button id="triggerProfileUpdateButton" class="secondary-button compact-button" type="button">Trigger profile update now</button>
-              <label>Report emails<input id="reportEmails" maxlength="300" placeholder="admin@email.com, helper@email.com" /></label>
+              <label>Default/admin emails<input id="reportEmails" maxlength="500" placeholder="admin@email.com, helper@email.com" /></label>
+              <label>Report alert emails<input id="emailReports" maxlength="500" placeholder="reports@school.com, admin@school.com" /></label>
+              <label>Account request/signup emails<input id="emailAccounts" maxlength="500" placeholder="accounts@school.com, admissions@school.com" /></label>
+              <label>Announcement emails<input id="emailAnnouncements" maxlength="500" placeholder="announcements@school.com" /></label>
+              <label>Failed login emails<input id="emailLoginFailures" maxlength="500" placeholder="security@school.com" /></label>
+              <label>Admin test/general emails<input id="emailGeneral" maxlength="500" placeholder="admin@school.com" /></label>
               <label>Reports stay for days<input id="reportRetentionDays" type="number" min="1" max="3650" value="30" /></label>
               <label>Main game link<input id="chessUrlInput" maxlength="300" placeholder="https://chessverse.co.in/" /></label>
               <label>Games links<textarea id="gameLinksInput" rows="4" maxlength="1600" placeholder="ChessVerse | https://chessverse.co.in/ | admin,dev&#10;Cool Math | https://www.coolmathgames.com/ | everyone"></textarea></label>

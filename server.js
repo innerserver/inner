@@ -79,6 +79,7 @@ const FILES = {
   plugins: path.join(DATA_DIR, "plugins.json"),
   automod: path.join(DATA_DIR, "automod.json"),
   announcements: path.join(DATA_DIR, "announcements.json"),
+  passwordResets: path.join(DATA_DIR, "password-resets.json"),
 };
 
 const MAX_JSON_BYTES = 1024 * 1024;
@@ -394,12 +395,16 @@ async function ensureStorage() {
     updatedBy: "system",
   });
   await ensureJson(FILES.announcements, []);
+  await ensureJson(FILES.passwordResets, []);
   await ensureJson(FILES.settings, {
     serverEnabled: true,
     roomName: "Inner",
     signupMode: DEFAULT_SIGNUP_MODE,
     requireContact: DEFAULT_REQUIRE_CONTACT,
+    adminContactEmail: REPORT_EMAILS[0] || "",
+    passwordResetEnabled: true,
     reportEmails: REPORT_EMAILS,
+    emailRoutes: {},
     reportRetentionDays: 30,
     featureLocks: {},
     featureVisibility: {},
@@ -662,6 +667,10 @@ async function ensureSettings() {
     next.reportEmails = REPORT_EMAILS;
     changed = true;
   }
+  if (!next.emailRoutes || typeof next.emailRoutes !== "object" || Array.isArray(next.emailRoutes)) {
+    next.emailRoutes = {};
+    changed = true;
+  }
   if (!Number.isFinite(Number(next.reportRetentionDays)) || Number(next.reportRetentionDays) < 1) {
     next.reportRetentionDays = 30;
     changed = true;
@@ -778,7 +787,7 @@ async function routeApi(req, res, requestUrl) {
         `IP: ${getClientIp(req) || "unknown"}`,
         `Device: ${deviceSignature(req)}`,
         `Time: ${new Date().toISOString()}`,
-      ].join("\n"));
+      ].join("\n"), { route: "loginFailures" });
       return json(res, 401, { error: "Invalid username or password" });
     }
 
@@ -888,8 +897,88 @@ async function routeApi(req, res, requestUrl) {
     return json(res, 200, {
       signupMode: String(settings.signupMode || DEFAULT_SIGNUP_MODE) === "open" ? "open" : "request",
       requireContact: settings.requireContact !== false,
+      passwordResetEnabled: settings.passwordResetEnabled !== false,
+      adminContactEmail: String(settings.adminContactEmail || "").slice(0, 160),
       serverEnabled: settings.serverEnabled !== false,
     });
+  }
+
+  if (req.method === "POST" && pathname === "/api/password-reset/request") {
+    const body = await readJsonBody(req);
+    const settings = await readJson(FILES.settings, {});
+    if (settings.passwordResetEnabled === false) return json(res, 423, { error: "Password reset is turned off. Contact an admin." });
+    const lookup = String(body.lookup || "").trim().toLowerCase();
+    if (!lookup) return json(res, 400, { error: "Enter your username or email" });
+    const users = await readJson(FILES.users, []);
+    const target = users.find((entry) =>
+      String(entry.username || "").toLowerCase() === lookup ||
+      String(entry.email || "").toLowerCase() === lookup
+    );
+    const generic = { ok: true, message: "If that account has an email saved, a reset link was sent." };
+    if (!target || !String(target.email || "").includes("@")) {
+      await addSystemLog("password.reset.request.skipped", lookup.slice(0, 80), { reason: "No account/email match" }, req);
+      return json(res, 200, generic);
+    }
+    const resets = await readJson(FILES.passwordResets, []);
+    const rawToken = crypto.randomBytes(32).toString("base64url");
+    const requestRecord = {
+      id: crypto.randomUUID(),
+      username: target.username,
+      email: target.email,
+      tokenHash: hashPassword(rawToken),
+      usedAt: "",
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      sourceIp: getClientIp(req),
+      sourceDevice: deviceSignature(req),
+    };
+    const next = [requestRecord, ...resets.filter((entry) => Date.parse(entry.expiresAt || "") > Date.now()).slice(0, 500)];
+    await writeJson(FILES.passwordResets, next);
+    const resetUrl = `${publicBaseUrl(req)}/?reset=${encodeURIComponent(requestRecord.id)}.${encodeURIComponent(rawToken)}`;
+    await sendDirectEmail([target.email], "Inner password reset", [
+      `Hi ${target.username},`,
+      "",
+      "Use this link to reset your Inner password. It expires in 30 minutes.",
+      resetUrl,
+      "",
+      "If you did not request this, ignore this email.",
+      settings.adminContactEmail ? `Need help? Contact ${settings.adminContactEmail}.` : "",
+    ].filter(Boolean).join("\n"));
+    await addSystemLog("password.reset.requested", target.username, { email: target.email, expiresAt: requestRecord.expiresAt }, req);
+    return json(res, 200, generic);
+  }
+
+  if (req.method === "POST" && pathname === "/api/password-reset/complete") {
+    const body = await readJsonBody(req);
+    const tokenValue = String(body.token || "").trim();
+    const nextPassword = String(body.nextPassword || "");
+    if (nextPassword.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
+    const [id, rawToken] = tokenValue.split(".");
+    if (!id || !rawToken) return json(res, 400, { error: "Reset link is invalid" });
+    const settings = await readJson(FILES.settings, {});
+    if (settings.passwordResetEnabled === false) return json(res, 423, { error: "Password reset is turned off. Contact an admin." });
+    const [resets, users] = await Promise.all([readJson(FILES.passwordResets, []), readJson(FILES.users, [])]);
+    const resetIndex = resets.findIndex((entry) => entry.id === id);
+    const reset = resets[resetIndex];
+    if (!reset || reset.usedAt || Date.parse(reset.expiresAt || "") < Date.now()) return json(res, 400, { error: "Reset link expired. Request a new one." });
+    if (!(await verifyPasswordAsync(rawToken, reset.tokenHash))) return json(res, 400, { error: "Reset link is invalid" });
+    const userIndex = users.findIndex((entry) => String(entry.username || "").toLowerCase() === String(reset.username || "").toLowerCase());
+    if (userIndex === -1) return json(res, 404, { error: "Account not found" });
+    users[userIndex] = {
+      ...users[userIndex],
+      passwordHash: hashPassword(nextPassword),
+      passwordPreset: "",
+      updatedAt: new Date().toISOString(),
+      updatedBy: "self-service-reset",
+    };
+    resets[resetIndex] = { ...reset, usedAt: new Date().toISOString() };
+    await Promise.all([
+      writeJson(FILES.users, users),
+      writeJson(FILES.passwordResets, resets),
+      addSystemLog("password.reset.completed", users[userIndex].username, {}, req),
+    ]);
+    expireUserSessions(users[userIndex].username);
+    return json(res, 200, { ok: true });
   }
 
   if (req.method === "POST" && pathname === "/api/account-requests") {
@@ -955,7 +1044,7 @@ async function routeApi(req, res, requestUrl) {
       `Device: ${request.sourceDevice || "unknown"}`,
       `Browser: ${request.sourceAgent || "unknown"}`,
       `Time: ${request.createdAt}`,
-    ].join("\n"));
+    ].join("\n"), { route: "accountRequests" });
     broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
     return json(res, 201, { request: safeAccountRequest(request) });
   }
@@ -1026,7 +1115,7 @@ async function routeApi(req, res, requestUrl) {
       `Device: ${account.sourceDevice || "unknown"}`,
       `Browser: ${account.sourceAgent || "unknown"}`,
       `Time: ${now}`,
-    ].join("\n"));
+    ].join("\n"), { route: "signups" });
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     return json(res, 201, { user: safeUser(account) });
   }
@@ -1338,7 +1427,7 @@ async function routeApi(req, res, requestUrl) {
       `Scope: ${scope === "room" ? `Room ${room ? room.name : roomId}` : "Whole platform"}`,
       "",
       message,
-    ].join("\n"));
+    ].join("\n"), { route: "announcements" });
     broadcastAnnouncements(next, rooms);
     return json(res, 201, { announcement });
   }
@@ -1553,7 +1642,7 @@ async function routeApi(req, res, requestUrl) {
       `Sender contact: ${formatContactSnapshot(report.targetSenderContact)}`,
       `Message: ${report.targetText || "(not found)"}`,
       `Reason: ${report.reason}`,
-    ].join("\n"));
+    ].join("\n"), { route: "reports" });
     broadcastManagers({ type: "reports:update", reports: safeActiveReports(nextReports, settings) });
     return json(res, 201, { report });
   }
@@ -2427,7 +2516,7 @@ async function routeApi(req, res, requestUrl) {
       `Original request IP: ${request.sourceIp || "unknown"}`,
       `Original request device: ${request.sourceDevice || "unknown"}`,
       `Time: ${new Date().toISOString()}`,
-    ].join("\n"));
+    ].join("\n"), { route: "accountApprovals" });
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
     return json(res, 201, { users: users.map((entry) => safeUser(entry, user)), accountRequests: safeAccountRequests(requests, user), user: safeUser(account, user) });
@@ -2439,6 +2528,10 @@ async function routeApi(req, res, requestUrl) {
     const username = normalizeUsername(body.username);
     const password = String(body.password || "");
     const role = normalizeRole(body.role);
+    const email = String(body.email || "").trim().slice(0, 120);
+    const phone = String(body.phone || "").trim().slice(0, 40);
+    const grade = normalizeGrade(body.grade || "");
+    const contact = [email, phone].filter(Boolean).join(" / ");
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
     if (username.toLowerCase() === "admin") return json(res, 400, { error: "The admin account already exists" });
     if (role === "admin") return json(res, 403, { error: "Creating new admin accounts is locked. Use the existing admin accounts only." });
@@ -2450,19 +2543,26 @@ async function routeApi(req, res, requestUrl) {
       return json(res, 409, { error: "Username already exists" });
     }
 
+    const now = new Date().toISOString();
     users.push({
       username,
       role,
       passwordHash: hashPassword(password),
-      createdAt: new Date().toISOString(),
+      email,
+      phone,
+      contact,
+      grade,
+      gradeUpdatedAt: grade ? now : "",
+      contactUpdatedAt: contact ? now : "",
+      createdAt: now,
       createdBy: user.username,
-      allowPersistentLogin: Boolean(body.allowPersistentLogin) || effectivePersistentLogin({ username, role, grade: body.grade }, await readJson(FILES.settings, {}), await readJson(FILES.rooms, [])),
+      allowPersistentLogin: Boolean(body.allowPersistentLogin) || effectivePersistentLogin({ username, role, grade }, await readJson(FILES.settings, {}), await readJson(FILES.rooms, [])),
       bannedUntil: "",
       banReason: "",
     });
     await writeJson(FILES.users, users);
     const profiles = await readJson(FILES.profiles, {});
-    profiles[username] = defaultProfile(username);
+    profiles[username] = sanitizeProfile({ ...defaultProfile(username), grade, gradeUpdatedAt: grade ? now : "", contactUpdatedAt: contact ? now : "", updatedAt: now });
     await writeJson(FILES.profiles, profiles);
     if (username.toLowerCase() === "admin2") await unmarkDeletedDefault("admin2", user.username);
     await addSystemLog("account.created", user.username, { username, role }, req);
@@ -2474,7 +2574,7 @@ async function routeApi(req, res, requestUrl) {
       `Created from IP: ${getClientIp(req) || "unknown"}`,
       `Created from device: ${deviceSignature(req)}`,
       `Time: ${new Date().toISOString()}`,
-    ].join("\n"));
+    ].join("\n"), { route: "accountCreated" });
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     return json(res, 201, { users: users.map((entry) => safeUser(entry, user)) });
   }
@@ -2693,6 +2793,8 @@ async function routeApi(req, res, requestUrl) {
         ? String(body.signupMode || settings.signupMode).toLowerCase()
         : DEFAULT_SIGNUP_MODE,
       requireContact: typeof body.requireContact === "boolean" ? body.requireContact : settings.requireContact !== false,
+      adminContactEmail: String(body.adminContactEmail || settings.adminContactEmail || "").trim().slice(0, 160),
+      passwordResetEnabled: typeof body.passwordResetEnabled === "boolean" ? body.passwordResetEnabled : settings.passwordResetEnabled !== false,
       requireProfileUpdate: nextRequireProfileUpdate,
       profileUpdateRequestedAt: nextRequireProfileUpdate
         ? (body.triggerProfileUpdate || !settings.requireProfileUpdate ? new Date().toISOString() : previousProfileUpdateGeneration || new Date().toISOString())
@@ -2702,6 +2804,7 @@ async function routeApi(req, res, requestUrl) {
         : Array.isArray(settings.reportEmails)
           ? settings.reportEmails.slice(0, 4)
           : REPORT_EMAILS,
+      emailRoutes: sanitizeEmailRoutes(body.emailRoutes && typeof body.emailRoutes === "object" ? body.emailRoutes : settings.emailRoutes || {}),
       reportRetentionDays: Math.max(1, Math.min(3650, Number(body.reportRetentionDays || settings.reportRetentionDays || 30))),
       chessUrl: sanitizeExternalUrl(body.chessUrl) || sanitizeExternalUrl(settings.chessUrl) || "https://chessverse.co.in/",
       gameLinks: sanitizeGameLinks(body.gameLinks !== undefined ? body.gameLinks : settings.gameLinks || []),
@@ -6078,8 +6181,42 @@ function approximateLocationFromIp(ip) {
 
 async function notifyAdminEmails(subject, body, options = {}) {
   const settings = await readJson(FILES.settings, {}).catch(() => ({}));
-  const configured = Array.isArray(settings.reportEmails) ? settings.reportEmails.map((entry) => String(entry || "").trim()).filter(Boolean) : [];
-  const recipients = configured.length ? configured.slice(0, 4) : REPORT_EMAILS;
+  const recipients = recipientsForEmailRoute(settings, options.route || "general");
+  return sendEmailToRecipients(recipients, subject, body, options);
+}
+
+function recipientsForEmailRoute(settings, route) {
+  const routes = settings && settings.emailRoutes && typeof settings.emailRoutes === "object" ? settings.emailRoutes : {};
+  const routeList = Array.isArray(routes[route]) ? routes[route] : [];
+  const fallbackList = Array.isArray(settings && settings.reportEmails) ? settings.reportEmails : [];
+  const clean = routeList.map(cleanEmailAddress).filter(Boolean);
+  const fallback = fallbackList.map(cleanEmailAddress).filter(Boolean);
+  return (clean.length ? clean : fallback.length ? fallback : REPORT_EMAILS).slice(0, 10);
+}
+
+function cleanEmailAddress(value) {
+  const email = String(value || "").trim();
+  return email.includes("@") ? email : "";
+}
+
+function sanitizeEmailRoutes(routes = {}) {
+  const allowed = ["reports", "accountRequests", "signups", "accountApprovals", "accountCreated", "announcements", "loginFailures", "general"];
+  const next = {};
+  allowed.forEach((key) => {
+    const list = Array.isArray(routes[key]) ? routes[key] : [];
+    next[key] = list.map(cleanEmailAddress).filter(Boolean).slice(0, 10);
+  });
+  return next;
+}
+
+async function sendDirectEmail(recipients, subject, body, options = {}) {
+  const cleanRecipients = Array.isArray(recipients)
+    ? recipients.map((entry) => String(entry || "").trim()).filter((entry) => entry.includes("@")).slice(0, 10)
+    : [];
+  return sendEmailToRecipients(cleanRecipients, subject, body, options);
+}
+
+async function sendEmailToRecipients(recipients, subject, body, options = {}) {
   if (!recipients.length && !EMAIL_WEBHOOK_URL) {
     await addSystemLog("email.skipped", "system", { subject, reason: "No recipients configured" });
     const result = { ok: false, reason: "No recipients configured", recipients, provider: "", status: 0 };
@@ -6138,6 +6275,14 @@ async function notifyAdminEmails(subject, body, options = {}) {
   await addSystemLog("email.failed", "system", { subject, recipients, reason: lastError || "All providers failed" });
   const result = { ok: false, reason: lastError || "All providers failed", recipients, provider: lastProvider, status: lastStatus };
   return options.detailed ? result : false;
+}
+
+function publicBaseUrl(req) {
+  const configured = firstEnvValue("INNER_PUBLIC_URL", "PUBLIC_URL", "RENDER_EXTERNAL_URL");
+  if (configured) return String(configured).replace(/\/+$/, "");
+  const proto = firstForwardedValue(req.headers["x-forwarded-proto"]) || (req.socket.encrypted ? "https" : "http");
+  const host = req.headers["x-forwarded-host"] || req.headers.host || `${HOST}:${PORT}`;
+  return `${proto}://${host}`.replace(/\/+$/, "");
 }
 
 async function sendResendEmail(payload) {

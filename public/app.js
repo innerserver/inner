@@ -78,6 +78,7 @@ const state = {
   lastLiveAt: 0,
   reconnectDelay: 1600,
   lastReportAlertCount: 0,
+  passwordResetToken: "",
   restoredScrollKeys: new Set(),
   clientId: "",
   peers: new Map(),
@@ -133,6 +134,7 @@ document.addEventListener("DOMContentLoaded", () => {
   cacheElements();
   bindEvents();
   refreshSignupStatus().catch(() => {});
+  if (handlePasswordResetTokenFromUrl()) return;
   loadState().catch((error) => showLogin(error.status === 401 ? "" : error.message));
 });
 
@@ -147,6 +149,17 @@ function cacheElements() {
     "loginPassword",
     "loginError",
     "signupEntryButton",
+    "forgotPasswordButton",
+    "passwordResetRequestForm",
+    "passwordResetLookup",
+    "passwordResetRequestButton",
+    "passwordResetBackButton",
+    "passwordResetStatus",
+    "passwordResetCompleteForm",
+    "passwordResetNewPassword",
+    "passwordResetCompleteButton",
+    "passwordResetCompleteBackButton",
+    "passwordResetCompleteStatus",
     "accountRequestForm",
     "requestUsername",
     "requestDisplayName",
@@ -381,9 +394,16 @@ function cacheElements() {
     "roomNameInput",
     "signupMode",
     "requireContact",
+    "adminContactEmail",
+    "passwordResetEnabled",
     "requireProfileUpdate",
     "triggerProfileUpdateButton",
     "reportEmails",
+    "emailReports",
+    "emailAccounts",
+    "emailAnnouncements",
+    "emailLoginFailures",
+    "emailGeneral",
     "reportRetentionDays",
     "chessUrlInput",
     "gameLinksInput",
@@ -576,6 +596,11 @@ function bindEvents() {
   if (els.sidebarBackdrop) els.sidebarBackdrop.addEventListener("click", closeSidebar);
   els.loginForm.addEventListener("submit", handleLogin);
   if (els.signupEntryButton) els.signupEntryButton.addEventListener("click", openSignupChoice);
+  if (els.forgotPasswordButton) els.forgotPasswordButton.addEventListener("click", showPasswordResetRequest);
+  if (els.passwordResetRequestForm) els.passwordResetRequestForm.addEventListener("submit", requestPasswordReset);
+  if (els.passwordResetBackButton) els.passwordResetBackButton.addEventListener("click", showLogin);
+  if (els.passwordResetCompleteForm) els.passwordResetCompleteForm.addEventListener("submit", completePasswordReset);
+  if (els.passwordResetCompleteBackButton) els.passwordResetCompleteBackButton.addEventListener("click", showLogin);
   if (els.requestBackButton) els.requestBackButton.addEventListener("click", closeSignupChoice);
   if (els.signupBackButton) els.signupBackButton.addEventListener("click", closeSignupChoice);
   els.accountRequestForm.addEventListener("submit", submitAccountRequest);
@@ -911,6 +936,8 @@ async function refreshSignupStatus() {
     ...state.settings,
     signupMode: data.signupMode || state.settings.signupMode,
     requireContact: typeof data.requireContact === "boolean" ? data.requireContact : state.settings.requireContact,
+    passwordResetEnabled: typeof data.passwordResetEnabled === "boolean" ? data.passwordResetEnabled : state.settings.passwordResetEnabled,
+    adminContactEmail: data.adminContactEmail || state.settings.adminContactEmail,
     serverEnabled: typeof data.serverEnabled === "boolean" ? data.serverEnabled : state.settings.serverEnabled,
   };
   if (els.signupStatus && data.signupMode !== "open") {
@@ -919,6 +946,9 @@ async function refreshSignupStatus() {
     els.signupStatus.textContent = "Open signup is on.";
   }
   syncSignupModePanels(data.signupMode || state.settings.signupMode || "request");
+  if (els.forgotPasswordButton) {
+    els.forgotPasswordButton.classList.toggle("hidden", state.settings.passwordResetEnabled === false);
+  }
 }
 
 function syncSignupModePanels(mode) {
@@ -947,6 +977,76 @@ function openSignupChoice() {
 function closeSignupChoice() {
   if (els.loginView) els.loginView.classList.remove("signup-expanded");
   syncSignupModePanels(state.settings.signupMode || "request");
+}
+
+function hidePasswordResetPanels() {
+  if (els.passwordResetRequestForm) els.passwordResetRequestForm.classList.add("hidden");
+  if (els.passwordResetCompleteForm) els.passwordResetCompleteForm.classList.add("hidden");
+}
+
+function showPasswordResetRequest() {
+  closeSignupChoice();
+  if (els.loginView) els.loginView.classList.remove("signup-expanded");
+  if (els.passwordResetCompleteForm) els.passwordResetCompleteForm.classList.add("hidden");
+  if (els.passwordResetRequestForm) els.passwordResetRequestForm.classList.remove("hidden");
+  if (els.passwordResetStatus) els.passwordResetStatus.textContent = state.settings.passwordResetEnabled === false
+    ? `Password reset is off. Contact ${state.settings.adminContactEmail || "an admin"}.`
+    : "";
+  setTimeout(() => els.passwordResetLookup && els.passwordResetLookup.focus(), 0);
+}
+
+function handlePasswordResetTokenFromUrl() {
+  const token = new URLSearchParams(window.location.search).get("reset");
+  if (!token) return false;
+  state.passwordResetToken = token;
+  showLogin("", { keepPasswordReset: true });
+  closeSignupChoice();
+  if (els.passwordResetRequestForm) els.passwordResetRequestForm.classList.add("hidden");
+  if (els.passwordResetCompleteForm) els.passwordResetCompleteForm.classList.remove("hidden");
+  if (els.passwordResetCompleteStatus) els.passwordResetCompleteStatus.textContent = "Enter a new password for this reset link.";
+  setTimeout(() => els.passwordResetNewPassword && els.passwordResetNewPassword.focus(), 0);
+  return true;
+}
+
+async function requestPasswordReset(event) {
+  event.preventDefault();
+  if (!els.passwordResetRequestButton) return;
+  try {
+    els.passwordResetRequestButton.disabled = true;
+    const data = await api("/api/password-reset/request", {
+      method: "POST",
+      json: { lookup: els.passwordResetLookup.value.trim() },
+    });
+    els.passwordResetStatus.textContent = data.message || "If that account has an email saved, a reset link was sent.";
+  } catch (error) {
+    els.passwordResetStatus.textContent = error.message;
+  } finally {
+    els.passwordResetRequestButton.disabled = false;
+  }
+}
+
+async function completePasswordReset(event) {
+  event.preventDefault();
+  if (!els.passwordResetCompleteButton) return;
+  try {
+    els.passwordResetCompleteButton.disabled = true;
+    await api("/api/password-reset/complete", {
+      method: "POST",
+      json: {
+        token: state.passwordResetToken || new URLSearchParams(window.location.search).get("reset") || "",
+        nextPassword: els.passwordResetNewPassword.value,
+      },
+    });
+    els.passwordResetCompleteStatus.textContent = "Password reset. You can sign in now.";
+    els.passwordResetNewPassword.value = "";
+    state.passwordResetToken = "";
+    const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+    window.history.replaceState({}, "", cleanUrl);
+  } catch (error) {
+    els.passwordResetCompleteStatus.textContent = error.message;
+  } finally {
+    els.passwordResetCompleteButton.disabled = false;
+  }
 }
 
 function getAccountRequestLocation() {
@@ -1047,16 +1147,17 @@ async function loadState() {
   shareLinkFromUrl();
 }
 
-function showLogin(message = "") {
+function showLogin(message = "", options = {}) {
   state.loggedIn = false;
   stopSessionKeepAlive();
   applyProfileTheme("system");
   els.loginView.classList.remove("hidden");
   closeSignupChoice();
+  if (!options.keepPasswordReset) hidePasswordResetPanels();
   els.appView.classList.add("hidden");
   els.loginError.textContent = message;
   setConnection("Signed out");
-  setTimeout(() => els.loginPassword.focus(), 0);
+  if (!options.keepPasswordReset) setTimeout(() => els.loginPassword.focus(), 0);
 }
 
 function showApp() {
@@ -1668,8 +1769,20 @@ function serverSettingsPayload(extra = {}) {
     serverEnabled: els.serverEnabled.checked,
     signupMode: els.signupMode.value,
     requireContact: els.requireContact.checked,
+    adminContactEmail: els.adminContactEmail ? els.adminContactEmail.value.trim() : "",
+    passwordResetEnabled: els.passwordResetEnabled ? els.passwordResetEnabled.checked : true,
     requireProfileUpdate: Boolean(els.requireProfileUpdate && els.requireProfileUpdate.checked),
     reportEmails: els.reportEmails.value.split(",").map((entry) => entry.trim()).filter(Boolean),
+    emailRoutes: {
+      reports: splitEmailList(els.emailReports ? els.emailReports.value : ""),
+      accountRequests: splitEmailList(els.emailAccounts ? els.emailAccounts.value : ""),
+      signups: splitEmailList(els.emailAccounts ? els.emailAccounts.value : ""),
+      accountApprovals: splitEmailList(els.emailAccounts ? els.emailAccounts.value : ""),
+      accountCreated: splitEmailList(els.emailAccounts ? els.emailAccounts.value : ""),
+      announcements: splitEmailList(els.emailAnnouncements ? els.emailAnnouncements.value : ""),
+      loginFailures: splitEmailList(els.emailLoginFailures ? els.emailLoginFailures.value : ""),
+      general: splitEmailList(els.emailGeneral ? els.emailGeneral.value : ""),
+    },
     reportRetentionDays: Math.max(1, Math.min(3650, Number(els.reportRetentionDays ? els.reportRetentionDays.value : state.settings.reportRetentionDays || 30))),
     chessUrl: normalizeExternalUrl(els.chessUrlInput ? els.chessUrlInput.value : ""),
     gameLinks: parseGameLinksInput(els.gameLinksInput ? els.gameLinksInput.value : ""),
@@ -1681,6 +1794,14 @@ function serverSettingsPayload(extra = {}) {
     },
     ...extra,
   };
+}
+
+function splitEmailList(value) {
+  return String(value || "")
+    .split(/[\n,;]/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.includes("@"))
+    .slice(0, 10);
 }
 
 function parseGameLinksInput(value) {
@@ -5496,11 +5617,24 @@ function renderServer() {
   els.signupMode.value = state.settings.signupMode || "request";
   els.requireContact.checked = state.settings.requireContact !== false;
   if (els.requireProfileUpdate) els.requireProfileUpdate.checked = Boolean(state.settings.requireProfileUpdate);
+  if (els.adminContactEmail) els.adminContactEmail.value = state.settings.adminContactEmail || "";
+  if (els.passwordResetEnabled) els.passwordResetEnabled.checked = state.settings.passwordResetEnabled !== false;
   if (els.triggerProfileUpdateButton) {
     const requestedAt = state.settings.profileUpdateRequestedAt ? `Last triggered ${formatDate(state.settings.profileUpdateRequestedAt)}` : "Trigger profile update now";
     els.triggerProfileUpdateButton.textContent = requestedAt;
   }
   els.reportEmails.value = Array.isArray(state.settings.reportEmails) ? state.settings.reportEmails.join(", ") : "";
+  const routes = state.settings.emailRoutes || {};
+  if (els.emailReports) els.emailReports.value = Array.isArray(routes.reports) ? routes.reports.join(", ") : "";
+  if (els.emailAccounts) {
+    const accounts = Array.isArray(routes.accountRequests) && routes.accountRequests.length
+      ? routes.accountRequests
+      : Array.isArray(routes.signups) ? routes.signups : [];
+    els.emailAccounts.value = accounts.join(", ");
+  }
+  if (els.emailAnnouncements) els.emailAnnouncements.value = Array.isArray(routes.announcements) ? routes.announcements.join(", ") : "";
+  if (els.emailLoginFailures) els.emailLoginFailures.value = Array.isArray(routes.loginFailures) ? routes.loginFailures.join(", ") : "";
+  if (els.emailGeneral) els.emailGeneral.value = Array.isArray(routes.general) ? routes.general.join(", ") : "";
   if (els.reportRetentionDays) els.reportRetentionDays.value = String(Math.max(1, Math.min(3650, Number(state.settings.reportRetentionDays || 30))));
   if (els.chessUrlInput) els.chessUrlInput.value = currentChessUrl();
   if (els.gameLinksInput && document.activeElement !== els.gameLinksInput) {
@@ -5517,7 +5651,7 @@ function renderServer() {
   if (els.newAccountPersistent) els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
 
   const admin = isOwner();
-  [els.roomNameInput, els.signupMode, els.requireContact, els.requireProfileUpdate, els.reportEmails, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+  [els.roomNameInput, els.signupMode, els.requireContact, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.reportEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.emailGeneral, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
   });
@@ -5546,7 +5680,7 @@ function renderEmailStatus() {
     els.emailStatusText.textContent = "Email alerts need SMTP settings, BREVO_API_KEY, RESEND_API_KEY, SENDGRID_API_KEY, or INNER_EMAIL_WEBHOOK_URL in Render.";
     return;
   }
-  els.emailStatusText.textContent = `Email alerts: ${enabledProviders.join(", ")} configured. Sending from ${from} to ${recipients.join(", ")}.`;
+  els.emailStatusText.textContent = `Email alerts: ${enabledProviders.join(", ")} configured. Sending from ${from}. Default recipients: ${recipients.join(", ")}. Route-specific boxes override this per email type.`;
 }
 
 async function refreshEmailStatus() {

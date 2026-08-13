@@ -1,6 +1,6 @@
 const state = {
   user: null,
-  settings: { serverEnabled: true, roomName: "Inner" },
+  settings: { serverEnabled: true, roomName: "Connectifi" },
   uploadConfig: { directCloudinary: false, maxBytes: 250 * 1024 * 1024, maxLabel: "250 MB" },
   rooms: [],
   selectedRoomId: "main",
@@ -128,6 +128,7 @@ const viewRoutes = {
 
 const els = {};
 const inputDrafts = new WeakMap();
+let inputDraftRestoreTimer = 0;
 
 document.addEventListener("DOMContentLoaded", () => {
   state.notificationsEnabled = getStoredFlag("innerNotifications");
@@ -860,6 +861,7 @@ function bindInputDraftProtection() {
   document.addEventListener("change", captureInputDraft, true);
   document.addEventListener("submit", (event) => clearFormDrafts(event.target), true);
   document.addEventListener("reset", (event) => window.setTimeout(() => clearFormDrafts(event.target), 0), true);
+  startInputDraftRestoreLoop();
 }
 
 function captureInputDraft(event) {
@@ -882,6 +884,31 @@ function isDraftableInput(input) {
   if (!input || !input.matches || !input.matches("input, textarea, select")) return false;
   if (["button", "submit", "reset", "file", "hidden"].includes(input.type)) return false;
   return Boolean(input.id || input.name);
+}
+
+function startInputDraftRestoreLoop() {
+  if (inputDraftRestoreTimer) return;
+  inputDraftRestoreTimer = window.setInterval(() => {
+    const active = document.activeElement;
+    if (!isDraftableInput(active)) return;
+    const draft = inputDrafts.get(active);
+    if (!draft) return;
+    restoreInputDraft(active, draft);
+  }, 120);
+}
+
+function restoreInputDraft(input, draft) {
+  if (!isDraftableInput(input) || !draft) return;
+  if (input.type === "checkbox") {
+    input.checked = Boolean(draft.checked);
+    return;
+  }
+  if (input.value !== draft.value) input.value = draft.value;
+  if (draft.selectionStart !== null && typeof input.setSelectionRange === "function") {
+    try {
+      input.setSelectionRange(draft.selectionStart, draft.selectionEnd);
+    } catch (error) {}
+  }
 }
 
 async function handleLogin(event) {
@@ -3920,17 +3947,19 @@ function preserveFocusedField(callback) {
   const element = snapshot.element;
   const draft = inputDrafts.get(element) || snapshot;
   if (document.activeElement !== element) element.focus({ preventScroll: true });
-  if (element.type === "checkbox") {
-    element.checked = draft.checked;
+  restoreInputDraft(element, draft);
+}
+
+function renderWithFocusPreserved(callback) {
+  if (renderWithFocusPreserved.active) {
+    callback();
     return;
   }
-  if (element.value !== draft.value) element.value = draft.value;
-  if (draft.selectionStart !== null && typeof element.setSelectionRange === "function") {
-    try {
-      element.setSelectionRange(draft.selectionStart, draft.selectionEnd);
-    } catch (error) {
-      // Some input types do not support text selection.
-    }
+  renderWithFocusPreserved.active = true;
+  try {
+    preserveFocusedField(callback);
+  } finally {
+    renderWithFocusPreserved.active = false;
   }
 }
 
@@ -3981,7 +4010,7 @@ function renderCornerAd() {
   const ad = ads[index];
   els.cornerAd.replaceChildren();
   const title = document.createElement("strong");
-  title.textContent = String(ad.title || "Inner").slice(0, 60);
+  title.textContent = String(ad.title || "Connectifi").slice(0, 60);
   const text = document.createElement("span");
   text.textContent = String(ad.text || "").slice(0, 160);
   els.cornerAd.append(title, text);
@@ -3995,7 +4024,7 @@ function renderCornerAd() {
 function renderShell() {
   const enabled = Boolean(state.settings.serverEnabled);
   const custom = state.settings.customizations || {};
-  els.roomName.textContent = (state.settings.customizations && state.settings.customizations.appName) || state.settings.roomName || "Inner";
+  els.roomName.textContent = (state.settings.customizations && state.settings.customizations.appName) || state.settings.roomName || "Connectifi";
   els.serverPill.textContent = enabled ? (custom.serverOnLabel || "Server on") : (custom.serverOffLabel || "Server off");
   els.serverPill.classList.toggle("on", enabled);
   els.serverPill.classList.toggle("off", !enabled);
@@ -4249,7 +4278,7 @@ function toggleSidebar() {
     const open = !els.appView.classList.contains("sidebar-open");
     els.appView.classList.toggle("sidebar-open", open);
     if (els.sidebarToggleButton) {
-      els.sidebarToggleButton.innerHTML = open ? '<span aria-hidden="true">×</span>' : '<span aria-hidden="true">☰</span>';
+      els.sidebarToggleButton.innerHTML = open ? '<span aria-hidden="true">??</span>' : '<span aria-hidden="true">???</span>';
       els.sidebarToggleButton.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
       els.sidebarToggleButton.setAttribute("aria-expanded", String(open));
     }
@@ -4258,7 +4287,7 @@ function toggleSidebar() {
   const closed = !els.appView.classList.contains("sidebar-closed");
   els.appView.classList.toggle("sidebar-closed", closed);
   if (els.sidebarToggleButton) {
-    els.sidebarToggleButton.innerHTML = closed ? '<span aria-hidden="true">☰</span>' : '<span aria-hidden="true">×</span>';
+    els.sidebarToggleButton.innerHTML = closed ? '<span aria-hidden="true">???</span>' : '<span aria-hidden="true">??</span>';
     els.sidebarToggleButton.setAttribute("aria-label", closed ? "Open navigation" : "Close navigation");
     els.sidebarToggleButton.setAttribute("aria-expanded", String(!closed));
   }
@@ -4269,7 +4298,7 @@ function closeSidebar() {
   els.appView.classList.remove("sidebar-open");
   if (els.sidebarToggleButton) {
     const closed = els.appView.classList.contains("sidebar-closed");
-    els.sidebarToggleButton.innerHTML = closed ? '<span aria-hidden="true">☰</span>' : '<span aria-hidden="true">☰</span>';
+    els.sidebarToggleButton.innerHTML = closed ? '<span aria-hidden="true">???</span>' : '<span aria-hidden="true">???</span>';
     els.sidebarToggleButton.setAttribute("aria-label", "Open navigation");
     els.sidebarToggleButton.setAttribute("aria-expanded", String(!els.appView.classList.contains("sidebar-closed")));
   }
@@ -4492,6 +4521,10 @@ function canAccessVisibleRoom(room) {
 }
 
 function renderMessages() {
+  return renderWithFocusPreserved(renderMessagesInner);
+}
+
+function renderMessagesInner() {
   const room = state.rooms.find((entry) => entry.id === state.selectedRoomId) || { id: "main", name: "Main" };
   const visibleMessages = state.messages.filter((message) => (message.roomId || "main") === room.id);
   const locked = featureLock("messages") || (room.id !== "main" ? featureLock("rooms") : null);
@@ -4638,6 +4671,10 @@ async function unlockRoomIfNeeded(roomId) {
 }
 
 function renderDms() {
+  return renderWithFocusPreserved(renderDmsInner);
+}
+
+function renderDmsInner() {
   const people = dmPeople();
   if (!state.selectedDmUser && people.length) state.selectedDmUser = people[0].value;
   if (state.selectedDmUser && !people.some((person) => person.value === state.selectedDmUser)) {
@@ -5008,6 +5045,10 @@ function friendGradeLabel(person) {
 }
 
 function renderProfile() {
+  return renderWithFocusPreserved(renderProfileInner);
+}
+
+function renderProfileInner() {
   if (!els.profileForm || !state.user) return;
   const profile = state.profiles[state.user.username] || {};
   const customTheme = profile.customTheme || {};
@@ -5096,7 +5137,7 @@ function cssUrl(value) {
 
 function applyCustomizations() {
   const custom = state.settings.customizations || {};
-  const appName = custom.appName || state.settings.roomName || "Inner";
+  const appName = custom.appName || state.settings.roomName || "Connectifi";
   if (els.roomName) els.roomName.textContent = appName;
   document.title = appName;
   if (els.buildBadge) {
@@ -5690,11 +5731,15 @@ function renderVpn() {
 }
 
 function renderServer() {
+  return renderWithFocusPreserved(renderServerInner);
+}
+
+function renderServerInner() {
   const enabled = Boolean(state.settings.serverEnabled);
   els.serverStateText.textContent = enabled
     ? "Active"
     : `Shutdown${state.settings.shutdownBy ? ` by ${state.settings.shutdownBy}` : ""}`;
-  setInputIfNotFocused(els.roomNameInput, state.settings.roomName || "Inner");
+  setInputIfNotFocused(els.roomNameInput, state.settings.roomName || "Connectifi");
   setInputIfNotFocused(els.signupMode, state.settings.signupMode || "request");
   els.requireContact.checked = state.settings.requireContact !== false;
   if (els.requireProfileUpdate) els.requireProfileUpdate.checked = Boolean(state.settings.requireProfileUpdate);
@@ -8457,3 +8502,7 @@ function formatBytes(bytes) {
   if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
   return `${(size / 1024 / 1024 / 1024).toFixed(1)} GB`;
 }
+
+
+
+

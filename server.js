@@ -39,7 +39,7 @@ const B2_BUCKET_NAME = firstEnvValue("INNER_B2_BUCKET_NAME", "B2_BUCKET_NAME", "
 const B2_BUCKET_ID = firstEnvValue("INNER_B2_BUCKET_ID", "B2_BUCKET_ID", "BACKBLAZE_B2_BUCKET_ID");
 const REPORT_EMAILS = splitEnvList(firstEnvValue("INNER_REPORT_EMAILS", "REPORT_EMAILS", "INNER_ADMIN_EMAILS", "ADMIN_EMAILS")).slice(0, 4);
 const EMAIL_WEBHOOK_URL = firstEnvValue("INNER_EMAIL_WEBHOOK_URL", "REPORT_EMAIL_WEBHOOK_URL", "EMAIL_WEBHOOK_URL");
-const EMAIL_FROM = firstEnvValue("INNER_EMAIL_FROM", "EMAIL_FROM", "RESEND_FROM", "SENDGRID_FROM", "BREVO_FROM") || "Inner <innerservers@gmail.com>";
+const EMAIL_FROM = firstEnvValue("INNER_EMAIL_FROM", "EMAIL_FROM", "RESEND_FROM", "SENDGRID_FROM", "BREVO_FROM") || "Connectifi <innerservers@gmail.com>";
 const EMAIL_REPLY_TO = firstEnvValue("INNER_EMAIL_REPLY_TO", "EMAIL_REPLY_TO");
 const RESEND_API_KEY = firstEnvValue("INNER_RESEND_API_KEY", "RESEND_API_KEY", "RESEND_KEY");
 const BREVO_API_KEY = firstEnvValue("INNER_BREVO_API_KEY", "BREVO_API_KEY", "SENDINBLUE_API_KEY", "BREVO_KEY", "SIB_API_KEY");
@@ -263,7 +263,7 @@ async function main() {
 
   server.listen(PORT, HOST, () => {
     const scheme = server.isInnerHttps ? "https" : "http";
-    console.log(`Inner running at ${scheme}://${HOST}:${PORT}`);
+    console.log(`Connectifi running at ${scheme}://${HOST}:${PORT}`);
     if (!server.isInnerHttps) {
       console.log("Cloud hosts like Render still provide HTTPS at the public app URL.");
     }
@@ -398,7 +398,7 @@ async function ensureStorage() {
   await ensureJson(FILES.passwordResets, []);
   await ensureJson(FILES.settings, {
     serverEnabled: true,
-    roomName: "Inner",
+    roomName: "Connectifi",
     signupMode: DEFAULT_SIGNUP_MODE,
     requireContact: DEFAULT_REQUIRE_CONTACT,
     adminContactEmail: REPORT_EMAILS[0] || "",
@@ -885,7 +885,7 @@ async function routeApi(req, res, requestUrl) {
   if (req.method === "GET" && pathname === "/api/health") {
     return json(res, 200, {
       ok: true,
-      app: "Inner",
+      app: "Connectifi",
       startedAt: serverStartedAt,
       https: {
         requestSecure: isHttpsRequest(req),
@@ -2811,7 +2811,7 @@ async function routeApi(req, res, requestUrl) {
     const next = {
       ...settings,
       serverEnabled: nextServerEnabled,
-      roomName: String(body.roomName || settings.roomName || "Inner").slice(0, 80),
+      roomName: String(body.roomName || settings.roomName || "Connectifi").slice(0, 80),
       signupMode: ["open", "request"].includes(String(body.signupMode || settings.signupMode || "").toLowerCase())
         ? String(body.signupMode || settings.signupMode).toLowerCase()
         : DEFAULT_SIGNUP_MODE,
@@ -5428,7 +5428,7 @@ function serviceScaleMultiplier(settings, key) {
 
 function defaultCustomizations() {
   return {
-    appName: "",
+    appName: "Connectifi",
     connectedLabel: "",
     disconnectedLabel: "",
     serverOnLabel: "",
@@ -6362,7 +6362,7 @@ async function sendEmailToRecipients(recipients, subject, body, options = {}) {
     replyTo: options.replyTo || contact.email || EMAIL_REPLY_TO || "",
     contact,
     recipients,
-    app: "Inner",
+    app: "Connectifi",
     createdAt: new Date().toISOString(),
   };
 
@@ -6687,7 +6687,7 @@ function parseEmailFrom(value) {
       email: match[2].trim(),
     };
   }
-  return { name: "Inner", email: raw || "noreply@example.com" };
+  return { name: "Connectifi", email: raw || "noreply@example.com" };
 }
 
 function emailProviderStatus(recipients = []) {
@@ -6718,7 +6718,7 @@ function emailTextWithFooter(payload) {
 
 function emailFromForContact(contact = {}) {
   const email = cleanEmailAddress(contact.from) || cleanEmailAddress(contact.email) || parseEmailFrom(EMAIL_FROM).email;
-  return email ? `Inner <${email}>` : EMAIL_FROM;
+  return email ? `Connectifi <${email}>` : EMAIL_FROM;
 }
 
 function buildEmailHtml(subject, body, options = {}) {
@@ -6731,7 +6731,7 @@ function buildEmailHtml(subject, body, options = {}) {
     .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
     .join("");
   const cta = ctaUrl
-    ? `<a href="${escapeHtml(ctaUrl)}" style="display:inline-block;background:#151515;color:#fff;text-decoration:none;border-radius:8px;padding:12px 16px;font-weight:700;">Open Inner</a>`
+    ? `<a href="${escapeHtml(ctaUrl)}" style="display:inline-block;background:#151515;color:#fff;text-decoration:none;border-radius:8px;padding:12px 16px;font-weight:700;">Open Connectifi</a>`
     : "";
   const replyLine = replyTo
     ? `Replying to this email goes to <strong>${escapeHtml(replyTo)}</strong>.`
@@ -6745,7 +6745,7 @@ function buildEmailHtml(subject, body, options = {}) {
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border:1px solid #deded6;border-radius:14px;overflow:hidden;">
             <tr>
               <td style="padding:22px 24px;background:#151515;color:#ffffff;">
-                <div style="font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#a6d7ca;">Inner</div>
+                <div style="font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#a6d7ca;">Connectifi</div>
                 <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2;">${escapeHtml(subject)}</h1>
               </td>
             </tr>
@@ -6759,7 +6759,7 @@ function buildEmailHtml(subject, body, options = {}) {
             <tr>
               <td style="padding:16px 24px;border-top:1px solid #e6e6df;color:#5d625f;font-size:13px;line-height:1.45;">
                 ${replyLine}<br>
-                Contact type: ${escapeHtml(contact.type || "support")}. Sent by Inner.
+                Contact type: ${escapeHtml(contact.type || "support")}. Sent by Connectifi.
               </td>
             </tr>
           </table>
@@ -6811,14 +6811,14 @@ async function serveBrowserFrame(req, res, requestUrl, user) {
   if (!target) return text(res, 400, "Enter a valid http or https URL");
   const settings = await readJson(FILES.settings, {});
   const policyError = browserPolicyError(target, settings.browserPolicy || {}, user);
-  if (policyError) return browserFrameMessage(res, 403, "Site blocked by Inner", policyError);
+  if (policyError) return browserFrameMessage(res, 403, "Site blocked by Connectifi", policyError);
   await addSystemLog("browser.open", user.username, browserOpenDetails(target), req);
   if (typeof fetch !== "function") return text(res, 500, "Server fetch is unavailable");
   try {
     const response = await fetch(target, {
       redirect: "follow",
       headers: {
-        "User-Agent": "Mozilla/5.0 Inner Browser",
+        "User-Agent": "Mozilla/5.0 Connectifi Browser",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
     });
@@ -6839,7 +6839,7 @@ async function serveBrowserFrame(req, res, requestUrl, user) {
       .replace(/<head([^>]*)>/i, `<head$1>${baseTag}`);
     return res.end(cleaned.includes("<head") ? cleaned : `${baseTag}${cleaned}`);
   } catch (error) {
-    return browserFrameMessage(res, 502, "Inner browser could not open this site", `${error.message || "fetch failed"}\n\nIf your network blocks this site, Inner cannot bypass that.`);
+    return browserFrameMessage(res, 502, "Connectifi browser could not open this site", `${error.message || "fetch failed"}\n\nIf your network blocks this site, Connectifi cannot bypass that.`);
   }
 }
 
@@ -6848,7 +6848,7 @@ function browserPolicyError(target, policy, user) {
   const host = hostnameForPolicy(target);
   const next = sanitizeBrowserPolicy(policy || {});
   if (!host) return "Invalid site.";
-  if (next.blockedSites.some((domain) => domainMatches(host, domain))) return `${host} is blocked by the Inner browser rules.`;
+  if (next.blockedSites.some((domain) => domainMatches(host, domain))) return `${host} is blocked by the Connectifi browser rules.`;
   if (next.allowOnly && !next.allowedSites.some((domain) => domainMatches(host, domain))) return `${host} is not on the allowed site list.`;
   return "";
 }
@@ -7141,7 +7141,7 @@ async function createBackup(username) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const fileName = `inner-backup-${timestamp}.json`;
   const backup = {
-    app: "Inner",
+    app: "Connectifi",
     version: 1,
     exportedAt: new Date().toISOString(),
     exportedBy: username,
@@ -7747,3 +7747,9 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+
+
+
+
+
+

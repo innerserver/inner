@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Inner</title>
+    <title>Connectifi</title>
     <meta name="theme-color" content="#f7f7f4" />
-    <meta name="application-name" content="Inner" />
-    <meta name="apple-mobile-web-app-title" content="Inner" />
+    <meta name="application-name" content="Connectifi" />
+    <meta name="apple-mobile-web-app-title" content="Connectifi" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=inner-93-input-contact-cachefix" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-95-brand-draftfix" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -19,8 +19,8 @@
           <div class="brand-row">
             <span class="brand-mark" aria-hidden="true"><span class="brand-glyph"></span></span>
             <div>
-              <h1>Inner</h1>
-              <p>Private workspace login</p>
+              <h1>Connectifi</h1>
+              <p>Connectifi workspace login</p>
             </div>
           </div>
           <label>
@@ -105,7 +105,7 @@
         <div class="brand-row app-brand">
           <span class="brand-mark" aria-hidden="true"><span class="brand-glyph"></span></span>
           <div>
-            <h1 id="roomName">Inner</h1>
+            <h1 id="roomName">Connectifi</h1>
             <span id="serverPill" class="status-pill">Checking</span>
           </div>
         </div>
@@ -188,8 +188,8 @@
           </div>
           <div id="phoneInstallGuide" class="phone-guide status-panel">
             <div>
-              <h3>Put Inner on your phone</h3>
-              <p class="panel-note">iPhone: open Inner in Safari, tap Share, then Add to Home Screen. Android: open Inner in Chrome, tap Install app or Add to Home screen. Keep location allowed for account requests and live server allocation.</p>
+              <h3>Put Connectifi on your phone</h3>
+              <p class="panel-note">iPhone: open Connectifi in Safari, tap Share, then Add to Home Screen. Android: open Connectifi in Chrome, tap Install app or Add to Home screen. Keep location allowed for account requests and live server allocation.</p>
             </div>
             <button id="phoneInstallGuideButton" class="secondary-button compact-button" type="button">Install app</button>
           </div>
@@ -467,7 +467,7 @@
           <div class="section-header">
             <div>
               <h2>Google Workspace</h2>
-              <p>Docs, Slides, and Sheets launcher. Google sign-in/editing works best in a real tab or with the Inner Google helper extension.</p>
+              <p>Docs, Slides, and Sheets launcher. Google sign-in/editing works best in a real tab or with the Connectifi Google helper extension.</p>
             </div>
             <div class="button-row">
               <button id="openGoogleWorkspaceButton" class="primary-button compact-button" type="button">Open full tab</button>
@@ -495,7 +495,7 @@
           <div class="section-header">
             <div>
               <h2>Browser</h2>
-              <p>Preview simple pages inside Inner, or open login-heavy sites in a real tab.</p>
+              <p>Preview simple pages inside Connectifi, or open login-heavy sites in a real tab.</p>
             </div>
           </div>
           <form id="publicBrowserForm" class="upload-bar invite-join-bar public-browser-bar">
@@ -514,7 +514,7 @@
               <option value="app">App</option>
             </select>
             <select id="publicBrowserShareTarget" aria-label="Browser share target"></select>
-            <button id="publicBrowserSendButton" class="secondary-button" type="button">Send in Inner</button>
+            <button id="publicBrowserSendButton" class="secondary-button" type="button">Send in Connectifi</button>
           </div>
           <p id="publicBrowserStatus" class="panel-note">Private from other users; admin-audited. Embedded preview works for simple pages. Use Full tab for Google, Instagram, sign-in pages, videos, and sites that block frames.</p>
           <iframe id="publicBrowserFrame" class="embedded-app-frame" title="Public browser" referrerpolicy="strict-origin-when-cross-origin"></iframe>
@@ -591,7 +591,7 @@
           <div class="settings-grid admin-grid">
             <form id="serverForm" class="panel-form">
               <h3>Server</h3>
-              <label>Room name<input id="roomNameInput" maxlength="80" /></label>
+              <label>Room name<input id="roomNameInput" maxlength="80" placeholder="Connectifi" /></label>
               <label>Signup mode<select id="signupMode"><option value="request">Request approval</option><option value="open">Open signup</option></select></label>
               <label class="switch-row"><input id="requireContact" type="checkbox" /><span>Require contact details</span></label>
               <label>Admin contact email<input id="adminContactEmail" type="email" maxlength="160" placeholder="admin@yourdomain.com" /></label>
@@ -722,7 +722,7 @@
             <form id="quickEditForm" class="panel-form owner-only hidden wide-panel">
               <h3>Quick edit studio</h3>
               <p class="panel-note">Free in-app changes. No API key needed.</p>
-              <label>App name<input id="quickAppName" maxlength="60" placeholder="Inner" /></label>
+              <label>App name<input id="quickAppName" maxlength="60" placeholder="Connectifi" /></label>
               <label>Connected text<input id="quickConnectedLabel" maxlength="40" placeholder="Live" /></label>
               <label>Disconnected text<input id="quickDisconnectedLabel" maxlength="40" placeholder="Not live" /></label>
               <label>Server-on label<input id="quickServerOnLabel" maxlength="40" placeholder="Server on" /></label>
@@ -813,7 +813,7 @@
             </form>
             <div class="status-panel owner-only hidden wide-panel">
               <h3>Admin browser</h3>
-              <p class="panel-note">Open reachable sites through the Inner browser frame. Network-level blocks still apply.</p>
+              <p class="panel-note">Open reachable sites through the Connectifi browser frame. Network-level blocks still apply.</p>
               <form id="adminBrowserForm" class="upload-bar invite-join-bar">
                 <input id="adminBrowserUrl" placeholder="https://example.com" autocomplete="off" />
                 <button id="adminBrowserOpenButton" class="secondary-button" type="submit">Open</button>
@@ -824,7 +824,7 @@
             </div>
             <form id="browserPolicyForm" class="panel-form owner-only hidden wide-panel">
               <h3>Browser rules</h3>
-              <p class="panel-note">Use domains only, one per line. Example: youtube.com. This controls Inner's browser; it does not bypass your Wi-Fi or school network filters.</p>
+              <p class="panel-note">Use domains only, one per line. Example: youtube.com. This controls Connectifi's browser; it does not bypass your Wi-Fi or school network filters.</p>
               <label class="switch-row"><input id="browserAllowOnly" type="checkbox" /><span>Only allow the domains listed below</span></label>
               <label>Allowed domains<textarea id="browserAllowedSites" rows="4" placeholder="example.com&#10;wikipedia.org"></textarea></label>
               <label>Blocked domains<textarea id="browserBlockedSites" rows="4" placeholder="badsite.com&#10;example.org"></textarea></label>
@@ -894,11 +894,15 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=inner-93-input-contact-cachefix" defer></script>
-    <script src="/status-guard.js?v=inner-93-input-contact-cachefix" defer></script>
-    <script src="/ui-boot.js?v=inner-93-input-contact-cachefix" defer></script>
-    <script src="/app.js?v=inner-93-input-contact-cachefix" defer></script>
-    <script src="/force-logout.js?v=inner-93-input-contact-cachefix" defer></script>
+    <script src="/session-guard.js?v=connectifi-95-brand-draftfix" defer></script>
+    <script src="/status-guard.js?v=connectifi-95-brand-draftfix" defer></script>
+    <script src="/ui-boot.js?v=connectifi-95-brand-draftfix" defer></script>
+    <script src="/app.js?v=connectifi-95-brand-draftfix" defer></script>
+    <script src="/force-logout.js?v=connectifi-95-brand-draftfix" defer></script>
   </body>
 </html>
+
+
+
+
 

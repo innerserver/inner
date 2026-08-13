@@ -3828,46 +3828,78 @@ function clearRemoteVideo(roomId = "") {
 }
 
 function renderAll() {
-  renderShell();
-  renderDashboard();
-  renderRooms();
-  renderMessages();
-  renderDms();
-  renderDmCall();
-  renderFriends();
-  renderProfile();
-  renderStore();
-  renderFiles();
-  renderGames();
-  renderDocs();
-  renderVoice();
-  renderScreen();
-  renderVpn();
-  renderServer();
-  renderEmailStatus();
-  renderQuickEdit();
-  renderUsers();
-  renderFeatureLocks();
-  renderFeatureVisibility();
-  renderPaywalls();
-  renderRoomManager();
-  renderAnnouncements();
-  renderServiceScale();
-  renderBrowserPolicy();
-  renderAdminDms();
-  renderAdminReadReceipts();
-  renderAdminStore();
-  renderAiRequests();
-  renderBackups();
-  renderAdminAutomod();
-  renderAccountRequests();
-  renderLiveIpTracking();
-  renderReports();
-  renderLogs();
-  renderHmd();
-  renderCornerAd();
-  updateControls();
-  setupAdminCollapsibles();
+  preserveFocusedField(() => {
+    renderShell();
+    renderDashboard();
+    renderRooms();
+    renderMessages();
+    renderDms();
+    renderDmCall();
+    renderFriends();
+    renderProfile();
+    renderStore();
+    renderFiles();
+    renderGames();
+    renderDocs();
+    renderVoice();
+    renderScreen();
+    renderVpn();
+    renderServer();
+    renderEmailStatus();
+    renderQuickEdit();
+    renderUsers();
+    renderFeatureLocks();
+    renderFeatureVisibility();
+    renderPaywalls();
+    renderRoomManager();
+    renderAnnouncements();
+    renderServiceScale();
+    renderBrowserPolicy();
+    renderAdminDms();
+    renderAdminReadReceipts();
+    renderAdminStore();
+    renderAiRequests();
+    renderBackups();
+    renderAdminAutomod();
+    renderAccountRequests();
+    renderLiveIpTracking();
+    renderReports();
+    renderLogs();
+    renderHmd();
+    renderCornerAd();
+    updateControls();
+    setupAdminCollapsibles();
+  });
+}
+
+function preserveFocusedField(callback) {
+  const active = document.activeElement;
+  const canPreserve = active && active.dataset && active.matches("input, textarea, select");
+  const snapshot = canPreserve
+    ? {
+        element: active,
+        value: active.value,
+        checked: active.type === "checkbox" ? active.checked : undefined,
+        selectionStart: typeof active.selectionStart === "number" ? active.selectionStart : null,
+        selectionEnd: typeof active.selectionEnd === "number" ? active.selectionEnd : null,
+      }
+    : null;
+  callback();
+  if (!snapshot || !snapshot.element.isConnected) return;
+  const element = snapshot.element;
+  if (document.activeElement !== element) element.focus({ preventScroll: true });
+  if (element.type === "checkbox") {
+    element.checked = snapshot.checked;
+    return;
+  }
+  if (element.value !== snapshot.value) element.value = snapshot.value;
+  if (snapshot.selectionStart !== null && typeof element.setSelectionRange === "function") {
+    try {
+      element.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+    } catch (error) {
+      // Some input types do not support text selection.
+    }
+  }
 }
 
 function setupAdminCollapsibles() {
@@ -4947,21 +4979,21 @@ function renderProfile() {
   if (!els.profileForm || !state.user) return;
   const profile = state.profiles[state.user.username] || {};
   const customTheme = profile.customTheme || {};
-  els.profileDisplayName.value = profile.displayName || state.user.username;
-  els.profileAvatarUrl.value = profile.avatarUrl || "";
-  els.profileBannerUrl.value = profile.bannerUrl || "";
-  els.profileBadges.value = Array.isArray(profile.badges) ? profile.badges.join(", ") : "";
+  setInputIfNotFocused(els.profileDisplayName, profile.displayName || state.user.username);
+  setInputIfNotFocused(els.profileAvatarUrl, profile.avatarUrl || "");
+  setInputIfNotFocused(els.profileBannerUrl, profile.bannerUrl || "");
+  setInputIfNotFocused(els.profileBadges, Array.isArray(profile.badges) ? profile.badges.join(", ") : "");
   els.profileStatus.value = profile.invisible ? "invisible" : profile.status || "online";
-  els.profileCustomStatus.value = profile.customStatus || "";
-  if (els.profileGrade) els.profileGrade.value = profile.grade || state.user.grade || "";
-  if (els.profileEmail) els.profileEmail.value = state.user.email || "";
-  if (els.profilePhone) els.profilePhone.value = state.user.phone || "";
+  setInputIfNotFocused(els.profileCustomStatus, profile.customStatus || "");
+  setInputIfNotFocused(els.profileGrade, profile.grade || state.user.grade || "");
+  setInputIfNotFocused(els.profileEmail, state.user.email || "");
+  setInputIfNotFocused(els.profilePhone, state.user.phone || "");
   els.profileTheme.value = profile.theme || "system";
-  els.profileThemeBg.value = safeColor(customTheme.bg, "#f7f7f4");
-  els.profileThemeSurface.value = safeColor(customTheme.surface, "#ffffff");
-  els.profileThemeInk.value = safeColor(customTheme.ink, "#151515");
-  els.profileThemeAccent.value = safeColor(customTheme.accent, "#245c4f");
-  els.profileBio.value = profile.bio || "";
+  setInputIfNotFocused(els.profileThemeBg, safeColor(customTheme.bg, "#f7f7f4"));
+  setInputIfNotFocused(els.profileThemeSurface, safeColor(customTheme.surface, "#ffffff"));
+  setInputIfNotFocused(els.profileThemeInk, safeColor(customTheme.ink, "#151515"));
+  setInputIfNotFocused(els.profileThemeAccent, safeColor(customTheme.accent, "#245c4f"));
+  setInputIfNotFocused(els.profileBio, profile.bio || "");
   els.profileInvisible.checked = Boolean(profile.invisible);
   updateProfilePreview();
 }

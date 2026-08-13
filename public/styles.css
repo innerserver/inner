@@ -1209,6 +1209,12 @@ textarea:focus {
   margin-bottom: 14px;
 }
 
+.dashboard-alert-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
 .announcement-list .account-card {
   background: color-mix(in srgb, var(--accent) 10%, var(--surface));
   border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
@@ -1243,6 +1249,20 @@ textarea:focus {
   border-color: #b42318;
   color: #fff;
   font-weight: 900;
+}
+
+.dashboard-report-summary {
+  font-size: 1.05rem;
+}
+
+.dashboard-report-card {
+  border-width: 2px;
+}
+
+.profile-update-alert {
+  border: 2px solid color-mix(in srgb, var(--accent) 50%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  cursor: pointer;
 }
 
 [data-theme="dark"] .report-dashboard-alert,

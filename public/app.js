@@ -185,6 +185,8 @@ function cacheElements() {
     "dashboardState",
     "dashboardGrid",
     "dashboardAnnouncementList",
+    "dashboardReportList",
+    "dashboardProfileUpdateList",
     "onboardingPanel",
     "onboardingTitle",
     "onboardingSubtitle",
@@ -1049,7 +1051,7 @@ function showLogin(message = "") {
   closeSignupChoice();
   els.appView.classList.add("hidden");
   els.loginError.textContent = message;
-  setConnection("Not live");
+  setConnection("Signed out");
   setTimeout(() => els.loginPassword.focus(), 0);
 }
 
@@ -2553,15 +2555,16 @@ function connectSocket() {
     state.wsPingTimer = null;
     if (state.loggedIn) {
       clearTimeout(state.reconnectTimer);
+      setConnection("Live");
       scheduleConnectionDowngrade();
       state.reconnectTimer = setTimeout(connectSocket, state.reconnectDelay);
       state.reconnectDelay = Math.min(15000, Math.round(state.reconnectDelay * 1.5));
     } else {
-      setConnection("Not live");
+      setConnection("Signed out");
     }
   });
   ws.addEventListener("error", () => {
-    if (!state.loggedIn) setConnection("Not live");
+    if (!state.loggedIn) setConnection("Signed out");
     else scheduleConnectionDowngrade();
   });
   ws.addEventListener("message", (event) => {
@@ -2604,6 +2607,10 @@ function scheduleConnectionDowngrade() {
 }
 
 async function verifyLiveBeforeDowngrade() {
+  if (!state.loggedIn) {
+    setConnection("Signed out");
+    return;
+  }
   try {
     const response = await fetch("/api/session/ping", { credentials: "same-origin", cache: "no-store" });
     if (response.ok) {
@@ -3530,7 +3537,7 @@ function isRealtimeReady() {
 
 async function ensureRealtimeReady(label = "live features") {
   if (isRealtimeReady()) return true;
-  setConnection("Not live");
+  if (state.loggedIn) setConnection("Live");
   if (!state.ws || state.ws.readyState === WebSocket.CLOSED || state.ws.readyState === WebSocket.CLOSING) {
     connectSocket();
   }
@@ -3790,6 +3797,8 @@ function renderDashboard() {
     ? (wholeAppPaywall.message || "Access is paywalled. Open Store to request the access pass.")
     : state.settings.serverEnabled ? "Workspace live" : "Workspace paused";
   renderDashboardAnnouncements();
+  renderDashboardReportAlerts();
+  renderDashboardProfileAlerts();
   renderOnboarding();
   els.dashboardGrid.replaceChildren(
     metricCard("Messages", state.messages.length, "Persistent room history"),
@@ -3797,27 +3806,6 @@ function renderDashboard() {
     metricCard("Friends", (state.friends.friends || []).length, "Accepted connections"),
     metricCard("Online", state.presence.length || state.peers.size + 1, "Live presence")
   );
-  const activeReportCount = activeReports().length;
-  if (isModerator() && activeReportCount) {
-    const alert = adminCard("Moderation alert", `${activeReportCount} active report${activeReportCount === 1 ? "" : "s"}`, [
-      "Open the Reports panel to review, mark seen, or close them.",
-      `Reports are kept for ${Math.max(1, Number(state.settings.reportRetentionDays || 30))} day(s).`,
-    ]);
-    alert.classList.add("report-dashboard-alert");
-    alert.setAttribute("role", "alert");
-    alert.addEventListener("click", () => showView("admin"));
-    els.dashboardGrid.prepend(alert);
-  }
-  const gradeReminder = yearlyGradeReminder();
-  if (gradeReminder) {
-    els.dashboardGrid.prepend(adminCard("Grade check", "Update profile", [gradeReminder]));
-  }
-  const profileUpdateReminder = requiredProfileUpdateReminder();
-  if (profileUpdateReminder) {
-    const prompt = adminCard("Profile update needed", "Grade, class, and contact", [profileUpdateReminder]);
-    prompt.addEventListener("click", () => showView("profile"));
-    els.dashboardGrid.prepend(prompt);
-  }
 
   els.presenceList.replaceChildren();
   const presence = state.presence.length ? state.presence : [{ username: state.user.username, role: state.user.role, status: "online" }];
@@ -3841,6 +3829,63 @@ function renderDashboard() {
 
 function metricCard(title, value, detail) {
   return adminCard(title, String(value), [detail]);
+}
+
+function renderDashboardReportAlerts() {
+  if (!els.dashboardReportList) return;
+  els.dashboardReportList.replaceChildren();
+  if (!isModerator()) return;
+  const reports = activeReports();
+  if (!reports.length) return;
+  const count = reports.length;
+  const alert = adminCard("REPORTS NEED REVIEW", `${count} active report${count === 1 ? "" : "s"}`, [
+    "Reported message, sender, reporter, and contacts are shown below.",
+    `Reports stay for ${Math.max(1, Number(state.settings.reportRetentionDays || 30))} day(s).`,
+  ]);
+  alert.classList.add("report-dashboard-alert", "dashboard-report-summary");
+  alert.setAttribute("role", "alert");
+  els.dashboardReportList.append(alert);
+
+  reports.slice(0, 5).forEach((report) => {
+    const card = adminCard(
+      `${report.targetSender || "Unknown sender"} was reported`,
+      `Reported by ${report.reporter || "unknown"}`,
+      [
+        report.targetText ? `Message: ${report.targetText}` : "Message text unavailable",
+        report.reason ? `Reason: ${report.reason}` : "",
+        contactLine("Reporter", report.reporterContact),
+        contactLine("Sender", report.targetSenderContact),
+        `Created ${formatDate(report.createdAt)}`,
+      ].filter(Boolean)
+    );
+    card.classList.add("report-dashboard-alert", "dashboard-report-card");
+    const actions = document.createElement("div");
+    actions.className = "account-actions";
+    actions.append(
+      accountButton("Mark seen", () => updateReport(report.id, "reviewing")),
+      accountButton("Done", () => updateReport(report.id, "done"))
+    );
+    if (isOwner()) actions.append(accountButton("Open reports panel", () => showView("admin")));
+    card.append(actions);
+    els.dashboardReportList.append(card);
+  });
+}
+
+function renderDashboardProfileAlerts() {
+  if (!els.dashboardProfileUpdateList) return;
+  els.dashboardProfileUpdateList.replaceChildren();
+  const alerts = [];
+  const gradeReminder = yearlyGradeReminder();
+  if (gradeReminder) alerts.push(adminCard("Grade check", "Update profile", [gradeReminder]));
+  const profileUpdateReminder = requiredProfileUpdateReminder();
+  if (profileUpdateReminder) {
+    alerts.push(adminCard("Profile update needed", "Grade, class, email, and phone", [profileUpdateReminder]));
+  }
+  alerts.forEach((card) => {
+    card.classList.add("profile-update-alert");
+    card.addEventListener("click", () => showView("profile"));
+    els.dashboardProfileUpdateList.append(card);
+  });
 }
 
 function renderOnboarding() {
@@ -8059,6 +8104,10 @@ function setConnection(value) {
   if (!els.connectionStatus) return;
   const custom = state.settings && state.settings.customizations ? state.settings.customizations : {};
   const normalized = String(value || "").toLowerCase();
+  if (normalized.includes("signed out")) {
+    els.connectionStatus.textContent = custom.disconnectedLabel || "Signed out";
+    return;
+  }
   if ((normalized.includes("live") || normalized.includes("connected") || normalized.includes("online")) && !normalized.includes("offline") && !normalized.includes("not")) {
     els.connectionStatus.textContent = custom.connectedLabel || "Live";
     return;

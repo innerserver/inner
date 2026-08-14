@@ -5026,3 +5026,137 @@ body {
     height: calc(100dvh - 58px) !important;
   }
 }
+
+/* v105 scroll repair. One fixed app shell, two obvious scroll containers:
+   sidebar and workspace. Workspace is block layout so long tabs actually scroll. */
+html,
+body {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  overflow: hidden !important;
+}
+
+#appView.app:not(.hidden) {
+  display: grid !important;
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+}
+
+#appView.app:not(.hidden) > .sidebar {
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+#appView.app:not(.hidden) > .workspace {
+  display: block !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  min-height: 0 !important;
+  overflow-y: scroll !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  scrollbar-gutter: stable;
+}
+
+#appView .topbar {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 40 !important;
+}
+
+#appView .view.active {
+  height: auto !important;
+  min-height: auto !important;
+  max-height: none !important;
+}
+
+#adminView.view.active,
+#hmdView.view.active,
+#filesView.view.active,
+#profileView.view.active,
+#settingsView.view.active,
+#gamesView.view.active,
+#domainView.view.active,
+#friendsView.view.active,
+#storeView.view.active,
+#dashboardView.view.active {
+  display: flex !important;
+  overflow: visible !important;
+}
+
+#messagesView.view.active,
+#dmsView.view.active {
+  display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+  height: calc(100dvh - 68px) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+#messagesView .message-list,
+#dmsView .message-list {
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+#browserView.view.active,
+#googleWorkspaceView.view.active,
+#docsView.view.active {
+  display: grid !important;
+  overflow: visible !important;
+}
+
+@media (min-width: 861px) {
+  #appView.app:not(.hidden):not(.sidebar-closed) {
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) !important;
+  }
+
+  #appView.app:not(.hidden):not(.sidebar-closed) > .sidebar {
+    position: relative !important;
+    inset: auto !important;
+    transform: none !important;
+  }
+
+  #appView.app.sidebar-closed {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+@media (max-width: 860px) {
+  #appView.app:not(.hidden) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  #appView.app:not(.hidden) > .sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    z-index: 110 !important;
+    width: min(86vw, 320px) !important;
+    transform: translateX(-105%) !important;
+  }
+
+  #appView.app.sidebar-open > .sidebar {
+    transform: translateX(0) !important;
+  }
+
+  #appView.app:not(.hidden) > .workspace {
+    width: 100% !important;
+  }
+
+  #messagesView.view.active,
+  #dmsView.view.active {
+    height: calc(100dvh - 58px) !important;
+  }
+}

@@ -4652,3 +4652,152 @@ textarea {
     overflow: visible !important;
   }
 }
+
+/* v99 no-scroll-trap fix. Normal pages must use the browser/page scroll;
+   otherwise long admin, files, signup, browser, and profile screens get stuck. */
+html,
+body {
+  height: auto !important;
+  min-height: 100% !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior-y: auto !important;
+}
+
+#appView.app:not(.hidden) {
+  height: auto !important;
+  min-height: 100dvh !important;
+  overflow: visible !important;
+  align-items: stretch !important;
+}
+
+#appView .workspace {
+  height: auto !important;
+  min-height: 100dvh !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+#appView .view,
+#appView .view.active {
+  height: auto !important;
+  min-height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+#adminView.view.active,
+#hmdView.view.active,
+#filesView.view.active,
+#profileView.view.active,
+#settingsView.view.active,
+#dmsView.view.active,
+#messagesView.view.active,
+#browserView.view.active,
+#googleWorkspaceView.view.active,
+#gamesView.view.active,
+#domainView.view.active,
+#friendsView.view.active,
+#storeView.view.active {
+  display: block !important;
+  overflow: visible !important;
+}
+
+#messagesView.view.active,
+#dmsView.view.active {
+  min-height: calc(100dvh - 92px) !important;
+}
+
+#messagesView .message-list,
+#dmsView .message-list {
+  max-height: calc(100dvh - 260px) !important;
+  min-height: 240px !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+.composer {
+  position: sticky !important;
+  bottom: 0 !important;
+  z-index: 20 !important;
+}
+
+.admin-grid,
+.settings-grid,
+.file-grid,
+.docs-grid,
+.dm-call-grid,
+.upload-bar,
+.panel-form,
+.status-panel,
+.account-list,
+.message-list,
+.compact-list,
+.modal,
+.drawer,
+.account-detail-page-list,
+#accountDetailPanel,
+#accountDetailBody,
+#reportList,
+#logList,
+#fileList,
+#storeList,
+#innerDocList,
+#adminDmList,
+#liveIpList,
+#moderationLogList,
+#backupList,
+#dmList,
+#friendList,
+#friendRequestList {
+  max-height: none !important;
+  min-height: 0 !important;
+}
+
+#accountDetailPanel,
+.modal,
+.drawer {
+  max-height: 92dvh !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+#browserView .embedded-app-frame,
+#googleWorkspaceView .google-app-frame,
+.admin-browser-frame {
+  height: min(76dvh, 820px) !important;
+  min-height: 520px !important;
+  overflow: auto !important;
+}
+
+@media (max-width: 860px) {
+  #appView.app:not(.hidden),
+  #appView .workspace,
+  #appView .view.active {
+    height: auto !important;
+    min-height: 100dvh !important;
+    overflow: visible !important;
+  }
+
+  #appView .workspace {
+    padding-bottom: calc(32px + env(safe-area-inset-bottom)) !important;
+  }
+
+  #messagesView .message-list,
+  #dmsView .message-list {
+    max-height: calc(100dvh - 300px) !important;
+    min-height: 220px !important;
+  }
+
+  .topbar {
+    position: sticky !important;
+    top: 0 !important;
+  }
+
+  #browserView .embedded-app-frame,
+  #googleWorkspaceView .google-app-frame,
+  .admin-browser-frame {
+    height: 68dvh !important;
+    min-height: 420px !important;
+  }
+}

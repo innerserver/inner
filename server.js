@@ -814,6 +814,12 @@ async function routeApi(req, res, requestUrl) {
       return json(res, 401, { error: "Invalid username or password" });
     }
 
+    const requestBlock = await requestLoginBlockForExistingUser(user);
+    if (requestBlock) {
+      await addSystemLog("login.blocked", user.username, { reason: "Account request not approved", requestStatus: requestBlock.status }, req);
+      return json(res, 403, { error: requestBlock.message, requestStatus: requestBlock.status });
+    }
+
     if (!canManage(user) && isUserBanned(user)) {
       await addSystemLog("login.blocked", user.username, { reason: "Banned account", bannedUntil: user.bannedUntil }, req);
       return json(res, 403, { error: `Account is temporarily banned until ${new Date(user.bannedUntil).toLocaleString()}` });
@@ -1017,9 +1023,10 @@ async function routeApi(req, res, requestUrl) {
 
     const location = sanitizeLocation(body.location);
     if (!location) {
-      return json(res, 400, { error: "Turn on location so Inner can allocate the nearest server area for this account." });
+      return json(res, 400, { error: "Turn on location so Connectifi can allocate the nearest server area for this account." });
     }
 
+    const sourceIp = getClientIp(req);
     const users = await readJson(FILES.users, []);
     if (users.some((entry) => entry.username.toLowerCase() === username.toLowerCase())) {
       return json(res, 409, { error: "That username already exists" });
@@ -1028,6 +1035,8 @@ async function routeApi(req, res, requestUrl) {
     const requests = await readJson(FILES.accountRequests, []);
     const existing = requests.find((entry) => entry.status === "pending" && entry.username.toLowerCase() === username.toLowerCase());
     if (existing) return json(res, 409, { error: "That username already has a pending request" });
+    const duplicateError = duplicateAccountIdentityError(users, requests, { phone, sourceIp });
+    if (duplicateError) return json(res, 409, { error: duplicateError });
 
     const request = sanitizeAccountRequest({
       id: crypto.randomUUID(),
@@ -1043,11 +1052,11 @@ async function routeApi(req, res, requestUrl) {
       note: body.note,
       location,
       status: "pending",
-      sourceIp: getClientIp(req),
+      sourceIp,
       sourceHost: req.headers.host || "",
       sourceAgent: String(req.headers["user-agent"] || "").slice(0, 240),
       sourceDevice: deviceSignature(req),
-      approximateLocation: approximateLocationFromIp(getClientIp(req)),
+      approximateLocation: approximateLocationFromIp(sourceIp),
       createdAt: new Date().toISOString(),
     });
     requests.unshift(request);
@@ -1064,6 +1073,20 @@ async function routeApi(req, res, requestUrl) {
       `Browser: ${request.sourceAgent || "unknown"}`,
       `Time: ${request.createdAt}`,
     ].join("\n"), { route: "accountRequests" });
+    if (request.email) {
+      await sendDirectEmail([request.email], "Connectifi account request received", [
+        `Hi ${request.displayName || request.username},`,
+        "",
+        "Your Connectifi account request was received.",
+        "An admin will review it before you can enter the app.",
+        "",
+        `Requested username: ${request.username}`,
+        `Requested role: ${request.requestedRole}`,
+        request.grade ? `Grade: ${request.grade}` : "",
+        "",
+        "Until an admin approves it, signing in will only show the review status.",
+      ].filter(Boolean).join("\n"), { route: "accountRequests", contactType: "admin", fromContact: true });
+    }
     broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
     return json(res, 201, { request: safeAccountRequest(request) });
   }
@@ -1086,12 +1109,15 @@ async function routeApi(req, res, requestUrl) {
       return json(res, 400, { error: "Add an email or phone number so admins can contact you." });
     }
     if (!sanitizeLocation(body.location)) {
-      return json(res, 400, { error: "Turn on location so Inner can allocate the nearest server area for this account." });
+      return json(res, 400, { error: "Turn on location so Connectifi can allocate the nearest server area for this account." });
     }
-    const [users, profiles] = await Promise.all([readJson(FILES.users, []), readJson(FILES.profiles, {})]);
+    const sourceIp = getClientIp(req);
+    const [users, profiles, requests] = await Promise.all([readJson(FILES.users, []), readJson(FILES.profiles, {}), readJson(FILES.accountRequests, [])]);
     if (users.some((entry) => entry.username.toLowerCase() === username.toLowerCase())) {
       return json(res, 409, { error: "That username already exists" });
     }
+    const duplicateError = duplicateAccountIdentityError(users, requests, { phone, sourceIp });
+    if (duplicateError) return json(res, 409, { error: duplicateError });
     const now = new Date().toISOString();
     const account = {
       username,
@@ -1104,11 +1130,11 @@ async function routeApi(req, res, requestUrl) {
       grade,
       gradeUpdatedAt: grade ? now : "",
       contactUpdatedAt: contact ? now : "",
-      sourceIp: getClientIp(req),
+      sourceIp,
       sourceHost: req.headers.host || "",
       sourceAgent: String(req.headers["user-agent"] || "").slice(0, 240),
       sourceDevice: deviceSignature(req),
-      approximateLocation: approximateLocationFromIp(getClientIp(req)),
+      approximateLocation: approximateLocationFromIp(sourceIp),
       allowPersistentLogin: true,
       createdAt: now,
       createdBy: "open-signup",
@@ -1135,6 +1161,17 @@ async function routeApi(req, res, requestUrl) {
       `Browser: ${account.sourceAgent || "unknown"}`,
       `Time: ${now}`,
     ].join("\n"), { route: "signups" });
+    if (email) {
+      await sendDirectEmail([email], "Connectifi signup successful", [
+        `Hi ${body.displayName || username},`,
+        "",
+        "Your Connectifi account was created successfully.",
+        "You can now sign in with the username and password you chose.",
+        "",
+        `Username: ${username}`,
+        grade ? `Grade: ${grade}` : "",
+      ].filter(Boolean).join("\n"), { route: "signups", contactType: "admin", fromContact: true, actionLabel: "Open Connectifi", ctaUrl: publicBaseUrl(req) });
+    }
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     return json(res, 201, { user: safeUser(account) });
   }
@@ -2451,6 +2488,16 @@ async function routeApi(req, res, requestUrl) {
     });
     await writeJson(FILES.accountRequests, requests);
     await addSystemLog("account.request.updated", user.username, { requestUsername: requests[index].username, status }, req);
+    if (status === "declined" && requests[index].email) {
+      await sendDirectEmail([requests[index].email], "Connectifi account request declined", [
+        `Hi ${requests[index].displayName || requests[index].username},`,
+        "",
+        "Your Connectifi account request was declined.",
+        "For the next 12 hours, signing in with your requested username and password will show the denied status.",
+        "",
+        requests[index].adminNote ? `Admin note: ${requests[index].adminNote}` : "",
+      ].filter(Boolean).join("\n"), { route: "accountApprovals", contactType: "admin", fromContact: true });
+    }
     broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
     return json(res, 200, { accountRequests: safeAccountRequests(requests, user), request: safeAccountRequest(requests[index], user) });
   }
@@ -2533,6 +2580,18 @@ async function routeApi(req, res, requestUrl) {
       `Original request device: ${request.sourceDevice || "unknown"}`,
       `Time: ${new Date().toISOString()}`,
     ].join("\n"), { route: "accountApprovals" });
+    if (request.email) {
+      await sendDirectEmail([request.email], "Connectifi account approved", [
+        `Hi ${request.displayName || request.username},`,
+        "",
+        "Your Connectifi account has been approved.",
+        "You can now sign in to the app.",
+        "",
+        `Username: ${request.username}`,
+        `Account type: ${grantedRole}`,
+        password.length >= 4 ? "Use the password your admin just set." : "Use the password you chose when requesting the account.",
+      ].join("\n"), { route: "accountApprovals", contactType: "admin", fromContact: true, actionLabel: "Open Connectifi", ctaUrl: publicBaseUrl(req) });
+    }
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
     return json(res, 201, { users: users.map((entry) => safeUser(entry, user)), accountRequests: safeAccountRequests(requests, user), user: safeUser(account, user) });
@@ -5111,6 +5170,42 @@ function safeAccountRequests(requests, viewer = null) {
     .slice(0, 500);
 }
 
+function activeAccountRequestForIdentity(request) {
+  const safe = sanitizeAccountRequest(request);
+  if (safe.status === "declined") return false;
+  if (safe.status === "approved") {
+    const approvedAt = Date.parse(safe.approvedAt || safe.updatedAt || safe.createdAt);
+    return Number.isFinite(approvedAt) ? Date.now() - approvedAt < 48 * 60 * 60 * 1000 : true;
+  }
+  if (safe.status === "pending" || safe.status === "reviewing") {
+    const createdAt = Date.parse(safe.createdAt || safe.updatedAt);
+    return Number.isFinite(createdAt) ? Date.now() - createdAt < 7 * 24 * 60 * 60 * 1000 : true;
+  }
+  return false;
+}
+
+function duplicateAccountIdentityError(users = [], requests = [], identity = {}) {
+  const phone = normalizePhoneNumber(identity.phone);
+  const sourceIp = String(identity.sourceIp || "").trim();
+  if (phone) {
+    const phoneUsedByUser = users.some((entry) => normalizePhoneNumber(entry && entry.phone) === phone);
+    if (phoneUsedByUser) return "That phone number is already connected to an account.";
+    const phoneUsedByRequest = requests.some((entry) =>
+      activeAccountRequestForIdentity(entry) && normalizePhoneNumber(entry && entry.phone) === phone
+    );
+    if (phoneUsedByRequest) return "That phone number already has an active account request.";
+  }
+  if (sourceIp) {
+    const ipUsedByUser = users.some((entry) => String((entry && (entry.sourceIp || entry.lastLoginIp)) || "").trim() === sourceIp);
+    if (ipUsedByUser) return "An account has already been created from this IP address.";
+    const ipUsedByRequest = requests.some((entry) =>
+      activeAccountRequestForIdentity(entry) && String((entry && entry.sourceIp) || "").trim() === sourceIp
+    );
+    if (ipUsedByRequest) return "This IP address already has an active account request.";
+  }
+  return "";
+}
+
 async function requestLoginStatus(usernameValue, passwordValue) {
   const username = normalizeUsername(usernameValue);
   if (!username) return null;
@@ -5119,6 +5214,34 @@ async function requestLoginStatus(usernameValue, passwordValue) {
     .map(sanitizeAccountRequest)
     .find((entry) => entry.username.toLowerCase() === username.toLowerCase());
   if (!request || !request.passwordHash || !(await verifyPasswordAsync(passwordValue, request.passwordHash))) return null;
+  if (request.status === "pending" || request.status === "reviewing") {
+    return {
+      status: request.status,
+      message: "Admin is reviewing your account request. Check back after an admin makes a decision.",
+    };
+  }
+  if (request.status === "declined") {
+    const declinedAt = Date.parse(request.declinedAt || request.updatedAt || request.createdAt);
+    if (Number.isFinite(declinedAt) && Date.now() - declinedAt <= 12 * 60 * 60 * 1000) {
+      return {
+        status: "declined",
+        message: "Request denied. Ask an admin if you think this was a mistake.",
+      };
+    }
+  }
+  return null;
+}
+
+async function requestLoginBlockForExistingUser(user) {
+  if (!user || !user.accountRequestId) return null;
+  const requests = await readJson(FILES.accountRequests, []);
+  const request = requests
+    .map(sanitizeAccountRequest)
+    .find((entry) =>
+      entry.id === user.accountRequestId ||
+      entry.username.toLowerCase() === String(user.username || "").toLowerCase()
+    );
+  if (!request) return null;
   if (request.status === "pending" || request.status === "reviewing") {
     return {
       status: request.status,
@@ -5903,6 +6026,13 @@ function normalizeUsername(username) {
   const value = String(username || "").trim();
   if (!/^[a-zA-Z0-9._-]{3,32}$/.test(value)) return "";
   return value;
+}
+
+function normalizePhoneNumber(phone) {
+  const value = String(phone || "").trim();
+  if (!value) return "";
+  const digits = value.replace(/[^\d]/g, "");
+  return digits.length >= 7 ? digits : "";
 }
 
 function normalizeCurrency(currency) {
@@ -6824,6 +6954,7 @@ function buildEmailHtml(subject, body, options = {}) {
                 <div style="display:inline-block;margin-bottom:14px;padding:6px 10px;border:1px solid #d8ded8;border-radius:999px;color:#245c4f;background:#eef6f3;font-size:13px;font-weight:800;">${escapeHtml(label)}</div>
                 ${bodyHtml}
                 ${cta ? `<div style="margin-top:20px;">${cta}</div>` : ""}
+                ${ctaUrl ? `<p style="margin-top:14px;color:#5d625f;font-size:14px;">If the button does not open, use this link:<br><a href="${escapeHtml(ctaUrl)}" style="color:#245c4f;word-break:break-all;">${escapeHtml(ctaUrl)}</a></p>` : ""}
               </td>
             </tr>
             <tr>

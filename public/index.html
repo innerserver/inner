@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-106-layout-recovery" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-107-account-flow-fix" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -40,7 +40,7 @@
         <form id="passwordResetRequestForm" class="login-panel request-panel hidden">
           <div>
             <h2>Reset password</h2>
-            <p>Enter your username or email. If an email is saved on your account, Inner will send a reset link.</p>
+            <p>Enter your username or email. If an email is saved on your account, Connectifi will send a reset link.</p>
           </div>
           <label>Username or email<input id="passwordResetLookup" autocomplete="username" placeholder="username or email" /></label>
           <button id="passwordResetRequestButton" class="secondary-button" type="submit">Send reset link</button>
@@ -62,7 +62,7 @@
         <form id="accountRequestForm" class="login-panel request-panel hidden">
           <div>
             <h2>Request account</h2>
-            <p>When your browser asks for location, choose Always allow. Inner uses it for server allocation, and admins can view the request details.</p>
+            <p>When your browser asks for location, choose Always allow. Connectifi uses it for server allocation, and admins can view the request details.</p>
           </div>
           <label>Username<input id="requestUsername" autocomplete="username" placeholder="your-name" required /></label>
           <label>Display name<input id="requestDisplayName" autocomplete="name" /></label>
@@ -898,11 +898,11 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=connectifi-106-layout-recovery" defer></script>
-    <script src="/status-guard.js?v=connectifi-106-layout-recovery" defer></script>
-    <script src="/ui-boot.js?v=connectifi-106-layout-recovery" defer></script>
-    <script src="/app.js?v=connectifi-106-layout-recovery" defer></script>
-    <script src="/force-logout.js?v=connectifi-106-layout-recovery" defer></script>
+    <script src="/session-guard.js?v=connectifi-107-account-flow-fix" defer></script>
+    <script src="/status-guard.js?v=connectifi-107-account-flow-fix" defer></script>
+    <script src="/ui-boot.js?v=connectifi-107-account-flow-fix" defer></script>
+    <script src="/app.js?v=connectifi-107-account-flow-fix" defer></script>
+    <script src="/force-logout.js?v=connectifi-107-account-flow-fix" defer></script>
   </body>
 </html>
 

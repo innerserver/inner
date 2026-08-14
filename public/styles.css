@@ -4930,3 +4930,99 @@ body {
     -webkit-overflow-scrolling: touch !important;
   }
 }
+
+/* v104 separate scrollers. The sidebar and the active tab/workspace each get
+   their own scroll area; scrolling one must not move the other. */
+html,
+body {
+  height: 100% !important;
+  min-height: 100% !important;
+  overflow: hidden !important;
+}
+
+#appView.app:not(.hidden) {
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+  align-items: stretch !important;
+}
+
+#appView.app:not(.hidden) > .sidebar {
+  height: 100dvh !important;
+  min-height: 0 !important;
+  max-height: 100dvh !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  align-self: stretch !important;
+}
+
+#appView.app:not(.hidden) > .workspace {
+  height: 100dvh !important;
+  min-height: 0 !important;
+  max-height: 100dvh !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+#appView .view.active {
+  min-height: auto !important;
+}
+
+#messagesView.view.active,
+#dmsView.view.active {
+  height: calc(100dvh - 92px) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+#messagesView .message-list,
+#dmsView .message-list {
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+}
+
+@media (min-width: 861px) {
+  #appView.app:not(.hidden):not(.sidebar-closed) {
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) !important;
+  }
+
+  #appView.app:not(.hidden):not(.sidebar-closed) > .sidebar {
+    position: relative !important;
+    inset: auto !important;
+    transform: none !important;
+  }
+}
+
+@media (max-width: 860px) {
+  #appView.app:not(.hidden) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  #appView.app:not(.hidden) > .sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    z-index: 110 !important;
+    width: min(86vw, 320px) !important;
+    transform: translateX(-105%) !important;
+    transition: transform 180ms ease !important;
+  }
+
+  #appView.app.sidebar-open > .sidebar {
+    transform: translateX(0) !important;
+  }
+
+  #appView.app:not(.hidden) > .workspace {
+    width: 100% !important;
+  }
+
+  #messagesView.view.active,
+  #dmsView.view.active {
+    height: calc(100dvh - 58px) !important;
+  }
+}

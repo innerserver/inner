@@ -4686,23 +4686,6 @@ body {
   overflow: visible !important;
 }
 
-#adminView.view.active,
-#hmdView.view.active,
-#filesView.view.active,
-#profileView.view.active,
-#settingsView.view.active,
-#dmsView.view.active,
-#messagesView.view.active,
-#browserView.view.active,
-#googleWorkspaceView.view.active,
-#gamesView.view.active,
-#domainView.view.active,
-#friendsView.view.active,
-#storeView.view.active {
-  display: block !important;
-  overflow: visible !important;
-}
-
 #messagesView.view.active,
 #dmsView.view.active {
   min-height: calc(100dvh - 92px) !important;
@@ -4799,5 +4782,67 @@ body {
   .admin-browser-frame {
     height: 68dvh !important;
     min-height: 420px !important;
+  }
+}
+
+/* v100 UI restore after scroll untrap. Do not force active views to block;
+   preserve their original grid/flex layouts and only loosen scrolling. */
+#adminView.view.active,
+#hmdView.view.active,
+#filesView.view.active,
+#profileView.view.active,
+#settingsView.view.active,
+#gamesView.view.active,
+#domainView.view.active,
+#friendsView.view.active,
+#storeView.view.active {
+  overflow: visible !important;
+}
+
+#messagesView.view.active,
+#dmsView.view.active {
+  display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+  min-height: calc(100dvh - 92px) !important;
+  overflow: hidden !important;
+}
+
+#browserView.view.active,
+#googleWorkspaceView.view.active {
+  display: grid !important;
+  grid-template-rows: auto auto minmax(420px, 1fr) !important;
+  min-height: calc(100dvh - 92px) !important;
+  overflow: visible !important;
+}
+
+#docsView.view.active {
+  display: grid !important;
+  min-height: calc(100dvh - 92px) !important;
+}
+
+#messagesView .message-list,
+#dmsView .message-list {
+  max-height: none !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+}
+
+#browserView .embedded-app-frame,
+#googleWorkspaceView .google-app-frame,
+.admin-browser-frame {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+@media (max-width: 860px) {
+  #messagesView.view.active,
+  #dmsView.view.active {
+    min-height: calc(100dvh - 58px) !important;
+  }
+
+  #browserView.view.active,
+  #googleWorkspaceView.view.active,
+  #docsView.view.active {
+    min-height: calc(100dvh - 58px) !important;
   }
 }

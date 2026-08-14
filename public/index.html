@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-99-scroll-untrap" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-101-profile-trigger-fix" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -597,7 +597,10 @@
               <label>Admin contact email<input id="adminContactEmail" type="email" maxlength="160" placeholder="admin@yourdomain.com" /></label>
               <label class="switch-row"><input id="passwordResetEnabled" type="checkbox" checked /><span>Allow users to reset passwords by email</span></label>
               <label class="switch-row"><input id="requireProfileUpdate" type="checkbox" /><span>Tell users to update grade, class, email, and phone</span></label>
-              <button id="triggerProfileUpdateButton" class="secondary-button compact-button" type="button">Trigger profile update now</button>
+              <div class="button-row">
+                <button id="triggerProfileUpdateButton" class="secondary-button compact-button" type="button">Trigger profile update now</button>
+                <button id="clearProfileUpdateButton" class="ghost-light-button compact-button" type="button">Clear update trigger</button>
+              </div>
               <label>Default/admin emails<input id="reportEmails" maxlength="500" placeholder="admin@email.com, helper@email.com" /></label>
               <label>Report alert emails<input id="emailReports" maxlength="500" placeholder="reports@school.com, admin@school.com" /></label>
               <label>Account request/signup emails<input id="emailAccounts" maxlength="500" placeholder="accounts@school.com, admissions@school.com" /></label>
@@ -895,11 +898,11 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=connectifi-99-scroll-untrap" defer></script>
-    <script src="/status-guard.js?v=connectifi-99-scroll-untrap" defer></script>
-    <script src="/ui-boot.js?v=connectifi-99-scroll-untrap" defer></script>
-    <script src="/app.js?v=connectifi-99-scroll-untrap" defer></script>
-    <script src="/force-logout.js?v=connectifi-99-scroll-untrap" defer></script>
+    <script src="/session-guard.js?v=connectifi-101-profile-trigger-fix" defer></script>
+    <script src="/status-guard.js?v=connectifi-101-profile-trigger-fix" defer></script>
+    <script src="/ui-boot.js?v=connectifi-101-profile-trigger-fix" defer></script>
+    <script src="/app.js?v=connectifi-101-profile-trigger-fix" defer></script>
+    <script src="/force-logout.js?v=connectifi-101-profile-trigger-fix" defer></script>
   </body>
 </html>
 

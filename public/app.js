@@ -401,6 +401,7 @@ function cacheElements() {
     "passwordResetEnabled",
     "requireProfileUpdate",
     "triggerProfileUpdateButton",
+    "clearProfileUpdateButton",
     "reportEmails",
     "emailReports",
     "emailAccounts",
@@ -809,6 +810,9 @@ function bindEvents() {
   els.wipeReportsButton.addEventListener("click", () => wipeUtility("reports"));
   if (els.triggerProfileUpdateButton) {
     els.triggerProfileUpdateButton.addEventListener("click", triggerProfileUpdateNow);
+  }
+  if (els.clearProfileUpdateButton) {
+    els.clearProfileUpdateButton.addEventListener("click", clearProfileUpdateTrigger);
   }
   els.wipeUploadsButton.addEventListener("click", () => wipeUtility("uploads"));
   els.wipeRoomsButton.addEventListener("click", () => wipeUtility("rooms"));
@@ -1246,7 +1250,7 @@ function showView(viewName, options = {}) {
   if (viewName === "admin" && !isOwner()) viewName = "dashboard";
   if (viewName === "hmd" && !isDev()) viewName = "dashboard";
   const feature = viewFeature(viewName);
-  if (feature && !featureAvailable(feature)) {
+  if (feature && viewName !== "profile" && !featureAvailable(feature)) {
     notify(lockMessage(feature) || `${featureLabel(feature)} is not available for this account`);
     viewName = "dashboard";
   }
@@ -1824,6 +1828,25 @@ async function triggerProfileUpdateNow() {
     notify(error.message);
   } finally {
     els.triggerProfileUpdateButton.disabled = false;
+  }
+}
+
+async function clearProfileUpdateTrigger() {
+  if (!isOwner()) return notify("Admin access required");
+  try {
+    els.clearProfileUpdateButton.disabled = true;
+    if (els.requireProfileUpdate) els.requireProfileUpdate.checked = false;
+    const data = await api("/api/settings", {
+      method: "POST",
+      json: serverSettingsPayload({ requireProfileUpdate: false, clearProfileUpdate: true }),
+    });
+    state.settings = data.settings;
+    renderAll();
+    notify("Profile update trigger cleared");
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    els.clearProfileUpdateButton.disabled = false;
   }
 }
 
@@ -5751,6 +5774,9 @@ function renderServerInner() {
     const requestedAt = state.settings.profileUpdateRequestedAt ? `Last triggered ${formatDate(state.settings.profileUpdateRequestedAt)}` : "Trigger profile update now";
     els.triggerProfileUpdateButton.textContent = requestedAt;
   }
+  if (els.clearProfileUpdateButton) {
+    els.clearProfileUpdateButton.classList.toggle("hidden", !state.settings.requireProfileUpdate && !state.settings.profileUpdateRequestedAt);
+  }
   setInputIfNotFocused(els.reportEmails, Array.isArray(state.settings.reportEmails) ? state.settings.reportEmails.join(", ") : "");
   const routes = state.settings.emailRoutes || {};
   setInputIfNotFocused(els.emailReports, Array.isArray(routes.reports) ? routes.reports.join(", ") : "");
@@ -5783,7 +5809,7 @@ function renderServerInner() {
   if (els.newAccountPersistent) els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
 
   const admin = isOwner();
-  [els.roomNameInput, els.signupMode, els.requireContact, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.reportEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.emailGeneral, els.emailContactNoreply, els.emailContactReports, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+  [els.roomNameInput, els.signupMode, els.requireContact, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.triggerProfileUpdateButton, els.clearProfileUpdateButton, els.reportEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.emailGeneral, els.emailContactNoreply, els.emailContactReports, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
   });
@@ -7957,6 +7983,14 @@ function browserNetworkInfo() {
 
 function syncHiddenNav() {
   document.querySelectorAll(".nav-button[data-view]").forEach((button) => {
+    if (button.dataset.view === "profile") {
+      button.hidden = false;
+      button.classList.remove("hidden");
+      button.style.display = "";
+      button.setAttribute("aria-hidden", "false");
+      button.tabIndex = 0;
+      return;
+    }
     const feature = viewFeature(button.dataset.view);
     const rule = feature ? hiddenRule(feature) : { hidden: false, allowedUsers: [] };
     const blocked = feature && !isOwner() && rule.hidden && !rule.allowedUsers.includes((state.user && state.user.username || "").toLowerCase());

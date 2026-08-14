@@ -2801,8 +2801,11 @@ async function routeApi(req, res, requestUrl) {
     const settings = await readJson(FILES.settings, {});
     const nextServerEnabled =
       typeof body.serverEnabled === "boolean" ? body.serverEnabled : Boolean(settings.serverEnabled);
+    const clearProfileUpdate = body.clearProfileUpdate === true;
     const nextRequireProfileUpdate =
-      typeof body.requireProfileUpdate === "boolean" ? body.requireProfileUpdate : Boolean(settings.requireProfileUpdate);
+      clearProfileUpdate
+        ? false
+        : typeof body.requireProfileUpdate === "boolean" ? body.requireProfileUpdate : Boolean(settings.requireProfileUpdate);
     const previousProfileUpdateGeneration = String(settings.profileUpdateRequestedAt || "");
     const next = {
       ...settings,
@@ -2815,7 +2818,9 @@ async function routeApi(req, res, requestUrl) {
       adminContactEmail: String(body.adminContactEmail || settings.adminContactEmail || "").trim().slice(0, 160),
       passwordResetEnabled: typeof body.passwordResetEnabled === "boolean" ? body.passwordResetEnabled : settings.passwordResetEnabled !== false,
       requireProfileUpdate: nextRequireProfileUpdate,
-      profileUpdateRequestedAt: nextRequireProfileUpdate
+      profileUpdateRequestedAt: clearProfileUpdate
+        ? ""
+        : nextRequireProfileUpdate
         ? (body.triggerProfileUpdate || !settings.requireProfileUpdate ? new Date().toISOString() : previousProfileUpdateGeneration || new Date().toISOString())
         : "",
       reportEmails: Array.isArray(body.reportEmails)

@@ -1480,9 +1480,6 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "POST" && pathname === "/api/profile") {
-    const settings = await readJson(FILES.settings, {});
-    const featureError = await featureGateError(settings, "profiles", user);
-    if (featureError) return json(res, 423, { error: featureError });
     const body = await readJsonBody(req);
     const profiles = await readJson(FILES.profiles, {});
     const previous = profiles[user.username] || defaultProfile(user.username);

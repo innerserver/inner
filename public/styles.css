@@ -4846,3 +4846,87 @@ body {
     min-height: calc(100dvh - 58px) !important;
   }
 }
+
+/* v102 sidebar scroll restore. On desktop the sidebar should be part of the
+   page, so it moves with the rest of the app instead of staying trapped. */
+@media (min-width: 861px) {
+  #appView.app:not(.hidden):not(.sidebar-closed) {
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) !important;
+  }
+
+  #appView.app:not(.hidden):not(.sidebar-closed) > .sidebar {
+    position: relative !important;
+    inset: auto !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 100dvh !important;
+    max-height: none !important;
+    overflow: visible !important;
+    transform: none !important;
+    align-self: stretch !important;
+  }
+
+  #appView.app:not(.hidden):not(.sidebar-closed) > .sidebar .nav-list,
+  #appView.app:not(.hidden):not(.sidebar-closed) > .sidebar .sidebar-footer {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+}
+
+@media (max-width: 860px) {
+  #appView.app > .sidebar {
+    position: fixed !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+}
+
+/* v103 sidebar/page scroll fix. Desktop sidebar should move with the page;
+   phone sidebar stays as its own drawer so the menu can scroll independently. */
+@media (min-width: 861px) {
+  html,
+  body {
+    height: auto !important;
+    min-height: 100% !important;
+    overflow-y: auto !important;
+  }
+
+  #appView.app:not(.hidden) {
+    height: auto !important;
+    min-height: 100dvh !important;
+    overflow: visible !important;
+    align-items: start !important;
+  }
+
+  #appView.app:not(.hidden) > .sidebar {
+    position: relative !important;
+    inset: auto !important;
+    height: auto !important;
+    min-height: 100dvh !important;
+    max-height: none !important;
+    overflow: visible !important;
+    align-self: start !important;
+  }
+
+  #appView.app:not(.hidden) > .workspace {
+    height: auto !important;
+    min-height: 100dvh !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}
+
+@media (max-width: 860px) {
+  #appView.app > .sidebar {
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+}

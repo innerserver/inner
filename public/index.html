@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-96-signup-scroll" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-98-report-email" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -606,6 +606,7 @@
               <label>Admin test/general emails<input id="emailGeneral" maxlength="500" placeholder="admin@school.com" /></label>
               <div class="email-contact-grid">
                 <label>Noreply sender<input id="emailContactNoreply" type="email" maxlength="160" placeholder="noreply@connectifi.in" /></label>
+                <label>Report sender<input id="emailContactReports" type="email" maxlength="160" placeholder="report@connectifi.in" /></label>
                 <label>Security contact<input id="emailContactSecurity" type="email" maxlength="160" placeholder="security@connectifi.in" /></label>
                 <label>Support contact<input id="emailContactSupport" type="email" maxlength="160" placeholder="support@connectifi.in" /></label>
                 <label>Admin contact<input id="emailContactAdmin" type="email" maxlength="160" placeholder="admin@connectifi.in" /></label>
@@ -614,7 +615,7 @@
               <div class="split-fields">
                 <label>Test route<select id="testEmailRoute">
                   <option value="general">General/admin</option>
-                  <option value="reports">Reports/security</option>
+                  <option value="reports">Reports</option>
                   <option value="accountRequests">Account requests</option>
                   <option value="announcements">Announcements</option>
                   <option value="loginFailures">Security fallback</option>
@@ -894,11 +895,11 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=connectifi-96-signup-scroll" defer></script>
-    <script src="/status-guard.js?v=connectifi-96-signup-scroll" defer></script>
-    <script src="/ui-boot.js?v=connectifi-96-signup-scroll" defer></script>
-    <script src="/app.js?v=connectifi-96-signup-scroll" defer></script>
-    <script src="/force-logout.js?v=connectifi-96-signup-scroll" defer></script>
+    <script src="/session-guard.js?v=connectifi-98-report-email" defer></script>
+    <script src="/status-guard.js?v=connectifi-98-report-email" defer></script>
+    <script src="/ui-boot.js?v=connectifi-98-report-email" defer></script>
+    <script src="/app.js?v=connectifi-98-report-email" defer></script>
+    <script src="/force-logout.js?v=connectifi-98-report-email" defer></script>
   </body>
 </html>
 

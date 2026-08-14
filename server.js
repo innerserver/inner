@@ -6365,6 +6365,7 @@ function defaultEmailContacts() {
   const fromEmail = parseEmailFrom(EMAIL_FROM).email;
   return {
     noreply: cleanEmailAddress(firstEnvValue("INNER_NOREPLY_EMAIL") || fromEmail || "noreply@connectifi.in") || "",
+    reports: cleanEmailAddress(firstEnvValue("INNER_REPORT_EMAIL", "INNER_REPORTS_EMAIL") || "report@connectifi.in") || "",
     security: cleanEmailAddress(firstEnvValue("INNER_SECURITY_EMAIL") || "security@connectifi.in") || "",
     support: cleanEmailAddress(firstEnvValue("INNER_SUPPORT_EMAIL") || EMAIL_REPLY_TO || "support@connectifi.in") || "",
     admin: cleanEmailAddress(firstEnvValue("INNER_ADMIN_CONTACT_EMAIL") || REPORT_EMAILS[0] || "admin@connectifi.in") || "",
@@ -6375,6 +6376,7 @@ function sanitizeEmailContacts(source = {}) {
   const defaults = defaultEmailContacts();
   return {
     noreply: cleanEmailAddress(source.noreply) || defaults.noreply,
+    reports: cleanEmailAddress(source.reports) || defaults.reports,
     security: cleanEmailAddress(source.security) || defaults.security,
     support: cleanEmailAddress(source.support) || defaults.support,
     admin: cleanEmailAddress(source.admin) || defaults.admin,
@@ -6383,7 +6385,7 @@ function sanitizeEmailContacts(source = {}) {
 
 function contactTypeForEmailRoute(route) {
   return {
-    reports: "security",
+    reports: "reports",
     loginFailures: "security",
     accountRequests: "admin",
     signups: "admin",
@@ -6396,7 +6398,7 @@ function contactTypeForEmailRoute(route) {
 
 function contactForEmail(settings, options = {}) {
   const contacts = sanitizeEmailContacts(settings && settings.emailContacts ? settings.emailContacts : {});
-  const type = ["noreply", "security", "support", "admin"].includes(options.contactType) ? options.contactType : contactTypeForEmailRoute(options.route || "general");
+  const type = ["noreply", "reports", "security", "support", "admin"].includes(options.contactType) ? options.contactType : contactTypeForEmailRoute(options.route || "general");
   return {
     type,
     email: contacts[type] || contacts.support || EMAIL_REPLY_TO || "",

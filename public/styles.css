@@ -4497,3 +4497,158 @@ body:has(.login-shell:not(.hidden)) {
     min-height: 100dvh !important;
   }
 }
+
+/* Final scroll stability patch. Keep the shell fixed, but make every real
+   workspace surface scrollable so mobile forms and admin panels do not trap. */
+html,
+body {
+  min-height: 100% !important;
+  overflow-x: hidden !important;
+}
+
+#appView.app:not(.hidden) {
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  overflow: hidden !important;
+}
+
+#appView .workspace {
+  height: 100dvh !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+#appView .view.active {
+  min-height: calc(100dvh - 92px) !important;
+  height: auto !important;
+  overflow-y: visible !important;
+  overflow-x: hidden !important;
+  padding-bottom: calc(28px + env(safe-area-inset-bottom)) !important;
+}
+
+#messagesView.view.active,
+#dmsView.view.active {
+  height: calc(100dvh - 92px) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+#messagesView .message-list,
+#dmsView .message-list,
+#dmList,
+#fileList,
+#storeList,
+#innerDocList,
+#friendList,
+#friendRequestList,
+#accountRequestList,
+#accountList,
+#accountDetailBody,
+#adminDmList,
+#logList,
+#reportList,
+#liveIpList,
+#moderationLogList,
+#backupList {
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+#filesView.view.active,
+#adminView.view.active,
+#hmdView.view.active,
+#profileView.view.active,
+#settingsView.view.active,
+#storeView.view.active,
+#gamesView.view.active,
+#browserView.view.active,
+#googleWorkspaceView.view.active,
+#domainView.view.active,
+#friendsView.view.active {
+  overflow-y: visible !important;
+}
+
+.settings-grid,
+.admin-grid,
+.file-grid,
+.dm-call-grid,
+.feature-admin-grid,
+.status-panel,
+.panel-form,
+.file-card,
+.message,
+.dm-tools-panel,
+.dm-call-panel,
+.docs-grid,
+.browser-panel,
+.google-workspace-panel {
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+
+.modal,
+.drawer,
+.account-detail-page-list,
+#accountDetailPanel {
+  max-height: min(86dvh, 820px) !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+#browserView .embedded-app-frame,
+#googleWorkspaceView .google-app-frame {
+  min-height: min(72dvh, 760px) !important;
+  overflow: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+textarea {
+  min-height: 84px;
+}
+
+@media (max-width: 860px) {
+  #appView.app:not(.hidden) {
+    height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  #appView .workspace {
+    height: 100dvh !important;
+    overflow-y: auto !important;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom)) !important;
+  }
+
+  #appView .view.active {
+    min-height: auto !important;
+    padding: 18px 14px calc(34px + env(safe-area-inset-bottom)) !important;
+  }
+
+  #messagesView.view.active,
+  #dmsView.view.active {
+    height: calc(100dvh - 58px) !important;
+    padding-bottom: 0 !important;
+  }
+
+  .topbar {
+    position: sticky !important;
+    top: 0 !important;
+  }
+
+  .sidebar {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .settings-grid,
+  .admin-grid,
+  .file-grid,
+  .dm-call-grid,
+  .docs-grid {
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+}

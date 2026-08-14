@@ -408,6 +408,7 @@ function cacheElements() {
     "emailLoginFailures",
     "emailGeneral",
     "emailContactNoreply",
+    "emailContactReports",
     "emailContactSecurity",
     "emailContactSupport",
     "emailContactAdmin",
@@ -1848,6 +1849,7 @@ function serverSettingsPayload(extra = {}) {
     },
     emailContacts: {
       noreply: cleanEmailInput(els.emailContactNoreply ? els.emailContactNoreply.value : ""),
+      reports: cleanEmailInput(els.emailContactReports ? els.emailContactReports.value : ""),
       security: cleanEmailInput(els.emailContactSecurity ? els.emailContactSecurity.value : ""),
       support: cleanEmailInput(els.emailContactSupport ? els.emailContactSupport.value : ""),
       admin: cleanEmailInput(els.emailContactAdmin ? els.emailContactAdmin.value : ""),
@@ -5763,6 +5765,7 @@ function renderServerInner() {
   setInputIfNotFocused(els.emailGeneral, Array.isArray(routes.general) ? routes.general.join(", ") : "");
   const contacts = state.settings.emailContacts || {};
   setInputIfNotFocused(els.emailContactNoreply, contacts.noreply || "noreply@connectifi.in");
+  setInputIfNotFocused(els.emailContactReports, contacts.reports || "report@connectifi.in");
   setInputIfNotFocused(els.emailContactSecurity, contacts.security || "security@connectifi.in");
   setInputIfNotFocused(els.emailContactSupport, contacts.support || "support@connectifi.in");
   setInputIfNotFocused(els.emailContactAdmin, contacts.admin || "admin@connectifi.in");
@@ -5780,7 +5783,7 @@ function renderServerInner() {
   if (els.newAccountPersistent) els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
 
   const admin = isOwner();
-  [els.roomNameInput, els.signupMode, els.requireContact, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.reportEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.emailGeneral, els.emailContactNoreply, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+  [els.roomNameInput, els.signupMode, els.requireContact, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.reportEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.emailGeneral, els.emailContactNoreply, els.emailContactReports, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
   });
@@ -5815,7 +5818,7 @@ function renderEmailStatus() {
     els.emailStatusText.textContent = "Email alerts need SMTP settings, BREVO_API_KEY, RESEND_API_KEY, SENDGRID_API_KEY, or INNER_EMAIL_WEBHOOK_URL in Render.";
     return;
   }
-  els.emailStatusText.textContent = `Email alerts: ${enabledProviders.join(", ")} configured. Sending from ${from}. Default recipients: ${recipients.join(", ")}. Contacts: security ${contacts.security || "-"}, support ${contacts.support || "-"}, admin ${contacts.admin || "-"}.`;
+  els.emailStatusText.textContent = `Email alerts: ${enabledProviders.join(", ")} configured. Sending from ${from}. Default recipients: ${recipients.join(", ")}. Contacts: reports ${contacts.reports || "-"}, security ${contacts.security || "-"}, support ${contacts.support || "-"}, admin ${contacts.admin || "-"}.`;
 }
 
 async function refreshEmailStatus() {

@@ -800,16 +800,16 @@ async function routeApi(req, res, requestUrl) {
       }
       await addSystemLog("login.failed", String(body.username || "unknown").slice(0, 80), { reason: "Invalid username or password" }, req);
       if (user && String(user.email || "").includes("@")) {
-        await sendDirectEmail([user.email], "Inner failed login attempt", [
+        await sendDirectEmail([user.email], "Connectifi failed login attempt", [
           `Hi ${user.username},`,
           "",
-          "Someone tried to sign in to your Inner account and the password was incorrect.",
+          "Someone tried to sign in to your Connectifi account and the password was incorrect.",
           `IP: ${getClientIp(req) || "unknown"}`,
           `Device: ${deviceSignature(req)}`,
           `Time: ${new Date().toISOString()}`,
           "",
           "If this was you, you can ignore this. If it was not you, reset your password or contact an admin.",
-        ].join("\n"));
+        ].join("\n"), { route: "loginFailures", contactType: "support", fromContact: true });
       }
       return json(res, 401, { error: "Invalid username or password" });
     }
@@ -847,6 +847,8 @@ async function routeApi(req, res, requestUrl) {
     if (userIndex !== -1) {
       const loginAt = new Date().toISOString();
       const previousHistory = Array.isArray(users[userIndex].loginHistory) ? users[userIndex].loginHistory : [];
+      const recentIps = recentLoginIps(users[userIndex]);
+      const outsideRecentIps = Boolean(currentLoginIp && recentIps.length && !recentIps.includes(currentLoginIp));
       const loginHistory = [{
         ip: currentLoginIp,
         device: currentLoginDevice,
@@ -868,6 +870,14 @@ async function routeApi(req, res, requestUrl) {
         loginIpCounts,
       };
       await writeJson(FILES.users, users);
+      if (outsideRecentIps) {
+        await handleNewIpLoginAlert(users[userIndex], {
+          ip: currentLoginIp,
+          device: currentLoginDevice,
+          previousIps: recentIps,
+          loginAt,
+        }, req, settings);
+      }
     }
 
     await addSystemLog("login.success", user.username, { role: normalizeRole(user.role), persistent, persistentReason: persistentLoginReason(user, settings, rooms) }, req);
@@ -942,31 +952,17 @@ async function routeApi(req, res, requestUrl) {
       await addSystemLog("password.reset.request.skipped", lookup.slice(0, 80), { reason: "No account/email match" }, req);
       return json(res, 200, generic);
     }
-    const resets = await readJson(FILES.passwordResets, []);
-    const rawToken = crypto.randomBytes(32).toString("base64url");
-    const requestRecord = {
-      id: crypto.randomUUID(),
-      username: target.username,
-      email: target.email,
-      tokenHash: hashPassword(rawToken),
-      usedAt: "",
-      createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-      sourceIp: getClientIp(req),
-      sourceDevice: deviceSignature(req),
-    };
-    const next = [requestRecord, ...resets.filter((entry) => Date.parse(entry.expiresAt || "") > Date.now()).slice(0, 500)];
-    await writeJson(FILES.passwordResets, next);
+    const { requestRecord, rawToken } = await createPasswordResetRecord(target, req);
     const resetUrl = `${publicBaseUrl(req)}/?reset=${encodeURIComponent(requestRecord.id)}.${encodeURIComponent(rawToken)}`;
-    await sendDirectEmail([target.email], "Inner password reset", [
+    await sendDirectEmail([target.email], "Connectifi password reset", [
       `Hi ${target.username},`,
       "",
-      "Use this link to reset your Inner password. It expires in 30 minutes.",
+      "Use this link to reset your Connectifi password. It expires in 30 minutes.",
       resetUrl,
       "",
       "If you did not request this, ignore this email.",
       settings.adminContactEmail ? `Need help? Contact ${settings.adminContactEmail}.` : "",
-    ].filter(Boolean).join("\n"));
+    ].filter(Boolean).join("\n"), { route: "loginFailures", contactType: "support", fromContact: true, actionLabel: "Reset password", ctaUrl: resetUrl });
     await addSystemLog("password.reset.requested", target.username, { email: target.email, expiresAt: requestRecord.expiresAt }, req);
     return json(res, 200, generic);
   }
@@ -1057,7 +1053,7 @@ async function routeApi(req, res, requestUrl) {
     requests.unshift(request);
     await writeJson(FILES.accountRequests, requests.slice(0, 500));
     await addSystemLog("account.requested", username, { displayName: request.displayName, location: request.location }, req);
-    await notifyAdminEmails("Inner account request", [
+    await notifyAdminEmails("Connectifi account request", [
       `${username} requested access.`,
       `Requested role: ${request.requestedRole}`,
       `Grade: ${request.grade || "not set"}`,
@@ -1128,7 +1124,7 @@ async function routeApi(req, res, requestUrl) {
     });
     await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles)]);
     await addSystemLog("account.signup.created", username, { sourceIp: account.sourceIp, contact }, req);
-    await notifyAdminEmails("Inner open signup", [
+    await notifyAdminEmails("Connectifi open signup", [
       `${username} created a member account.`,
       `Role: member`,
       `Grade: ${grade || "not set"}`,
@@ -1444,7 +1440,7 @@ async function routeApi(req, res, requestUrl) {
     const next = [announcement, ...announcements].slice(0, 200);
     await writeJson(FILES.announcements, next);
     await addSystemLog("announcement.created", user.username, { id: announcement.id, scope, roomId: announcement.roomId }, req);
-    await notifyAdminEmails("Inner announcement posted", [
+    await notifyAdminEmails("Connectifi announcement posted", [
       `${user.username} posted an announcement.`,
       `Title: ${title}`,
       `Scope: ${scope === "room" ? `Room ${room ? room.name : roomId}` : "Whole platform"}`,
@@ -1658,7 +1654,7 @@ async function routeApi(req, res, requestUrl) {
     const nextReports = pruneReportsForSettings([report, ...reports], settings);
     await writeJson(FILES.reports, nextReports);
     await addModerationLog(user.username, "report:create", `${report.targetType}:${report.targetId}`, report.reason);
-    await notifyAdminEmails("Inner report", [
+    await notifyAdminEmails("Connectifi report", [
       `${user.username} reported ${report.targetType}:${report.targetId}`,
       `Reporter contact: ${formatContactSnapshot(report.reporterContact)}`,
       `Sender: ${report.targetSender || "unknown"}`,
@@ -2531,7 +2527,7 @@ async function routeApi(req, res, requestUrl) {
       writeJson(FILES.accountRequests, requests),
     ]);
     await addSystemLog("account.request.approved", user.username, { requestUsername: request.username, requestedRole: request.requestedRole, role: grantedRole }, req);
-    await notifyAdminEmails("Inner account approved", [
+    await notifyAdminEmails("Connectifi account approved", [
       `${request.username} was approved by ${user.username}.`,
       `Requested role: ${request.requestedRole}`,
       `Granted role: ${grantedRole}`,
@@ -2589,7 +2585,7 @@ async function routeApi(req, res, requestUrl) {
     await writeJson(FILES.profiles, profiles);
     if (username.toLowerCase() === "admin2") await unmarkDeletedDefault("admin2", user.username);
     await addSystemLog("account.created", user.username, { username, role }, req);
-    await notifyAdminEmails("Inner account created", [
+    await notifyAdminEmails("Connectifi account created", [
       `${user.username} created an account.`,
       `Username: ${username}`,
       `Role: ${role}`,
@@ -3036,9 +3032,9 @@ async function routeApi(req, res, requestUrl) {
     const contactType = contactTypeForEmailRoute(route);
     const contacts = sanitizeEmailContacts((await readJson(FILES.settings, {})).emailContacts || {});
     const result = await notifyAdminEmails(
-      `Inner ${emailRouteLabel(route)} test email`,
+      `Connectifi ${emailRouteLabel(route)} test email`,
       [
-        `This is a test email from Inner for ${emailRouteLabel(route)}.`,
+        `This is a test email from Connectifi for ${emailRouteLabel(route)}.`,
         `Sent by ${user.username} at ${new Date().toISOString()}.`,
         "If you received this, that email route is working.",
       ].join("\n\n"),
@@ -5168,6 +5164,76 @@ function reportTouchesUser(report, username) {
   ].some((value) => String(value || "").toLowerCase() === target);
 }
 
+function recentLoginIps(user, limit = 10) {
+  const ips = [];
+  const addIp = (value) => {
+    const ip = String(value || "").trim();
+    if (ip && !ips.includes(ip)) ips.push(ip);
+  };
+  addIp(user.lastLoginIp);
+  addIp(user.sourceIp);
+  (Array.isArray(user.loginHistory) ? user.loginHistory : []).forEach((entry) => addIp(entry && entry.ip));
+  return ips.slice(0, limit);
+}
+
+async function createPasswordResetRecord(target, req) {
+  const resets = await readJson(FILES.passwordResets, []);
+  const rawToken = crypto.randomBytes(32).toString("base64url");
+  const requestRecord = {
+    id: crypto.randomUUID(),
+    username: target.username,
+    email: target.email,
+    tokenHash: hashPassword(rawToken),
+    usedAt: "",
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    sourceIp: getClientIp(req),
+    sourceDevice: deviceSignature(req),
+  };
+  const next = [requestRecord, ...resets.filter((entry) => Date.parse(entry.expiresAt || "") > Date.now()).slice(0, 500)];
+  await writeJson(FILES.passwordResets, next);
+  return { requestRecord, rawToken };
+}
+
+async function handleNewIpLoginAlert(user, login, req, settings = {}) {
+  await addSystemLog("login.new_ip", user.username, {
+    ip: login.ip,
+    device: login.device,
+    previousIps: login.previousIps,
+    loginAt: login.loginAt,
+  }, req);
+  if (!String(user.email || "").includes("@")) return;
+
+  const resetEnabled = settings.passwordResetEnabled !== false;
+  let resetUrl = "";
+  if (resetEnabled) {
+    const { requestRecord, rawToken } = await createPasswordResetRecord(user, req);
+    resetUrl = `${publicBaseUrl(req)}/?reset=${encodeURIComponent(requestRecord.id)}.${encodeURIComponent(rawToken)}`;
+  }
+
+  const support = sanitizeEmailContacts(settings.emailContacts || {}).support || settings.adminContactEmail || "support@connectifi.in";
+  await sendDirectEmail([user.email], "Connectifi new login from a new IP", [
+    `Hi ${user.username},`,
+    "",
+    "A successful login to your Connectifi account came from an IP address that is not in your recent login history.",
+    `New IP: ${login.ip || "unknown"}`,
+    `Device: ${login.device || "unknown"}`,
+    `Time: ${login.loginAt || new Date().toISOString()}`,
+    login.previousIps && login.previousIps.length ? `Recent IPs on record: ${login.previousIps.join(", ")}` : "",
+    "",
+    resetEnabled
+      ? "If this was not you, reset your password using the button/link in this email."
+      : `Password reset is currently disabled. If this was not you, contact ${support}.`,
+    resetUrl,
+  ].filter(Boolean).join("\n"), {
+    route: "loginFailures",
+    contactType: "support",
+    fromContact: true,
+    actionLabel: resetEnabled ? "Reset password" : "Contact support",
+    ctaUrl: resetEnabled ? resetUrl : "",
+  });
+}
+
 function userContactSnapshot(users, username, viewer = null) {
   const target = (users || []).find((entry) => entry.username.toLowerCase() === String(username || "").toLowerCase());
   if (!target) return null;
@@ -6334,7 +6400,7 @@ function contactForEmail(settings, options = {}) {
   return {
     type,
     email: contacts[type] || contacts.support || EMAIL_REPLY_TO || "",
-    from: contacts.noreply || parseEmailFrom(EMAIL_FROM).email || "",
+    from: options.fromContact ? (contacts[type] || contacts.support || parseEmailFrom(EMAIL_FROM).email || "") : (contacts.noreply || parseEmailFrom(EMAIL_FROM).email || ""),
     contacts,
   };
 }
@@ -6731,7 +6797,7 @@ function buildEmailHtml(subject, body, options = {}) {
     .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
     .join("");
   const cta = ctaUrl
-    ? `<a href="${escapeHtml(ctaUrl)}" style="display:inline-block;background:#151515;color:#fff;text-decoration:none;border-radius:8px;padding:12px 16px;font-weight:700;">Open Connectifi</a>`
+    ? `<a href="${escapeHtml(ctaUrl)}" style="display:inline-block;background:#151515;color:#fff;text-decoration:none;border-radius:8px;padding:12px 16px;font-weight:700;">${escapeHtml(options.actionLabel || "Open Connectifi")}</a>`
     : "";
   const replyLine = replyTo
     ? `Replying to this email goes to <strong>${escapeHtml(replyTo)}</strong>.`

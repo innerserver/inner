@@ -4180,8 +4180,24 @@ textarea {
 }
 
 .admin-collapsed {
-  gap: 6px !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px !important;
   min-height: 0 !important;
+  padding: 12px 14px !important;
+}
+
+.admin-collapsed h3 {
+  min-width: 0;
+  margin: 0 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-collapsed > .collapse-toggle {
+  margin: 0 !important;
+  justify-self: end;
 }
 
 /* v50 games launcher + admin detail page. */
@@ -4844,5 +4860,74 @@ body {
   #googleWorkspaceView.view.active,
   #docsView.view.active {
     min-height: calc(100dvh - 58px) !important;
+  }
+}
+
+/* v109 sidebar persistence. Keep navigation available while the page content
+   scrolls; the sidebar and workspace must be separate scrollers. */
+#appView.app:not(.hidden) {
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  overflow: hidden !important;
+}
+
+#appView.app:not(.hidden) > .sidebar {
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain;
+}
+
+#appView.app:not(.hidden) > .workspace {
+  height: 100dvh !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+@media (min-width: 861px) {
+  #appView.app:not(.hidden) {
+    display: grid !important;
+    grid-template-columns: 310px minmax(0, 1fr) !important;
+  }
+
+  #appView.app.sidebar-closed {
+    grid-template-columns: 0 minmax(0, 1fr) !important;
+  }
+
+  #appView.app:not(.hidden) > .sidebar {
+    position: sticky !important;
+    top: 0 !important;
+  }
+}
+
+@media (max-width: 860px) {
+  #appView.app:not(.hidden),
+  #appView.app.sidebar-closed {
+    display: block !important;
+    height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  #appView.app:not(.hidden) > .workspace {
+    height: 100dvh !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+  }
+
+  #appView.app:not(.hidden) > .sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    width: min(86vw, 330px) !important;
+    transform: translateX(-105%) !important;
+    z-index: 80 !important;
+  }
+
+  #appView.app.sidebar-open > .sidebar {
+    transform: translateX(0) !important;
   }
 }

@@ -15,6 +15,7 @@ const state = {
   friendCandidates: [],
   friendSearch: "",
   friendGradeFilter: "",
+  friendAlphaFilter: "",
   friendSearchTimer: 0,
   selectedDmUser: "",
   adminDmFilter: "all",
@@ -324,6 +325,7 @@ function cacheElements() {
     "friendGradeSearchButton",
     "friendUserSelect",
     "sendFriendRequestButton",
+    "friendAlphaFilter",
     "friendList",
     "friendRequestList",
     "friendState",
@@ -692,8 +694,19 @@ function bindEvents() {
   if (els.friendSearchInput) {
     els.friendSearchInput.addEventListener("input", () => {
       state.friendSearch = els.friendSearchInput.value;
+      state.friendAlphaFilter = "";
       window.clearTimeout(state.friendSearchTimer);
       state.friendSearchTimer = window.setTimeout(loadFriendCandidates, 220);
+      renderFriends();
+    });
+  }
+  if (els.friendAlphaFilter) {
+    els.friendAlphaFilter.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-friend-letter]");
+      if (!button) return;
+      const letter = button.dataset.friendLetter || "";
+      state.friendAlphaFilter = state.friendAlphaFilter === letter ? "" : letter;
+      renderFriends();
     });
   }
   if (els.friendGradeSearchButton) els.friendGradeSearchButton.addEventListener("click", searchFriendsByGrade);
@@ -4970,18 +4983,25 @@ function renderFriends() {
   if (els.friendState) {
     const search = String(state.friendSearch || "").trim();
     const grade = String(state.friendGradeFilter || "").trim();
+    const letter = String(state.friendAlphaFilter || "").trim();
     els.friendState.textContent = search
       ? "Exact username search can find people outside your grade."
       : grade
         ? `Showing grade ${grade} candidates you are allowed to add.`
-        : "Same-grade people show here. Search exact username for anyone else.";
+        : letter
+          ? `Showing friends starting with ${letter}.`
+          : "Choose a letter to browse friends, or search exact username for anyone else.";
   }
 
+  renderFriendAlphabet();
   els.friendList.replaceChildren();
+  const visibleFriends = filteredFriendsForList();
   if (!(state.friends.friends || []).length) {
     els.friendList.append(emptyBlock("No friends yet"));
+  } else if (!visibleFriends.length) {
+    els.friendList.append(emptyBlock(state.friendAlphaFilter || state.friendSearch ? "No friends match this filter" : "Choose a letter above to show friends"));
   } else {
-    state.friends.friends.forEach((friend) => {
+    visibleFriends.forEach((friend) => {
       const profile = state.profiles[friend.username] || {};
       const card = adminCard(profile.displayName || friend.username, profile.status || "offline", [
         profile.customStatus || "",
@@ -5017,6 +5037,52 @@ function renderFriends() {
   });
   outgoing.forEach((request) => {
     els.friendRequestList.append(adminCard(request.to, "Outgoing", [formatDate(request.createdAt)]));
+  });
+}
+
+function renderFriendAlphabet() {
+  if (!els.friendAlphaFilter) return;
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+  const counts = new Map();
+  (state.friends.friends || []).forEach((friend) => {
+    const profile = state.profiles[friend.username] || {};
+    const label = String(profile.displayName || friend.username || "").trim();
+    const letter = /^[a-z]/i.test(label) ? label[0].toUpperCase() : "#";
+    counts.set(letter, (counts.get(letter) || 0) + 1);
+  });
+  els.friendAlphaFilter.replaceChildren();
+  ["#", ...letters].forEach((letter) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.friendLetter = letter;
+    button.textContent = counts.has(letter) ? `${letter} ${counts.get(letter)}` : letter;
+    button.disabled = !counts.has(letter);
+    button.className = state.friendAlphaFilter === letter ? "active" : "";
+    els.friendAlphaFilter.append(button);
+  });
+}
+
+function filteredFriendsForList() {
+  const search = String(state.friendSearch || "").trim().toLowerCase();
+  const letter = String(state.friendAlphaFilter || "").trim().toUpperCase();
+  const friends = (state.friends.friends || []).slice().sort((a, b) => {
+    const profileA = state.profiles[a.username] || {};
+    const profileB = state.profiles[b.username] || {};
+    return String(profileA.displayName || a.username).localeCompare(String(profileB.displayName || b.username));
+  });
+  if (search) {
+    return friends.filter((friend) => {
+      const profile = state.profiles[friend.username] || {};
+      return [friend.username, profile.displayName, profile.email, friend.email]
+        .some((value) => String(value || "").toLowerCase().includes(search));
+    });
+  }
+  if (!letter) return [];
+  return friends.filter((friend) => {
+    const profile = state.profiles[friend.username] || {};
+    const label = String(profile.displayName || friend.username || "").trim();
+    const first = /^[a-z]/i.test(label) ? label[0].toUpperCase() : "#";
+    return first === letter;
   });
 }
 
@@ -8261,6 +8327,7 @@ async function sendFriendRequest(event) {
     state.friends = data.friends;
     state.friendSearch = "";
     state.friendCandidates = [];
+    state.friendAlphaFilter = "";
     if (els.friendSearchInput) els.friendSearchInput.value = "";
     renderFriends();
     notify("Friend request sent");

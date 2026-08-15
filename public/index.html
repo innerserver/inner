@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-112-dashboard-metrics-clean" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-113-ui-friends-alpha" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -312,12 +312,13 @@
             </div>
           </div>
           <form id="friendRequestForm" class="upload-bar">
-            <input id="friendSearchInput" maxlength="120" placeholder="Search username, email, or phone" autocomplete="off" />
+            <input id="friendSearchInput" maxlength="120" placeholder="Search exact username, email, or phone" autocomplete="off" />
             <select id="friendGradeSearch" aria-label="Search by grade"><option value="">Grade</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select>
             <button id="friendGradeSearchButton" class="secondary-button" type="button">Search grade</button>
             <select id="friendUserSelect" aria-label="User"></select>
             <button id="sendFriendRequestButton" class="primary-button" type="submit">Add friend</button>
           </form>
+          <div id="friendAlphaFilter" class="friend-alpha-filter" aria-label="Filter friends by first letter"></div>
           <div class="settings-grid">
             <div class="status-panel"><h3>Friends</h3><div id="friendList" class="account-list"></div></div>
             <div class="status-panel"><h3>Requests</h3><div id="friendRequestList" class="account-list"></div></div>
@@ -898,11 +899,11 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=connectifi-112-dashboard-metrics-clean" defer></script>
-    <script src="/status-guard.js?v=connectifi-112-dashboard-metrics-clean" defer></script>
-    <script src="/ui-boot.js?v=connectifi-112-dashboard-metrics-clean" defer></script>
-    <script src="/app.js?v=connectifi-112-dashboard-metrics-clean" defer></script>
-    <script src="/force-logout.js?v=connectifi-112-dashboard-metrics-clean" defer></script>
+    <script src="/session-guard.js?v=connectifi-113-ui-friends-alpha" defer></script>
+    <script src="/status-guard.js?v=connectifi-113-ui-friends-alpha" defer></script>
+    <script src="/ui-boot.js?v=connectifi-113-ui-friends-alpha" defer></script>
+    <script src="/app.js?v=connectifi-113-ui-friends-alpha" defer></script>
+    <script src="/force-logout.js?v=connectifi-113-ui-friends-alpha" defer></script>
   </body>
 </html>
 

@@ -5038,10 +5038,143 @@ body {
     visibility: visible !important;
   }
 
-  #appView.app:not(.hidden) > .workspace {
+#appView.app:not(.hidden) > .workspace {
     height: 100dvh !important;
     min-width: 0 !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
+  }
+}
+
+/* v113 UI repair: keep admin rows, dashboard metrics, browser/file/profile
+   surfaces from clipping, and add alphabet friend browsing. */
+.friend-alpha-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 14px;
+}
+
+.friend-alpha-filter button {
+  min-width: 40px;
+  min-height: 34px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 850;
+}
+
+.friend-alpha-filter button.active {
+  color: var(--surface);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.friend-alpha-filter button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+#dashboardView.view.active {
+  display: grid !important;
+  grid-template-rows: auto auto auto auto auto auto !important;
+  gap: 14px !important;
+  align-content: start !important;
+}
+
+#phoneInstallGuide.phone-guide {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  min-height: auto !important;
+  overflow: visible !important;
+}
+
+#dashboardGrid.file-grid {
+  grid-auto-rows: minmax(92px, auto) !important;
+  overflow: visible !important;
+}
+
+#dashboardGrid .dashboard-metric-card {
+  height: auto !important;
+  min-height: 92px !important;
+  overflow: visible !important;
+}
+
+#adminView .admin-grid > .admin-collapsed {
+  grid-column: 1 / -1 !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  width: 100% !important;
+  max-height: 54px !important;
+  padding: 9px 14px !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+}
+
+#adminView .admin-grid > .admin-collapsed > :not(h3):not(.panel-title-row):not(.collapse-toggle) {
+  display: none !important;
+}
+
+#adminView .admin-grid > .admin-collapsed > .panel-title-row {
+  min-height: 34px !important;
+  overflow: hidden !important;
+}
+
+#adminView .admin-grid > .admin-collapsed .collapse-toggle {
+  min-height: 34px !important;
+  padding: 4px 12px !important;
+}
+
+#adminView .admin-grid > .admin-collapsed + .admin-collapsed {
+  margin-top: 0 !important;
+}
+
+#browserView .share-link-form,
+#publicBrowserShareForm.share-link-form {
+  display: grid !important;
+  grid-template-columns: minmax(180px, 1.4fr) minmax(120px, 180px) minmax(180px, 1fr) auto !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+#browserView .embedded-app-frame,
+#googleWorkspaceView .google-app-frame,
+.admin-browser-frame {
+  min-height: 420px !important;
+  height: clamp(420px, 58dvh, 720px) !important;
+}
+
+#filesView .file-grid,
+#fileList.file-grid,
+#storeList.file-grid {
+  align-items: start !important;
+  overflow: visible !important;
+}
+
+#filesView .file-card,
+#storeList .file-card {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+#profileView .panel-form,
+#profileForm {
+  overflow: visible !important;
+}
+
+@media (max-width: 860px) {
+  #phoneInstallGuide.phone-guide,
+  #browserView .share-link-form,
+  #publicBrowserShareForm.share-link-form,
+  #friendRequestForm.upload-bar {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  #dashboardGrid.file-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 }

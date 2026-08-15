@@ -1,0 +1,59 @@
+[
+  {
+    "id": "cbedc7a9-f533-4c33-a108-cc9b51c604df",
+    "action": "email.sent",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi account created",
+      "recipients": [
+        "resetuser@example.com"
+      ],
+      "provider": "webhook",
+      "status": 200,
+      "reason": "{\"ok\":true,\"count\":2}"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-15T13:16:14.042Z"
+  },
+  {
+    "id": "87ce50ac-fd1f-4aab-9d48-aec44a064712",
+    "action": "email.sent",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi account created",
+      "recipients": [],
+      "provider": "webhook",
+      "status": 200,
+      "reason": "{\"ok\":true,\"count\":1}"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-15T13:16:14.029Z"
+  },
+  {
+    "id": "5019c205-5664-4cb7-8836-4062f686a796",
+    "action": "account.created",
+    "actor": "admin",
+    "details": {
+      "username": "resetuser",
+      "role": "member"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3158",
+    "createdAt": "2026-08-15T13:16:13.927Z"
+  },
+  {
+    "id": "dcc8110f-e8e2-4097-8405-103645a17472",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3158",
+    "createdAt": "2026-08-15T13:16:13.801Z"
+  }
+]

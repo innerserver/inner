@@ -835,12 +835,20 @@ function bindEvents() {
   if (els.dismissOnboardingButton) els.dismissOnboardingButton.addEventListener("click", dismissOnboarding);
   if (els.showOnboardingButton) els.showOnboardingButton.addEventListener("click", showOnboarding);
 
+  const handleNavButton = (event) => {
+    const button = event.target && event.target.closest ? event.target.closest(".nav-button[data-view]") : null;
+    if (!button) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+    showView(button.dataset.view);
+    closeSidebar();
+  };
   document.querySelectorAll(".nav-button").forEach((button) => {
-    button.addEventListener("click", () => {
-      showView(button.dataset.view);
-      closeSidebar();
-    });
+    button.addEventListener("click", handleNavButton);
   });
+  document.addEventListener("click", handleNavButton, true);
+  document.addEventListener("pointerup", handleNavButton, true);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeSidebar();
   });

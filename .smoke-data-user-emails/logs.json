@@ -1,0 +1,155 @@
+[
+  {
+    "id": "f297a371-7761-4732-a9c3-43d99af85a8c",
+    "action": "email.sent",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi account created",
+      "recipients": [
+        "adminmade@example.com"
+      ],
+      "provider": "webhook",
+      "status": 200,
+      "reason": "{\"ok\":true,\"count\":6}"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-15T13:14:36.348Z"
+  },
+  {
+    "id": "66f06b8b-f637-4974-902e-75c3ab7dbe18",
+    "action": "email.sent",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi account created",
+      "recipients": [],
+      "provider": "webhook",
+      "status": 200,
+      "reason": "{\"ok\":true,\"count\":5}"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-15T13:14:36.334Z"
+  },
+  {
+    "id": "b52c6ee1-ff42-457e-b8dc-0b037d362a52",
+    "action": "account.created",
+    "actor": "admin",
+    "details": {
+      "username": "adminmade",
+      "role": "member"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3157",
+    "createdAt": "2026-08-15T13:14:36.321Z"
+  },
+  {
+    "id": "e5281ecc-38a4-41d7-8023-f68bb91a5d9a",
+    "action": "email.sent",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi account approved",
+      "recipients": [
+        "emailstudent@example.com"
+      ],
+      "provider": "webhook",
+      "status": 200,
+      "reason": "{\"ok\":true,\"count\":4}"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-15T13:14:36.146Z"
+  },
+  {
+    "id": "7da303eb-b1e1-4013-9f10-5b2aeba09fe9",
+    "action": "email.sent",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi account approved",
+      "recipients": [],
+      "provider": "webhook",
+      "status": 200,
+      "reason": "{\"ok\":true,\"count\":3}"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-15T13:14:36.131Z"
+  },
+  {
+    "id": "e80c2e20-65c9-49d5-bc23-c70ad85c2c75",
+    "action": "account.request.approved",
+    "actor": "admin",
+    "details": {
+      "requestUsername": "emailstudent",
+      "requestedRole": "member",
+      "role": "member"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3157",
+    "createdAt": "2026-08-15T13:14:36.118Z"
+  },
+  {
+    "id": "945ef725-3b4b-4e52-a9a7-b7d539af462f",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3157",
+    "createdAt": "2026-08-15T13:14:36.080Z"
+  },
+  {
+    "id": "30fbd742-fa34-4e9a-aee5-0213b907467d",
+    "action": "email.sent",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi account request received",
+      "recipients": [
+        "emailstudent@example.com"
+      ],
+      "provider": "webhook",
+      "status": 200,
+      "reason": "{\"ok\":true,\"count\":2}"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-15T13:14:35.898Z"
+  },
+  {
+    "id": "83561bca-a757-4fd1-b2e9-db344620c5ed",
+    "action": "email.sent",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi account request",
+      "recipients": [],
+      "provider": "webhook",
+      "status": 200,
+      "reason": "{\"ok\":true,\"count\":1}"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-15T13:14:35.890Z"
+  },
+  {
+    "id": "b804db32-ed08-4361-9f08-12a46e2a8a7b",
+    "action": "account.requested",
+    "actor": "emailstudent",
+    "details": {
+      "displayName": "Email Student",
+      "location": {
+        "latitude": 19.07,
+        "longitude": 72.87,
+        "accuracy": 100,
+        "source": "smoke",
+        "reason": "",
+        "sharedAt": "2026-08-15T13:14:35.782Z"
+      }
+    },
+    "sourceIp": "203.0.113.88",
+    "sourceHost": "127.0.0.1:3157",
+    "createdAt": "2026-08-15T13:14:35.788Z"
+  }
+]

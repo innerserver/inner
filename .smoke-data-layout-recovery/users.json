@@ -1,0 +1,114 @@
+[
+  {
+    "username": "admin",
+    "role": "admin",
+    "passwordHash": "13f1c1b08804f43205c662c9546cdb8c:110ec782ff5fae2d9fbd300b04d0693073092731f814a65a4cc87b991efe5ef66dde3919a4b7aaf0e3a8695756496b6e31ecfbe65af9c178b137ba4a72aae866",
+    "passwordPreset": "admin-v1",
+    "allowPersistentLogin": false,
+    "locked": true,
+    "createdAt": "2026-08-14T15:05:11.538Z",
+    "lastLoginAt": "2026-08-14T15:05:50.501Z",
+    "lastLoginIp": "127.0.0.1",
+    "lastLoginDevice": "1063f772d4ba05384217053d",
+    "lastLoginApproximateLocation": {
+      "ip": "127.0.0.1",
+      "type": "private/local",
+      "note": "Approximate location unavailable for local/private IP"
+    },
+    "loginHistory": [
+      {
+        "ip": "127.0.0.1",
+        "device": "1063f772d4ba05384217053d",
+        "approximateLocation": {
+          "ip": "127.0.0.1",
+          "type": "private/local",
+          "note": "Approximate location unavailable for local/private IP"
+        },
+        "loggedInAt": "2026-08-14T15:05:50.501Z"
+      },
+      {
+        "ip": "127.0.0.1",
+        "device": "1063f772d4ba05384217053d",
+        "approximateLocation": {
+          "ip": "127.0.0.1",
+          "type": "private/local",
+          "note": "Approximate location unavailable for local/private IP"
+        },
+        "loggedInAt": "2026-08-14T15:05:36.699Z"
+      }
+    ],
+    "loginIpCounts": {
+      "127.0.0.1": 2
+    }
+  },
+  {
+    "username": "admin2",
+    "role": "admin",
+    "passwordHash": "322964ed29882525b2ea3a4a48bd8d0f:ec66cb1c03f6633de553e9ddaf7538b25eb0110198b4fcd7cda9a5df6fc991884417a51596fe7f70bb5d368b9ad009a06fa977e946a74cfd581af4ec0ec27e88",
+    "passwordPreset": "admin2-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-14T15:05:11.538Z"
+  },
+  {
+    "username": "hmd",
+    "role": "hmd",
+    "passwordHash": "b3367cb9e4f6da6d3d3b96b3acc5c957:78e980595dd61df449210809b8d60eb7d9fa93f159630b18181a46873fdaa8b6f9d2d3353b38a47a66566f7050aa032e7df6ef70a489b79eb3503794dd4261bc",
+    "passwordPreset": "hmd-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-14T15:05:11.538Z",
+    "createdBy": "system"
+  },
+  {
+    "username": "dev",
+    "role": "dev",
+    "passwordHash": "22c490663a235bd6aeb212dd80f17fe4:56f6f681df053c9797a69bf3ba562b88acd6cc2c132ce98ba1f98b48ce98d43d842a9c2cfd5b841a0d91a974139f94663f9ba0204507c96fd0dc6d8834a7df03",
+    "passwordPreset": "dev-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-14T15:05:11.538Z",
+    "createdBy": "system"
+  },
+  {
+    "username": "layoutmember",
+    "role": "member",
+    "passwordHash": "c1deeef224456c12fbade733fd76ed06:9966f108ed232c507a8f202dc1af9af49cdd267c40b49f1a2a20ea889c797c18283231a25d2a1e1fcfff53157fc0831028a1ea8c8e6a9c20df280d45466ac763",
+    "email": "new@example.com",
+    "phone": "999",
+    "contact": "new@example.com / 999",
+    "grade": "8C",
+    "gradeUpdatedAt": "2026-08-14T15:05:50.682Z",
+    "contactUpdatedAt": "2026-08-14T15:05:50.682Z",
+    "createdAt": "2026-08-14T15:05:50.554Z",
+    "createdBy": "admin",
+    "allowPersistentLogin": true,
+    "bannedUntil": "",
+    "banReason": "",
+    "lastLoginAt": "2026-08-14T15:05:50.673Z",
+    "lastLoginIp": "127.0.0.1",
+    "lastLoginDevice": "1063f772d4ba05384217053d",
+    "lastLoginApproximateLocation": {
+      "ip": "127.0.0.1",
+      "type": "private/local",
+      "note": "Approximate location unavailable for local/private IP"
+    },
+    "loginHistory": [
+      {
+        "ip": "127.0.0.1",
+        "device": "1063f772d4ba05384217053d",
+        "approximateLocation": {
+          "ip": "127.0.0.1",
+          "type": "private/local",
+          "note": "Approximate location unavailable for local/private IP"
+        },
+        "loggedInAt": "2026-08-14T15:05:50.673Z"
+      }
+    ],
+    "loginIpCounts": {
+      "127.0.0.1": 1
+    },
+    "updatedAt": "2026-08-14T15:05:50.682Z",
+    "updatedBy": "layoutmember"
+  }
+]

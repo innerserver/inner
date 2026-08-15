@@ -1,0 +1,73 @@
+{
+  "serverEnabled": true,
+  "roomName": "Connectifi",
+  "signupMode": "open",
+  "requireContact": false,
+  "adminContactEmail": "",
+  "passwordResetEnabled": true,
+  "reportEmails": [],
+  "emailRoutes": {},
+  "emailContacts": {
+    "noreply": "innerservers@gmail.com",
+    "reports": "report@connectifi.in",
+    "security": "security@connectifi.in",
+    "support": "support@connectifi.in",
+    "admin": "admin@connectifi.in"
+  },
+  "reportRetentionDays": 30,
+  "featureLocks": {},
+  "featureVisibility": {},
+  "paywalls": {},
+  "persistentLogin": {
+    "defaultEnabled": true,
+    "grades": [],
+    "roles": [],
+    "rooms": []
+  },
+  "shutdownAt": "",
+  "shutdownBy": "",
+  "updatedAt": "2026-08-15T13:30:56.727Z",
+  "moderationSettings": {
+    "emailReports": true,
+    "trackIp": true,
+    "trackDevice": true,
+    "updatedAt": "2026-08-15T13:30:56.727Z",
+    "updatedBy": "system"
+  },
+  "customizations": {
+    "appName": "Connectifi",
+    "connectedLabel": "",
+    "disconnectedLabel": "",
+    "serverOnLabel": "",
+    "serverOffLabel": "",
+    "versionLabel": "",
+    "updateTitle": "",
+    "updateNote": "",
+    "notice": "",
+    "accent": "",
+    "density": "comfortable",
+    "rounded": true,
+    "customCss": "",
+    "updatedAt": "",
+    "updatedBy": ""
+  },
+  "serviceScale": {
+    "messages": 100,
+    "dms": 100,
+    "uploads": 100,
+    "voice": 100,
+    "screen": 100,
+    "notifications": 100,
+    "moderation": 100,
+    "realtime": 100,
+    "domain": 100
+  },
+  "chessUrl": "https://chessverse.co.in/",
+  "gameLinks": [
+    {
+      "name": "ChessVerse",
+      "url": "https://chessverse.co.in/"
+    }
+  ],
+  "updatedBy": "system"
+}

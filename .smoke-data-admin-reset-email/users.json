@@ -1,0 +1,82 @@
+[
+  {
+    "username": "admin",
+    "role": "admin",
+    "passwordHash": "c02169375ec08175d3527eecc0c9a858:f7e84f5b94d3895b7d82320a024fd1d0a9da60dbb9225e809c879c1524a11d2e7e6b88e0357d08b41a29cddbc230d649235937977c4372d40e4d604b61168341",
+    "passwordPreset": "admin-v1",
+    "allowPersistentLogin": false,
+    "locked": true,
+    "createdAt": "2026-08-15T13:15:52.350Z",
+    "lastLoginAt": "2026-08-15T13:16:13.795Z",
+    "lastLoginIp": "127.0.0.1",
+    "lastLoginDevice": "1063f772d4ba05384217053d",
+    "lastLoginApproximateLocation": {
+      "ip": "127.0.0.1",
+      "type": "private/local",
+      "note": "Approximate location unavailable for local/private IP"
+    },
+    "loginHistory": [
+      {
+        "ip": "127.0.0.1",
+        "device": "1063f772d4ba05384217053d",
+        "approximateLocation": {
+          "ip": "127.0.0.1",
+          "type": "private/local",
+          "note": "Approximate location unavailable for local/private IP"
+        },
+        "loggedInAt": "2026-08-15T13:16:13.795Z"
+      }
+    ],
+    "loginIpCounts": {
+      "127.0.0.1": 1
+    }
+  },
+  {
+    "username": "admin2",
+    "role": "admin",
+    "passwordHash": "8f849869fcbd9ed6ee98ea47e81d2f4b:a03f4870b3f93da133907b6414a3e27d32204f0d2b4c537f43c5ad080a6dee6a58beb43470353aad55d97d27c38f71778a960e7f28e87e1a572e47878aa39041",
+    "passwordPreset": "admin2-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-15T13:15:52.350Z"
+  },
+  {
+    "username": "hmd",
+    "role": "hmd",
+    "passwordHash": "4deb0edb5ad7e98e991d8e0602925827:3e371dd1762c7b878d20b54544592c04c6585f4261bc6e0c7074a4201c988843281e0bc066aaff1617bdeb90f2ba84c78f7a49da03ee63a9e43eb9b85518794b",
+    "passwordPreset": "hmd-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-15T13:15:52.350Z",
+    "createdBy": "system"
+  },
+  {
+    "username": "dev",
+    "role": "dev",
+    "passwordHash": "a8a19c261326595a94f14029dc1fcb77:b4015ae89cf3a117e95263886a76992f9754df237a16cd7642639b29d346f6df87d0371414e9e792f293cfbe8bf75657c3afca1771e426088998fbeb30b620b5",
+    "passwordPreset": "dev-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-15T13:15:52.350Z",
+    "createdBy": "system"
+  },
+  {
+    "username": "resetuser",
+    "role": "member",
+    "passwordHash": "a1dae7e6b8ae660368b34760000be816:ec34ef1fba3e95589f852bee9d63b3b990c3d340c014e63671875edbb3dbaebba779c3c5f0147bc7274c1f585c1f5c866b9518f1993c651b9c47ac5783d3e36c",
+    "email": "resetuser@example.com",
+    "phone": "+15550303030",
+    "contact": "resetuser@example.com / +15550303030",
+    "grade": "8C",
+    "gradeUpdatedAt": "2026-08-15T13:16:13.854Z",
+    "contactUpdatedAt": "2026-08-15T13:16:13.854Z",
+    "createdAt": "2026-08-15T13:16:13.854Z",
+    "createdBy": "admin",
+    "allowPersistentLogin": true,
+    "bannedUntil": "",
+    "banReason": "",
+    "passwordPreset": "",
+    "updatedAt": "2026-08-15T13:16:14.190Z",
+    "updatedBy": "admin"
+  }
+]

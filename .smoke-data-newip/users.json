@@ -1,0 +1,113 @@
+[
+  {
+    "username": "admin",
+    "role": "admin",
+    "passwordHash": "640a7e47e776a1811c192090ec23cb70:986db5a7cced03368cf67175bcb4c5ee023dd01d21f5ba96fc6b3cd965d30564d5f63dffbb0b4d01edbd1eb90f7d0cb66b9cf2e1e5a2fe82ed30eb5c49bbf8da",
+    "passwordPreset": "admin-v1",
+    "allowPersistentLogin": false,
+    "locked": true,
+    "createdAt": "2026-08-14T10:36:24.683Z",
+    "lastLoginAt": "2026-08-14T10:37:01.307Z",
+    "lastLoginIp": "10.0.0.1",
+    "lastLoginDevice": "dea5f5ea539d443c2c5643b1",
+    "lastLoginApproximateLocation": {
+      "ip": "10.0.0.1",
+      "type": "private/local",
+      "note": "Approximate location unavailable for local/private IP"
+    },
+    "loginHistory": [
+      {
+        "ip": "10.0.0.1",
+        "device": "dea5f5ea539d443c2c5643b1",
+        "approximateLocation": {
+          "ip": "10.0.0.1",
+          "type": "private/local",
+          "note": "Approximate location unavailable for local/private IP"
+        },
+        "loggedInAt": "2026-08-14T10:37:01.307Z"
+      }
+    ],
+    "loginIpCounts": {
+      "10.0.0.1": 1
+    }
+  },
+  {
+    "username": "admin2",
+    "role": "admin",
+    "passwordHash": "12a749b1bc1efcdb7147b03e9c59e16f:7166b796f08d2da35c3093bca98c976f2cda78c373e1dd57bf8bbc975275417cf120f71d95a3a4ba23e1109c79e4e5ecc9cdfc5cb918fcc637768837c79532f7",
+    "passwordPreset": "admin2-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-14T10:36:24.683Z"
+  },
+  {
+    "username": "hmd",
+    "role": "hmd",
+    "passwordHash": "341d13143044359e724b3b4903263b77:d9e5aa034bb0329cec1934ddaca5bd517f6268df282f293bbd6052ab23eb23910b50163732e290a9c13bda551d01478e5471774c447d293aa92d2414c9c40ac9",
+    "passwordPreset": "hmd-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-14T10:36:24.683Z",
+    "createdBy": "system"
+  },
+  {
+    "username": "dev",
+    "role": "dev",
+    "passwordHash": "c041e5bd66d1ab5442136bf8ef18d09f:0114730b4de5d9bf47eb3c6c9a9b8e8460694466e393df9d3e12b205b294829d095565166d946a62663a4e181cba1352a415f0d71082533e023893ffc6615a2e",
+    "passwordPreset": "dev-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-14T10:36:24.683Z",
+    "createdBy": "system"
+  },
+  {
+    "username": "student",
+    "role": "member",
+    "passwordHash": "556478c846f0b0fe37a4630ef9111e2a:3af76026fb84b4ebd0483f1bfa80538afd6d40382d3a7f7f7c7f83eaea4e9b4d2ce519638da3a152d62d7c54548221360d9f1484ff4da1d659106cf13d6ac21c",
+    "email": "student@example.com",
+    "phone": "123",
+    "contact": "student@example.com / 123",
+    "grade": "8A",
+    "gradeUpdatedAt": "2026-08-14T10:37:01.378Z",
+    "contactUpdatedAt": "2026-08-14T10:37:01.378Z",
+    "createdAt": "2026-08-14T10:37:01.378Z",
+    "createdBy": "admin",
+    "allowPersistentLogin": true,
+    "bannedUntil": "",
+    "banReason": "",
+    "lastLoginAt": "2026-08-14T10:37:01.624Z",
+    "lastLoginIp": "100.64.0.2",
+    "lastLoginDevice": "dea5f5ea539d443c2c5643b1",
+    "lastLoginApproximateLocation": {
+      "ip": "100.64.0.2",
+      "type": "public",
+      "note": "IP captured for admin review; geolocation lookup can be added by provider"
+    },
+    "loginHistory": [
+      {
+        "ip": "100.64.0.2",
+        "device": "dea5f5ea539d443c2c5643b1",
+        "approximateLocation": {
+          "ip": "100.64.0.2",
+          "type": "public",
+          "note": "IP captured for admin review; geolocation lookup can be added by provider"
+        },
+        "loggedInAt": "2026-08-14T10:37:01.624Z"
+      },
+      {
+        "ip": "100.64.0.1",
+        "device": "dea5f5ea539d443c2c5643b1",
+        "approximateLocation": {
+          "ip": "100.64.0.1",
+          "type": "public",
+          "note": "IP captured for admin review; geolocation lookup can be added by provider"
+        },
+        "loggedInAt": "2026-08-14T10:37:01.570Z"
+      }
+    ],
+    "loginIpCounts": {
+      "100.64.0.1": 1,
+      "100.64.0.2": 1
+    }
+  }
+]

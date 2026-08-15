@@ -1,0 +1,149 @@
+[
+  {
+    "id": "0c82ae7e-3f60-4acc-9e3a-73a4ace95db2",
+    "action": "login.success",
+    "actor": "studentone",
+    "details": {
+      "role": "member",
+      "persistent": true,
+      "persistentReason": "per-account enabled"
+    },
+    "sourceIp": "203.0.113.40",
+    "sourceHost": "127.0.0.1:3152",
+    "createdAt": "2026-08-14T15:22:06.089Z"
+  },
+  {
+    "id": "a300d047-30b3-418e-a290-c2b1691a6547",
+    "action": "email.queued",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi account approved",
+      "recipients": [
+        "studentone@example.com"
+      ],
+      "reason": "No email provider configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-14T15:22:06.038Z"
+  },
+  {
+    "id": "952f65c1-fb89-49ed-a193-6da03d41ccca",
+    "action": "email.skipped",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi account approved",
+      "reason": "No recipients configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-14T15:22:06.034Z"
+  },
+  {
+    "id": "13d95a9f-f146-491e-93d6-48ff4702216f",
+    "action": "account.request.approved",
+    "actor": "admin",
+    "details": {
+      "requestUsername": "studentone",
+      "requestedRole": "member",
+      "role": "member"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3152",
+    "createdAt": "2026-08-14T15:22:06.029Z"
+  },
+  {
+    "id": "a503231c-e01c-4fac-9118-8ed2ed9370a2",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3152",
+    "createdAt": "2026-08-14T15:22:06.013Z"
+  },
+  {
+    "id": "199d4e85-3acb-479f-9d08-374e310c7592",
+    "action": "email.queued",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi account request received",
+      "recipients": [
+        "studentone@example.com"
+      ],
+      "reason": "No email provider configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-14T15:22:05.884Z"
+  },
+  {
+    "id": "3fc1f749-5acd-4257-95c3-ee98bf66192b",
+    "action": "email.skipped",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi account request",
+      "reason": "No recipients configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-14T15:22:05.878Z"
+  },
+  {
+    "id": "2119611e-f761-4633-8d79-8949f623ad1b",
+    "action": "account.requested",
+    "actor": "studentone",
+    "details": {
+      "displayName": "Student One",
+      "location": {
+        "latitude": 19.07,
+        "longitude": 72.87,
+        "accuracy": 100,
+        "source": "smoke",
+        "reason": "",
+        "sharedAt": "2026-08-14T15:22:05.870Z"
+      }
+    },
+    "sourceIp": "203.0.113.40",
+    "sourceHost": "127.0.0.1:3152",
+    "createdAt": "2026-08-14T15:22:05.874Z"
+  },
+  {
+    "id": "ada4f8b9-9e1c-41e7-8db3-db3a93ff3c1a",
+    "action": "login.failed",
+    "actor": "studentone",
+    "details": {
+      "reason": "Invalid username or password"
+    },
+    "sourceIp": "203.0.113.40",
+    "sourceHost": "127.0.0.1:3152",
+    "createdAt": "2026-08-14T15:21:29.368Z"
+  },
+  {
+    "id": "13368166-2e3c-44f6-81d9-878ccefe7b82",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3152",
+    "createdAt": "2026-08-14T15:21:29.330Z"
+  },
+  {
+    "id": "e39e92f8-8388-4eb0-937d-93e18b5cb568",
+    "action": "login.failed",
+    "actor": "studentone",
+    "details": {
+      "reason": "Invalid username or password"
+    },
+    "sourceIp": "203.0.113.40",
+    "sourceHost": "127.0.0.1:3152",
+    "createdAt": "2026-08-14T15:21:29.267Z"
+  }
+]

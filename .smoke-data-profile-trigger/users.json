@@ -1,0 +1,63 @@
+[
+  {
+    "username": "admin",
+    "role": "admin",
+    "passwordHash": "802827bab2f943ad58a1a1b423bd0559:8a1568923fc55fa62ad4705f27ef409c6d8b1e905c6ac0399df0eb419ef2af966ac3d2fccfd9640ad99e33a93e1d4c047d344a39afc35d4b52b5ae1b43083edf",
+    "passwordPreset": "admin-v1",
+    "allowPersistentLogin": false,
+    "locked": true,
+    "createdAt": "2026-08-14T11:35:46.266Z",
+    "lastLoginAt": "2026-08-14T11:36:44.513Z",
+    "lastLoginIp": "127.0.0.1",
+    "lastLoginDevice": "dea5f5ea539d443c2c5643b1",
+    "lastLoginApproximateLocation": {
+      "ip": "127.0.0.1",
+      "type": "private/local",
+      "note": "Approximate location unavailable for local/private IP"
+    },
+    "loginHistory": [
+      {
+        "ip": "127.0.0.1",
+        "device": "dea5f5ea539d443c2c5643b1",
+        "approximateLocation": {
+          "ip": "127.0.0.1",
+          "type": "private/local",
+          "note": "Approximate location unavailable for local/private IP"
+        },
+        "loggedInAt": "2026-08-14T11:36:44.513Z"
+      }
+    ],
+    "loginIpCounts": {
+      "127.0.0.1": 1
+    }
+  },
+  {
+    "username": "admin2",
+    "role": "admin",
+    "passwordHash": "82a9c68f53d03c7f5928b1ef03342b38:2e6bdef306cf22d0a0cbe44c48f3fab2215e0a495767e93b632729a7c571e4e8ec4417fdc8ac64a7f77ea3ea8f54ef5504d5ca0a8748a5407335434f06691dfe",
+    "passwordPreset": "admin2-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-14T11:35:46.266Z"
+  },
+  {
+    "username": "hmd",
+    "role": "hmd",
+    "passwordHash": "4b92e451868dba2b4904677cedea5c46:43530da532304b4e894d36670fcf3bd10be6d93018343b23cbad2d959fd7668a89d420910c25edd5d6fc28d6fe10aa27659c368f1043944120dbbb2648d290fe",
+    "passwordPreset": "hmd-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-14T11:35:46.266Z",
+    "createdBy": "system"
+  },
+  {
+    "username": "dev",
+    "role": "dev",
+    "passwordHash": "c0395cba21489027ff881dd37bc84d46:c5f54bdff71640cb2ddf0ca2414067a01cb1bd97328e9a25305975b46171b88672a68e80266b456e91c5c13dfb8e0d7038c987b9dce8cd832ce34bddea3dbb51",
+    "passwordPreset": "dev-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-14T11:35:46.266Z",
+    "createdBy": "system"
+  }
+]

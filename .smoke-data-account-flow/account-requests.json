@@ -1,0 +1,41 @@
+[
+  {
+    "id": "446f5d61-62b4-40b1-b04f-c297ad692025",
+    "username": "studentone",
+    "displayName": "Student One",
+    "contact": "studentone@example.com / +15550001000",
+    "email": "studentone@example.com",
+    "phone": "+15550001000",
+    "grade": "8A",
+    "requestedRole": "member",
+    "passwordHash": "afb3e54ad2f0e1eb7f41a35489673eb8:669bd39b096d6ccda2c5235e0be9a5c7aee0bc2addcbab72b9dc6a294803b2ba32e9f0258ba9c788b3badba34c921ec92774dc592188af980251e46d9e322534",
+    "passwordSet": true,
+    "note": "",
+    "location": {
+      "latitude": 19.07,
+      "longitude": 72.87,
+      "accuracy": 100,
+      "source": "smoke",
+      "reason": "",
+      "sharedAt": "2026-08-14T15:22:06.025Z"
+    },
+    "status": "approved",
+    "adminNote": "",
+    "sourceIp": "203.0.113.40",
+    "sourceHost": "127.0.0.1:3152",
+    "sourceAgent": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.6.4",
+    "sourceDevice": "1063f772d4ba05384217053d",
+    "approximateLocation": {
+      "ip": "203.0.113.40",
+      "type": "public",
+      "note": "IP captured for admin review; geolocation lookup can be added by provider"
+    },
+    "createdAt": "2026-08-14T15:22:05.870Z",
+    "updatedAt": "2026-08-14T15:22:06.023Z",
+    "updatedBy": "admin",
+    "approvedAt": "2026-08-14T15:22:06.023Z",
+    "approvedBy": "admin",
+    "declinedAt": "",
+    "declinedBy": ""
+  }
+]

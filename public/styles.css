@@ -5203,6 +5203,102 @@ body {
   overflow: visible !important;
 }
 
+/* v115 full-page UI recovery. The workspace is the scroller. Most pages should
+   size to their contents; only chat-style pages keep fixed internal tracks. */
+#dashboardView.view.active,
+#filesView.view.active,
+#friendsView.view.active,
+#profileView.view.active,
+#storeView.view.active,
+#gamesView.view.active,
+#domainView.view.active,
+#adminView.view.active,
+#hmdView.view.active,
+#browserView.view.active,
+#googleWorkspaceView.view.active {
+  align-self: start !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+#dashboardView.view.active,
+#browserView.view.active,
+#googleWorkspaceView.view.active {
+  display: flex !important;
+  flex-direction: column !important;
+  grid-template-rows: none !important;
+}
+
+#onboardingPanel,
+#phoneInstallGuide,
+#dashboardGrid,
+#dashboardView .settings-grid,
+#filesView #uploadForm,
+#fileList,
+#browserView .public-browser-bar,
+#browserView .public-browser-share-bar {
+  flex: 0 0 auto !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+#browserView .public-browser-bar,
+#browserView .public-browser-share-bar,
+#uploadForm.upload-bar,
+#friendRequestForm.upload-bar {
+  min-height: 0 !important;
+  align-items: center !important;
+}
+
+#browserView .embedded-app-frame,
+#googleWorkspaceView .google-app-frame {
+  flex: 0 0 auto !important;
+}
+
+/* v116 mobile navigation recovery. Keep the drawer above its backdrop and make
+   the sidebar/workspace independent scrollers on every viewport. */
+#appView.app:not(.hidden) > .sidebar {
+  flex-shrink: 0 !important;
+}
+
+@media (max-width: 860px) {
+  #appView.app:not(.hidden),
+  #appView.app.sidebar-closed {
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  #appView.app:not(.hidden) > .sidebar,
+  #appView.app.sidebar-closed > .sidebar {
+    z-index: 130 !important;
+    max-height: 100dvh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+  #appView.sidebar-open #sidebarBackdrop:not(.hidden),
+  #appView.app.sidebar-open > .sidebar-backdrop:not(.hidden) {
+    z-index: 120 !important;
+  }
+
+  #appView.app:not(.hidden) > .workspace {
+    height: 100dvh !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  #appView.app:not(.hidden) > .workspace > .view.active {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
 @media (max-width: 860px) {
   #phoneInstallGuide.phone-guide,
   #browserView .share-link-form,

@@ -1,1 +1,0 @@
-Added hidden tabs and games link support.

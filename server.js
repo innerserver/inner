@@ -7338,11 +7338,27 @@ async function writeLocalJson(file, value) {
     await handle.sync();
     await handle.close();
     handle = null;
-    await fsp.rename(tempFile, file);
+    await replaceLocalJsonFile(tempFile, file, jsonText);
   } catch (error) {
     if (handle) await handle.close().catch(() => {});
     await fsp.rm(tempFile, { force: true }).catch(() => {});
     throw error;
+  }
+}
+
+async function replaceLocalJsonFile(tempFile, file, jsonText) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      await fsp.rename(tempFile, file);
+      return;
+    } catch (error) {
+      if (!["EPERM", "EACCES", "EBUSY"].includes(error.code) || attempt === 3) {
+        await fsp.writeFile(file, jsonText, "utf8");
+        await fsp.rm(tempFile, { force: true }).catch(() => {});
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
+    }
   }
 }
 

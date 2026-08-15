@@ -51,6 +51,12 @@ const SMTP_PASS = firstEnvValue("INNER_SMTP_PASS", "SMTP_PASS", "SMTP_PASSWORD")
 const SMTP_SECURE = firstEnvValue("INNER_SMTP_SECURE", "SMTP_SECURE");
 const DEFAULT_SIGNUP_MODE = String(firstEnvValue("INNER_SIGNUP_MODE", "SIGNUP_MODE") || "open").toLowerCase() === "request" ? "request" : "open";
 const DEFAULT_REQUIRE_CONTACT = firstEnvValue("INNER_REQUIRE_CONTACT", "REQUIRE_CONTACT") === "" ? false : !isFalsy(firstEnvValue("INNER_REQUIRE_CONTACT", "REQUIRE_CONTACT"));
+const BLOCK_DUPLICATE_SIGNUP_IPS = isTruthy(firstEnvValue("INNER_BLOCK_DUPLICATE_SIGNUP_IPS", "BLOCK_DUPLICATE_SIGNUP_IPS"));
+const DUPLICATE_SIGNUP_IP_ALLOWLIST = new Set(
+  ["152.58.2.169", ...splitEnvList(firstEnvValue("INNER_SIGNUP_IP_ALLOWLIST", "INNER_DUPLICATE_IP_ALLOWLIST", "SIGNUP_IP_ALLOWLIST"))]
+    .map(normalizeIpAddress)
+    .filter(Boolean)
+);
 
 const FILES = {
   users: path.join(DATA_DIR, "users.json"),
@@ -837,6 +843,10 @@ async function routeApi(req, res, requestUrl) {
     sessions.set(token, {
       username: user.username,
       role: normalizeRole(user.role),
+      email: user.email || "",
+      phone: user.phone || "",
+      grade: normalizeGrade(user.grade || ""),
+      contact: user.contact || "",
       createdAt: Date.now(),
       persistent,
       expiresAt: Date.now() + (persistent ? SESSION_PERSISTENT_MS : SESSION_IDLE_MS),
@@ -4579,7 +4589,14 @@ function getSessionUser(req) {
     return null;
   }
   if (!session.persistent) session.expiresAt = Date.now() + SESSION_IDLE_MS;
-  return { username: session.username, role: normalizeRole(session.role) };
+  return {
+    username: session.username,
+    role: normalizeRole(session.role),
+    email: session.email || "",
+    phone: session.phone || "",
+    grade: normalizeGrade(session.grade || ""),
+    contact: session.contact || "",
+  };
 }
 
 function getCookie(req, name) {
@@ -5249,7 +5266,7 @@ function activeAccountRequestForIdentity(request) {
 
 function duplicateAccountIdentityError(users = [], requests = [], identity = {}) {
   const phone = normalizePhoneNumber(identity.phone);
-  const sourceIp = String(identity.sourceIp || "").trim();
+  const sourceIp = normalizeIpAddress(identity.sourceIp);
   if (phone) {
     const phoneUsedByUser = users.some((entry) => normalizePhoneNumber(entry && entry.phone) === phone);
     if (phoneUsedByUser) return "That phone number is already connected to an account.";
@@ -5258,11 +5275,11 @@ function duplicateAccountIdentityError(users = [], requests = [], identity = {})
     );
     if (phoneUsedByRequest) return "That phone number already has an active account request.";
   }
-  if (sourceIp) {
-    const ipUsedByUser = users.some((entry) => String((entry && (entry.sourceIp || entry.lastLoginIp)) || "").trim() === sourceIp);
+  if (BLOCK_DUPLICATE_SIGNUP_IPS && sourceIp && !DUPLICATE_SIGNUP_IP_ALLOWLIST.has(sourceIp)) {
+    const ipUsedByUser = users.some((entry) => normalizeIpAddress(entry && (entry.sourceIp || entry.lastLoginIp)) === sourceIp);
     if (ipUsedByUser) return "An account has already been created from this IP address.";
     const ipUsedByRequest = requests.some((entry) =>
-      activeAccountRequestForIdentity(entry) && String((entry && entry.sourceIp) || "").trim() === sourceIp
+      activeAccountRequestForIdentity(entry) && normalizeIpAddress(entry && entry.sourceIp) === sourceIp
     );
     if (ipUsedByRequest) return "This IP address already has an active account request.";
   }
@@ -5815,6 +5832,13 @@ function splitEnvList(value) {
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function normalizeIpAddress(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^::ffff:/, "")
+    .replace(/^\[|\]$/g, "");
 }
 
 function parseIceServersJson(value) {

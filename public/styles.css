@@ -5311,3 +5311,34 @@ body {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 }
+
+/* v118 signup/request recovery. The public account forms must scroll on phones
+   and must not inherit the logged-in app's fixed scroller rules. */
+#loginView.login-shell {
+  min-height: 100dvh !important;
+  height: auto !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+#loginView .request-panel {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+@media (max-width: 640px) {
+  #loginView.login-shell {
+    align-items: start !important;
+    place-items: start center !important;
+    padding: 14px !important;
+  }
+
+  #loginView .login-stack {
+    width: 100% !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  #loginView .login-panel {
+    padding: 18px !important;
+  }
+}

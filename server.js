@@ -1025,6 +1025,7 @@ async function routeApi(req, res, requestUrl) {
   if (req.method === "POST" && pathname === "/api/account-requests") {
     const body = await readJsonBody(req);
     const settings = await readJson(FILES.settings, {});
+    clearSessionForRequest(req, res);
     const username = normalizeUsername(body.username);
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
     const email = String(body.email || "").trim().slice(0, 120);
@@ -1117,6 +1118,7 @@ async function routeApi(req, res, requestUrl) {
 
   if (req.method === "POST" && pathname === "/api/signup") {
     const settings = await readJson(FILES.settings, {});
+    clearSessionForRequest(req, res);
     if (String(settings.signupMode || DEFAULT_SIGNUP_MODE) !== "open") {
       return json(res, 403, { error: "Open signup is off. Request an account instead." });
     }
@@ -7679,10 +7681,13 @@ function sanitizeBackupName(name) {
 }
 
 function json(res, status, payload) {
-  res.writeHead(status, {
+  const headers = {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
-  });
+  };
+  const setCookie = res.getHeader && res.getHeader("Set-Cookie");
+  if (setCookie) headers["Set-Cookie"] = setCookie;
+  res.writeHead(status, headers);
   res.end(JSON.stringify(payload));
 }
 

@@ -1002,6 +1002,22 @@ async function routeApi(req, res, requestUrl) {
       writeJson(FILES.passwordResets, resets),
       addSystemLog("password.reset.completed", users[userIndex].username, {}, req),
     ]);
+    if (String(users[userIndex].email || "").includes("@")) {
+      await sendDirectEmail([users[userIndex].email], "Connectifi password changed", [
+        `Hi ${users[userIndex].username},`,
+        "",
+        "Your Connectifi password was changed using the reset link.",
+        "If this was not you, contact support or an admin immediately.",
+        "",
+        ...accountSecurityEmailLines({
+          ip: getClientIp(req),
+          device: deviceSignature(req),
+          agent: String(req.headers["user-agent"] || "").slice(0, 240),
+          location: approximateLocationFromIp(getClientIp(req)),
+          time: new Date().toISOString(),
+        }),
+      ].join("\n"), { route: "loginFailures", contactType: "security", fromContact: true });
+    }
     expireUserSessions(users[userIndex].username);
     return json(res, 200, { ok: true });
   }
@@ -1085,6 +1101,14 @@ async function routeApi(req, res, requestUrl) {
         request.grade ? `Grade: ${request.grade}` : "",
         "",
         "Until an admin approves it, signing in will only show the review status.",
+        "",
+        ...accountSecurityEmailLines({
+          ip: request.sourceIp,
+          device: request.sourceDevice,
+          agent: request.sourceAgent,
+          location: request.approximateLocation,
+          time: request.createdAt,
+        }),
       ].filter(Boolean).join("\n"), { route: "accountRequests", contactType: "admin", fromContact: true });
     }
     broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
@@ -1170,6 +1194,14 @@ async function routeApi(req, res, requestUrl) {
         "",
         `Username: ${username}`,
         grade ? `Grade: ${grade}` : "",
+        "",
+        ...accountSecurityEmailLines({
+          ip: account.sourceIp,
+          device: account.sourceDevice,
+          agent: account.sourceAgent,
+          location: account.approximateLocation,
+          time: now,
+        }),
       ].filter(Boolean).join("\n"), { route: "signups", contactType: "admin", fromContact: true, actionLabel: "Open Connectifi", ctaUrl: publicBaseUrl(req) });
     }
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
@@ -2590,6 +2622,14 @@ async function routeApi(req, res, requestUrl) {
         `Username: ${request.username}`,
         `Account type: ${grantedRole}`,
         password.length >= 4 ? "Use the password your admin just set." : "Use the password you chose when requesting the account.",
+        "",
+        ...accountSecurityEmailLines({
+          ip: request.sourceIp,
+          device: request.sourceDevice,
+          agent: request.sourceAgent,
+          location: request.approximateLocation,
+          time: request.createdAt,
+        }),
       ].join("\n"), { route: "accountApprovals", contactType: "admin", fromContact: true, actionLabel: "Open Connectifi", ctaUrl: publicBaseUrl(req) });
     }
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
@@ -2619,7 +2659,7 @@ async function routeApi(req, res, requestUrl) {
     }
 
     const now = new Date().toISOString();
-    users.push({
+    const account = {
       username,
       role,
       passwordHash: hashPassword(password),
@@ -2634,7 +2674,8 @@ async function routeApi(req, res, requestUrl) {
       allowPersistentLogin: Boolean(body.allowPersistentLogin) || effectivePersistentLogin({ username, role, grade }, await readJson(FILES.settings, {}), await readJson(FILES.rooms, [])),
       bannedUntil: "",
       banReason: "",
-    });
+    };
+    users.push(account);
     await writeJson(FILES.users, users);
     const profiles = await readJson(FILES.profiles, {});
     profiles[username] = sanitizeProfile({ ...defaultProfile(username), grade, gradeUpdatedAt: grade ? now : "", contactUpdatedAt: contact ? now : "", updatedAt: now });
@@ -2650,6 +2691,26 @@ async function routeApi(req, res, requestUrl) {
       `Created from device: ${deviceSignature(req)}`,
       `Time: ${new Date().toISOString()}`,
     ].join("\n"), { route: "accountCreated" });
+    if (email) {
+      await sendDirectEmail([email], "Connectifi account created", [
+        `Hi ${username},`,
+        "",
+        "A Connectifi account was created for you.",
+        "You can sign in after your admin shares your password, or use password reset if it is enabled for your account.",
+        "",
+        `Username: ${username}`,
+        `Account type: ${role}`,
+        grade ? `Grade: ${grade}` : "",
+        "",
+        ...accountSecurityEmailLines({
+          ip: getClientIp(req),
+          device: deviceSignature(req),
+          agent: String(req.headers["user-agent"] || "").slice(0, 240),
+          location: approximateLocationFromIp(getClientIp(req)),
+          time: now,
+        }),
+      ].filter(Boolean).join("\n"), { route: "accountCreated", contactType: "admin", fromContact: true, actionLabel: "Open Connectifi", ctaUrl: publicBaseUrl(req) });
+    }
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     return json(res, 201, { users: users.map((entry) => safeUser(entry, user)) });
   }
@@ -5258,6 +5319,25 @@ async function requestLoginBlockForExistingUser(user) {
     }
   }
   return null;
+}
+
+function accountSecurityEmailLines(details = {}) {
+  const ip = String(details.ip || "").trim();
+  const device = String(details.device || "").trim();
+  const agent = String(details.agent || "").trim();
+  const location = details.location;
+  const locationText = location && typeof location === "object"
+    ? (location.note || location.ip || JSON.stringify(location))
+    : String(location || "");
+  const time = details.time || new Date().toISOString();
+  return [
+    "Security details:",
+    `IP: ${ip || "unknown"}`,
+    `Device: ${device || "unknown"}`,
+    locationText ? `Approx location: ${locationText}` : "",
+    agent ? `Browser: ${agent}` : "",
+    `Time: ${time}`,
+  ].filter(Boolean);
 }
 
 function reportRetentionMs(settings) {

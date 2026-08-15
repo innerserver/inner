@@ -4114,7 +4114,9 @@ function renderDashboard() {
 }
 
 function metricCard(title, value, detail) {
-  return adminCard(title, String(value), [detail]);
+  const card = adminCard(title, String(value), [detail]);
+  card.classList.add("dashboard-metric-card");
+  return card;
 }
 
 function renderDashboardReportAlerts() {

@@ -829,6 +829,21 @@ textarea:focus {
   margin-bottom: 12px;
 }
 
+#phoneInstallGuide.phone-guide {
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#phoneInstallGuide.phone-guide h3,
+#phoneInstallGuide.phone-guide p {
+  margin: 0;
+}
+
+#phoneInstallGuide.phone-guide .compact-button {
+  justify-self: end;
+}
+
 .build-badge {
   display: inline-flex;
   width: max-content;
@@ -3658,6 +3673,42 @@ textarea {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
 }
 
+#dashboardGrid.file-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)) !important;
+  gap: 12px !important;
+  overflow: visible !important;
+  padding: 0 !important;
+  margin: 0 0 14px !important;
+}
+
+.dashboard-metric-card {
+  min-height: 92px;
+  align-content: start;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.dashboard-metric-card .account-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dashboard-metric-card .account-head strong,
+.dashboard-metric-card .account-meta {
+  min-width: 0;
+}
+
+.dashboard-metric-card .account-head strong {
+  overflow-wrap: anywhere;
+}
+
+.dashboard-metric-card .tag {
+  flex: 0 0 auto;
+}
+
 #messagesView.view.active,
 #dmsView.view.active {
   gap: 8px;
@@ -4185,6 +4236,8 @@ textarea {
   gap: 10px !important;
   min-height: 0 !important;
   padding: 12px 14px !important;
+  max-height: 58px !important;
+  overflow: hidden !important;
 }
 
 .admin-collapsed h3 {
@@ -4198,6 +4251,31 @@ textarea {
 .admin-collapsed > .collapse-toggle {
   margin: 0 !important;
   justify-self: end;
+}
+
+.admin-collapsed > .panel-title-row {
+  width: 100%;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.admin-collapsed > .panel-title-row > :not(h3):not(.collapse-toggle):not(:first-child) {
+  display: none !important;
+}
+
+.admin-collapsed > .panel-title-row > :first-child:not(h3):not(.collapse-toggle) {
+  min-width: 0 !important;
+}
+
+.admin-collapsed > .panel-title-row > :first-child:not(h3):not(.collapse-toggle) > :not(h3) {
+  display: none !important;
+}
+
+.admin-collapsed > .panel-title-row > .collapse-toggle {
+  margin: 0 !important;
+  justify-self: end !important;
 }
 
 /* v50 games launcher + admin detail page. */
@@ -4929,5 +5007,41 @@ body {
 
   #appView.app.sidebar-open > .sidebar {
     transform: translateX(0) !important;
+  }
+}
+
+/* v110 desktop sidebar recovery. Desktop navigation should never disappear;
+   keep the phone hamburger drawer behavior, but force desktop to show the rail. */
+@media (min-width: 861px) {
+  #appView.app:not(.hidden),
+  #appView.app:not(.hidden).sidebar-closed {
+    display: grid !important;
+    grid-template-columns: 310px minmax(0, 1fr) !important;
+    height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  #appView.app:not(.hidden) > .sidebar,
+  #appView.app:not(.hidden).sidebar-closed > .sidebar {
+    position: sticky !important;
+    top: 0 !important;
+    width: auto !important;
+    min-width: 0 !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    padding: 20px !important;
+    border-right: 1px solid var(--line) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    transform: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+
+  #appView.app:not(.hidden) > .workspace {
+    height: 100dvh !important;
+    min-width: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
   }
 }

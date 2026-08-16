@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-120-my-ip-allowlist" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-121-friends-profile-email" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -344,7 +344,11 @@
               </div>
             </div>
             <label>Display name<input id="profileDisplayName" maxlength="80" autocomplete="off" /></label>
-            <label>Profile picture URL<input id="profileAvatarUrl" placeholder="https://..." autocomplete="off" /></label>
+            <label>Profile photo<input id="profileAvatarFile" type="file" accept="image/*" /></label>
+            <input id="profileAvatarUrl" type="hidden" />
+            <div class="button-row profile-photo-actions">
+              <button id="clearProfileAvatarButton" class="secondary-button compact-button" type="button">Remove photo</button>
+            </div>
             <label>Banner image URL<input id="profileBannerUrl" placeholder="https://..." autocomplete="off" /></label>
             <label>Badges<input id="profileBadges" maxlength="180" placeholder="Helpful, Funny, Supportive" autocomplete="off" /></label>
             <label>Status<select id="profileStatus"><option value="online">Online</option><option value="idle">Idle</option><option value="busy">Busy</option><option value="invisible">Invisible</option></select></label>
@@ -899,11 +903,11 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=connectifi-120-my-ip-allowlist" defer></script>
-    <script src="/status-guard.js?v=connectifi-120-my-ip-allowlist" defer></script>
-    <script src="/ui-boot.js?v=connectifi-120-my-ip-allowlist" defer></script>
-    <script src="/app.js?v=connectifi-120-my-ip-allowlist" defer></script>
-    <script src="/force-logout.js?v=connectifi-120-my-ip-allowlist" defer></script>
+    <script src="/session-guard.js?v=connectifi-121-friends-profile-email" defer></script>
+    <script src="/status-guard.js?v=connectifi-121-friends-profile-email" defer></script>
+    <script src="/ui-boot.js?v=connectifi-121-friends-profile-email" defer></script>
+    <script src="/app.js?v=connectifi-121-friends-profile-email" defer></script>
+    <script src="/force-logout.js?v=connectifi-121-friends-profile-email" defer></script>
   </body>
 </html>
 

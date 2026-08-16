@@ -1112,15 +1112,7 @@ async function routeApi(req, res, requestUrl) {
         request.grade ? `Grade: ${request.grade}` : "",
         "",
         "Until an admin approves it, signing in will only show the review status.",
-        "",
-        ...accountSecurityEmailLines({
-          ip: request.sourceIp,
-          device: request.sourceDevice,
-          agent: request.sourceAgent,
-          location: request.approximateLocation,
-          time: request.createdAt,
-        }),
-      ].filter(Boolean).join("\n"), { route: "accountRequests", contactType: "admin", fromContact: true });
+      ].filter(Boolean).join("\n"), { route: "accountRequests", contactType: "support", fromContact: false });
     }
     broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
     return json(res, 201, { request: safeAccountRequest(request) });
@@ -1207,14 +1199,8 @@ async function routeApi(req, res, requestUrl) {
         `Username: ${username}`,
         grade ? `Grade: ${grade}` : "",
         "",
-        ...accountSecurityEmailLines({
-          ip: account.sourceIp,
-          device: account.sourceDevice,
-          agent: account.sourceAgent,
-          location: account.approximateLocation,
-          time: now,
-        }),
-      ].filter(Boolean).join("\n"), { route: "signups", contactType: "admin", fromContact: true, actionLabel: "Open Connectifi", ctaUrl: publicBaseUrl(req) });
+        "Open Connectifi to continue.",
+      ].filter(Boolean).join("\n"), { route: "signups", contactType: "support", fromContact: false, actionLabel: "Open Connectifi", ctaUrl: publicBaseUrl(req) });
     }
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     return json(res, 201, { user: safeUser(account) });
@@ -2634,15 +2620,7 @@ async function routeApi(req, res, requestUrl) {
         `Username: ${request.username}`,
         `Account type: ${grantedRole}`,
         password.length >= 4 ? "Use the password your admin just set." : "Use the password you chose when requesting the account.",
-        "",
-        ...accountSecurityEmailLines({
-          ip: request.sourceIp,
-          device: request.sourceDevice,
-          agent: request.sourceAgent,
-          location: request.approximateLocation,
-          time: request.createdAt,
-        }),
-      ].join("\n"), { route: "accountApprovals", contactType: "admin", fromContact: true, actionLabel: "Open Connectifi", ctaUrl: publicBaseUrl(req) });
+      ].join("\n"), { route: "accountApprovals", contactType: "support", fromContact: false, actionLabel: "Open Connectifi", ctaUrl: publicBaseUrl(req) });
     }
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     broadcastManagers({ type: "account-requests:update", accountRequests: safeAccountRequests(requests) });
@@ -2713,15 +2691,7 @@ async function routeApi(req, res, requestUrl) {
         `Username: ${username}`,
         `Account type: ${role}`,
         grade ? `Grade: ${grade}` : "",
-        "",
-        ...accountSecurityEmailLines({
-          ip: getClientIp(req),
-          device: deviceSignature(req),
-          agent: String(req.headers["user-agent"] || "").slice(0, 240),
-          location: approximateLocationFromIp(getClientIp(req)),
-          time: now,
-        }),
-      ].filter(Boolean).join("\n"), { route: "accountCreated", contactType: "admin", fromContact: true, actionLabel: "Open Connectifi", ctaUrl: publicBaseUrl(req) });
+      ].filter(Boolean).join("\n"), { route: "accountCreated", contactType: "support", fromContact: false, actionLabel: "Open Connectifi", ctaUrl: publicBaseUrl(req) });
     }
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     return json(res, 201, { users: users.map((entry) => safeUser(entry, user)) });
@@ -6167,7 +6137,11 @@ function normalizeOrderStatus(status) {
 }
 
 function normalizeOptionalUrl(value) {
-  const textValue = String(value || "").trim().slice(0, 500);
+  const rawValue = String(value || "").trim();
+  if (/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(rawValue) && rawValue.length <= 1024 * 1024) {
+    return rawValue;
+  }
+  const textValue = rawValue.slice(0, 500);
   if (!textValue) return "";
   try {
     const parsed = new URL(textValue);
@@ -7040,7 +7014,7 @@ function buildEmailHtml(subject, body, options = {}) {
     ? `<a href="${escapeHtml(ctaUrl)}" style="display:inline-block;background:#151515;color:#fff;text-decoration:none;border-radius:8px;padding:12px 16px;font-weight:700;">${escapeHtml(options.actionLabel || "Open Connectifi")}</a>`
     : "";
   const replyLine = replyTo
-    ? `Replying to this email goes to <strong>${escapeHtml(replyTo)}</strong>.`
+    ? `Replying to this email goes to <a href="mailto:${escapeHtml(replyTo)}" style="color:#245c4f;font-weight:700;">${escapeHtml(replyTo)}</a>.`
     : "Replies are not connected until a reply-to/contact email is configured.";
   return `<!doctype html>
 <html>

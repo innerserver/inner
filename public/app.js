@@ -336,7 +336,9 @@ function cacheElements() {
     "profilePreviewName",
     "profilePreviewStatus",
     "profileDisplayName",
+    "profileAvatarFile",
     "profileAvatarUrl",
+    "clearProfileAvatarButton",
     "profileBannerUrl",
     "profileBadges",
     "profileStatus",
@@ -720,6 +722,8 @@ function bindEvents() {
     applyProfileTheme(els.profileTheme.value);
     updateProfilePreview();
   });
+  if (els.profileAvatarFile) els.profileAvatarFile.addEventListener("change", handleProfileAvatarFile);
+  if (els.clearProfileAvatarButton) els.clearProfileAvatarButton.addEventListener("click", clearProfileAvatar);
   [els.profileDisplayName, els.profileAvatarUrl, els.profileBannerUrl, els.profileStatus, els.profileCustomStatus, els.profileThemeBg, els.profileThemeSurface, els.profileThemeInk, els.profileThemeAccent].forEach((input) => {
     if (input) input.addEventListener("input", updateProfilePreview);
   });
@@ -5085,7 +5089,7 @@ function filteredFriendsForList() {
         .some((value) => String(value || "").toLowerCase().includes(search));
     });
   }
-  if (!letter) return [];
+  if (!letter) return friends;
   return friends.filter((friend) => {
     const profile = state.profiles[friend.username] || {};
     const label = String(profile.displayName || friend.username || "").trim();
@@ -5197,6 +5201,41 @@ function updateProfilePreview() {
   els.profilePreview.style.setProperty("--preview-accent", customTheme.accent || "#245c4f");
   els.customThemeFields.classList.toggle("hidden", els.profileTheme.value !== "custom");
   if (els.profileTheme.value === "custom") applyCustomThemeVariables(customTheme);
+}
+
+async function handleProfileAvatarFile() {
+  const file = els.profileAvatarFile && els.profileAvatarFile.files ? els.profileAvatarFile.files[0] : null;
+  if (!file) return;
+  if (!String(file.type || "").startsWith("image/")) {
+    els.profileAvatarFile.value = "";
+    return notify("Choose an image file for your profile photo");
+  }
+  if (file.size > 750 * 1024) {
+    els.profileAvatarFile.value = "";
+    return notify("Profile photo must be under 750 KB");
+  }
+  try {
+    const dataUrl = await fileToDataUrl(file);
+    if (els.profileAvatarUrl) els.profileAvatarUrl.value = dataUrl;
+    updateProfilePreview();
+  } catch (error) {
+    notify("Could not read that profile photo");
+  }
+}
+
+function clearProfileAvatar() {
+  if (els.profileAvatarFile) els.profileAvatarFile.value = "";
+  if (els.profileAvatarUrl) els.profileAvatarUrl.value = "";
+  updateProfilePreview();
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("File read failed"));
+    reader.readAsDataURL(file);
+  });
 }
 
 function currentProfileThemeEditor() {
@@ -6145,12 +6184,13 @@ function renderAccountDetails() {
   els.accountDetailBody.replaceChildren();
   const contact = typeof user.contact === "object" && user.contact ? user.contact : {};
   const profile = state.profiles[user.username] || {};
+  const accountEmail = user.email || contact.email || "";
   const identityLines = [
     user.displayName || profile.displayName ? `Name ${user.displayName || profile.displayName}` : "",
     `Username ${user.username}`,
     `Role ${user.role || "member"}`,
     user.grade ? `Grade ${user.grade}` : "No grade",
-    user.email || contact.email ? `Email ${user.email || contact.email}` : "No email saved",
+    emailLineNode("Email", accountEmail),
     user.phone || contact.phone ? `Phone ${user.phone || contact.phone}` : "No phone saved",
     user.contact && typeof user.contact === "string" ? `Contact ${user.contact}` : "",
     `Created ${formatDate(user.createdAt) || "-"}`,
@@ -7554,7 +7594,7 @@ function adminCard(titleText, badgeText, lines) {
   head.append(title, badge);
   const meta = document.createElement("div");
   meta.className = "account-meta";
-  lines.filter(Boolean).forEach((line) => meta.append(textNode(line)));
+  lines.filter(Boolean).forEach((line) => meta.append(line instanceof Node ? line : textNode(line)));
   item.append(head, meta);
   return item;
 }
@@ -8586,6 +8626,18 @@ function emptyBlock(message) {
 function textNode(value) {
   const span = document.createElement("span");
   span.textContent = value;
+  return span;
+}
+
+function emailLineNode(label, email) {
+  const clean = String(email || "").trim();
+  if (!clean || !clean.includes("@")) return textNode(`${label} not saved`);
+  const span = document.createElement("span");
+  span.append(`${label} `);
+  const link = document.createElement("a");
+  link.href = `mailto:${encodeURIComponent(clean)}`;
+  link.textContent = clean;
+  span.append(link);
   return span;
 }
 

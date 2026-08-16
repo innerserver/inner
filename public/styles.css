@@ -5342,3 +5342,63 @@ body {
     padding: 18px !important;
   }
 }
+
+/* v120 targeted friends/profile polish. */
+#friendRequestForm.upload-bar {
+  display: grid !important;
+  grid-template-columns: minmax(180px, 1fr) minmax(130px, 170px) auto minmax(190px, 1fr) auto !important;
+  gap: 10px !important;
+  align-items: center !important;
+}
+
+#friendRequestForm.upload-bar > * {
+  min-width: 0 !important;
+}
+
+#friendsView .settings-grid {
+  align-items: start !important;
+}
+
+#friendsView .account-list {
+  display: grid !important;
+  gap: 10px !important;
+}
+
+#friendsView .account-card {
+  min-height: 0 !important;
+  padding: 14px !important;
+}
+
+#friendsView .account-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  grid-template-columns: none !important;
+}
+
+.profile-photo-actions {
+  justify-content: flex-start;
+}
+
+.account-meta a {
+  color: var(--accent);
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 1000px) {
+  #friendRequestForm.upload-bar {
+    grid-template-columns: minmax(0, 1fr) minmax(140px, 190px) !important;
+  }
+
+  #friendRequestForm.upload-bar #sendFriendRequestButton {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 680px) {
+  #friendRequestForm.upload-bar {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}

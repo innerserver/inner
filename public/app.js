@@ -261,6 +261,7 @@ function cacheElements() {
     "chessView",
     "chessFrame",
     "gameLauncherList",
+    "gameStatus",
     "openChessButton",
     "continueChessButton",
     "shareChessButton",
@@ -2655,7 +2656,13 @@ function openSelectedGameInFrame(url = selectedGameLink().url) {
   const target = normalizeExternalUrl(url);
   if (!target) return notify("Choose a valid game link");
   state.selectedGameUrl = target;
-  if (els.chessFrame) els.chessFrame.src = target;
+  if (els.gameStatus) els.gameStatus.textContent = `Loading ${selectedGameLink().name || "game"} inside Connectifi. If it stays blank, use Open full tab.`;
+  if (els.chessFrame) {
+    els.chessFrame.src = "about:blank";
+    window.setTimeout(() => {
+      els.chessFrame.src = target;
+    }, 0);
+  }
   renderGames();
   notify("Game opened");
 }
@@ -2666,6 +2673,7 @@ function renderGames() {
   if (!state.selectedGameUrl || !links.some((entry) => entry.url === state.selectedGameUrl)) {
     state.selectedGameUrl = links[0] ? links[0].url : "";
   }
+  const selected = selectedGameLink();
   els.gameLauncherList.replaceChildren();
   links.forEach((game) => {
     const button = document.createElement("button");
@@ -2675,6 +2683,12 @@ function renderGames() {
     button.addEventListener("click", () => openSelectedGameInFrame(game.url));
     els.gameLauncherList.append(button);
   });
+  if (els.chessFrame && selected.url && normalizeExternalUrl(els.chessFrame.src) !== selected.url) {
+    els.chessFrame.src = selected.url;
+  }
+  if (els.gameStatus) {
+    els.gameStatus.textContent = `Made by Dev Shah. Selected: ${selected.name || "Game"}. Use Open full tab if the site blocks embedded loading.`;
+  }
 }
 
 function openAdminBrowser(event) {
@@ -3611,8 +3625,22 @@ function createVoicePeer(peerId) {
   pc.ontrack = (event) => {
     attachCallStream(peerId, event.streams[0]);
   };
-  pc.onconnectionstatechange = renderVoice;
-  pc.oniceconnectionstatechange = renderVoice;
+  pc.onconnectionstatechange = () => {
+    if (["failed", "disconnected"].includes(pc.connectionState) && typeof pc.restartIce === "function") {
+      try {
+        pc.restartIce();
+      } catch (error) {}
+    }
+    renderVoice();
+  };
+  pc.oniceconnectionstatechange = () => {
+    if (["failed", "disconnected"].includes(pc.iceConnectionState) && typeof pc.restartIce === "function") {
+      try {
+        pc.restartIce();
+      } catch (error) {}
+    }
+    renderVoice();
+  };
   return pc;
 }
 
@@ -3742,7 +3770,22 @@ function createPeer(peerId, roomId = "screen:global") {
     if (!stream) return;
     attachScreenStream(peerId, stream, roomId);
   };
-  pc.onconnectionstatechange = renderScreen;
+  pc.onconnectionstatechange = () => {
+    if (["failed", "disconnected"].includes(pc.connectionState) && typeof pc.restartIce === "function") {
+      try {
+        pc.restartIce();
+      } catch (error) {}
+    }
+    renderScreen();
+  };
+  pc.oniceconnectionstatechange = () => {
+    if (["failed", "disconnected"].includes(pc.iceConnectionState) && typeof pc.restartIce === "function") {
+      try {
+        pc.restartIce();
+      } catch (error) {}
+    }
+    renderScreen();
+  };
 
   if (state.localStream) {
     addStreamTracks(pc, state.localStream);
@@ -5643,6 +5686,7 @@ function createFilePreview(file) {
     image.src = file.url;
     image.alt = file.originalName || "Image";
     image.loading = "lazy";
+    attachFilePreviewFallback(image, file);
     return image;
   }
 
@@ -5652,6 +5696,8 @@ function createFilePreview(file) {
     video.src = file.url;
     video.controls = true;
     video.preload = "metadata";
+    video.playsInline = true;
+    attachFilePreviewFallback(video, file);
     return video;
   }
 
@@ -5661,10 +5707,20 @@ function createFilePreview(file) {
     audio.src = file.url;
     audio.controls = true;
     audio.preload = "metadata";
+    attachFilePreviewFallback(audio, file);
     return audio;
   }
 
   return null;
+}
+
+function attachFilePreviewFallback(media, file) {
+  if (!media) return;
+  media.addEventListener("error", () => {
+    const fallback = emptyBlock(`${file.kind || "File"} preview could not load here. Use Open file or Download.`);
+    fallback.classList.add("file-preview-fallback");
+    media.replaceWith(fallback);
+  }, { once: true });
 }
 
 function appendMessageAttachment(item, attachment) {

@@ -90,6 +90,14 @@ const FILES = {
 
 const MAX_JSON_BYTES = 1024 * 1024;
 const MAX_UPLOAD_BYTES = 250 * 1024 * 1024;
+const TARGET_CONCURRENT_USERS = Math.max(50, Number(firstEnvValue("INNER_TARGET_CONCURRENT_USERS", "INNER_TARGET_USERS") || 400));
+const WS_MAX_CLIENTS = Math.max(50, Number(firstEnvValue("INNER_WS_MAX_CLIENTS", "WS_MAX_CLIENTS") || Math.ceil(TARGET_CONCURRENT_USERS * 1.35)));
+const STATE_MESSAGE_LIMIT = Math.max(50, Number(firstEnvValue("INNER_STATE_MESSAGE_LIMIT", "STATE_MESSAGE_LIMIT") || 350));
+const STATE_DM_LIMIT = Math.max(50, Number(firstEnvValue("INNER_STATE_DM_LIMIT", "STATE_DM_LIMIT") || 350));
+const STATE_FILE_LIMIT = Math.max(50, Number(firstEnvValue("INNER_STATE_FILE_LIMIT", "STATE_FILE_LIMIT") || 400));
+const STATE_LOG_LIMIT = Math.max(50, Number(firstEnvValue("INNER_STATE_LOG_LIMIT", "STATE_LOG_LIMIT") || 200));
+const MESSAGE_STORE_LIMIT = Math.max(500, Number(firstEnvValue("INNER_MESSAGE_STORE_LIMIT", "MESSAGE_STORE_LIMIT") || 5000));
+const DM_STORE_LIMIT = Math.max(500, Number(firstEnvValue("INNER_DM_STORE_LIMIT", "DM_STORE_LIMIT") || 5000));
 const SESSION_COOKIE = "server_app_session";
 const SESSION_IDLE_MS = Math.max(60 * 60 * 1000, Number(process.env.INNER_SESSION_IDLE_MS || 12 * 60 * 60 * 1000));
 const SESSION_PERSISTENT_MS = 180 * 24 * 60 * 60 * 1000;
@@ -1305,10 +1313,10 @@ async function routeApi(req, res, requestUrl) {
       rtcConfig: buildRtcConfig(),
       uploadConfig: safeUploadConfig(settings),
       rooms: safeRoomsForUser(rooms, user),
-      messages: normalizedMessages.slice(-500),
-      dms: visibleDms.slice(-500),
+      messages: normalizedMessages.slice(-STATE_MESSAGE_LIMIT),
+      dms: visibleDms.slice(-STATE_DM_LIMIT),
       dmGroups: safeDmGroups(dmGroups, user),
-      files: safeFileRecords(files, user, rooms),
+      files: safeFileRecords(files, user, rooms).slice(0, STATE_FILE_LIMIT),
       accountRequests: canManage(user) ? safeAccountRequests(accountRequests, user) : [],
       store: safeStore(store, user),
       innerDocs: safeInnerDocs(innerDocs, user),
@@ -1326,8 +1334,8 @@ async function routeApi(req, res, requestUrl) {
       reports: safeActiveReports(visibleReports, settings),
       liveIpTracking: canOwn(user) ? liveIpTracking(users) : [],
       readReceipts: safeReadReceipts(readReceipts, user, { messages: normalizedMessages, dms: visibleDms, dmGroups }),
-      moderationLogs: moderationLogs.slice(-250),
-      logs: canOwn(user) ? logs.slice(0, 300) : [],
+      moderationLogs: moderationLogs.slice(-Math.min(STATE_LOG_LIMIT, 250)),
+      logs: canOwn(user) ? logs.slice(0, STATE_LOG_LIMIT) : [],
       dev: canDev(user)
         ? await buildDevState({ settings, rooms, messages, dms, dmGroups, files, accountRequests, users, store, reports, moderationLogs, logs, devConfig, bots, plugins, automod })
         : null,
@@ -1385,7 +1393,7 @@ async function routeApi(req, res, requestUrl) {
       createdAt: new Date().toISOString(),
     };
     messages.push(message);
-    await writeJson(FILES.messages, messages.slice(-3000));
+    await writeJson(FILES.messages, messages.slice(-MESSAGE_STORE_LIMIT));
     await addSystemLog("message.sent", user.username, { roomId, hasAttachment: Boolean(attachment), mentions: message.mentions }, req);
     broadcast({ type: "message:new", message });
     return json(res, 201, { message });
@@ -2025,7 +2033,7 @@ async function routeApi(req, res, requestUrl) {
       createdAt: new Date().toISOString(),
     };
     dms.push(dm);
-    await writeJson(FILES.dms, dms.slice(-3000));
+    await writeJson(FILES.dms, dms.slice(-DM_STORE_LIMIT));
     broadcastDm({ type: "dm:new", dm }, dm);
     return json(res, 200, { doc: safeInnerDoc(docs[index], user), innerDocs: safeInnerDocs(docs, user), dm });
   }
@@ -2365,7 +2373,7 @@ async function routeApi(req, res, requestUrl) {
       createdAt: new Date().toISOString(),
     };
     dms.push(dm);
-    await writeJson(FILES.dms, dms.slice(-3000));
+    await writeJson(FILES.dms, dms.slice(-DM_STORE_LIMIT));
     await addSystemLog(group ? "dm.group.sent" : "dm.sent", user.username, { to: dm.to, groupId: dm.groupId, hasAttachment: Boolean(attachment) }, req);
     broadcastDm({ type: "dm:new", dm }, dm);
     return json(res, 201, { dm });
@@ -3866,6 +3874,12 @@ async function handleUpgrade(req, socket) {
     return;
   }
 
+  if (wsClients.size >= WS_MAX_CLIENTS && !canManage(user)) {
+    socket.write("HTTP/1.1 503 Service Unavailable\r\nRetry-After: 10\r\n\r\n");
+    socket.destroy();
+    return;
+  }
+
   const key = req.headers["sec-websocket-key"];
   if (!key) {
     socket.destroy();
@@ -3888,6 +3902,8 @@ async function handleUpgrade(req, socket) {
   );
 
   const id = crypto.randomUUID();
+  if (socket.setNoDelay) socket.setNoDelay(true);
+  if (socket.setKeepAlive) socket.setKeepAlive(true, 30000);
   const client = {
     id,
     username: user.username,
@@ -4488,10 +4504,10 @@ function safeWriteSocket(socket, data, client) {
     if (client) closeWs(client);
   };
   try {
-    const ok = socket.write(data, (error) => {
+    socket.write(data, (error) => {
       if (error) onError(error);
     });
-    return ok || !socket.destroyed;
+    return !socket.destroyed;
   } catch (error) {
     onError(error);
     return false;
@@ -7734,7 +7750,7 @@ async function serveFileRecord(req, res, record, targetPath = "") {
     const contentType = record.mimeType || mimeTypes[extension] || "application/octet-stream";
     const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
     const dispositionType = requestUrl.searchParams.get("download") === "1" ? "attachment" : "inline";
-    const disposition = `${dispositionType}; filename="${record.originalName.replaceAll('"', "")}"`;
+    const disposition = `${dispositionType}; filename="${String(record.originalName || record.storedName || "upload").replaceAll('"', "")}"`;
     const range = req.headers.range;
 
     if (range) {
@@ -7749,6 +7765,7 @@ async function serveFileRecord(req, res, record, targetPath = "") {
             "Content-Disposition": disposition,
             "Accept-Ranges": "bytes",
             "Content-Range": `bytes ${start}-${end}/${stat.size}`,
+            "Cache-Control": record.private ? "no-store" : "private, max-age=60",
           });
           fs.createReadStream(target, { start, end }).pipe(res);
           return;
@@ -7761,6 +7778,7 @@ async function serveFileRecord(req, res, record, targetPath = "") {
       "Content-Length": stat.size,
       "Content-Disposition": disposition,
       "Accept-Ranges": "bytes",
+      "Cache-Control": record.private ? "no-store" : "private, max-age=60",
     });
     fs.createReadStream(target).pipe(res);
   } catch (error) {

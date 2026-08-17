@@ -1,0 +1,11 @@
+{
+  "requireContactInfo": true,
+  "enableIPLogging": true,
+  "autoReportLockThreshold": 10,
+  "moderationEmails": [
+    "admin@example.com",
+    "mod1@example.com",
+    "mod2@example.com",
+    "mod3@example.com"
+  ]
+}

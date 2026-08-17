@@ -1,0 +1,134 @@
+{
+  "admin": {
+    "displayName": "admin",
+    "bio": "",
+    "avatarUrl": "",
+    "bannerUrl": "",
+    "badges": [],
+    "customStatus": "",
+    "status": "offline",
+    "invisible": false,
+    "grade": "",
+    "gradeUpdatedAt": "",
+    "contactUpdatedAt": "",
+    "theme": "system",
+    "customTheme": {
+      "bg": "#f7f7f4",
+      "surface": "#ffffff",
+      "ink": "#151515",
+      "accent": "#245c4f"
+    },
+    "createdAt": "2026-08-15T17:13:54.156Z",
+    "updatedAt": "2026-08-15T17:13:54.156Z"
+  },
+  "admin2": {
+    "displayName": "admin2",
+    "bio": "",
+    "avatarUrl": "",
+    "bannerUrl": "",
+    "badges": [],
+    "customStatus": "",
+    "status": "offline",
+    "invisible": false,
+    "grade": "",
+    "gradeUpdatedAt": "",
+    "contactUpdatedAt": "",
+    "theme": "system",
+    "customTheme": {
+      "bg": "#f7f7f4",
+      "surface": "#ffffff",
+      "ink": "#151515",
+      "accent": "#245c4f"
+    },
+    "createdAt": "2026-08-15T17:13:54.156Z",
+    "updatedAt": "2026-08-15T17:13:54.156Z"
+  },
+  "hmd": {
+    "displayName": "hmd",
+    "bio": "",
+    "avatarUrl": "",
+    "bannerUrl": "",
+    "badges": [],
+    "customStatus": "",
+    "status": "offline",
+    "invisible": false,
+    "grade": "",
+    "gradeUpdatedAt": "",
+    "contactUpdatedAt": "",
+    "theme": "system",
+    "customTheme": {
+      "bg": "#f7f7f4",
+      "surface": "#ffffff",
+      "ink": "#151515",
+      "accent": "#245c4f"
+    },
+    "createdAt": "2026-08-15T17:13:54.156Z",
+    "updatedAt": "2026-08-15T17:13:54.156Z"
+  },
+  "dev": {
+    "displayName": "dev",
+    "bio": "",
+    "avatarUrl": "",
+    "bannerUrl": "",
+    "badges": [],
+    "customStatus": "",
+    "status": "offline",
+    "invisible": false,
+    "grade": "",
+    "gradeUpdatedAt": "",
+    "contactUpdatedAt": "",
+    "theme": "system",
+    "customTheme": {
+      "bg": "#f7f7f4",
+      "surface": "#ffffff",
+      "ink": "#151515",
+      "accent": "#245c4f"
+    },
+    "createdAt": "2026-08-15T17:13:54.156Z",
+    "updatedAt": "2026-08-15T17:13:54.156Z"
+  },
+  "finalsignupone": {
+    "displayName": "finalsignupone",
+    "bio": "",
+    "avatarUrl": "",
+    "bannerUrl": "",
+    "badges": [],
+    "customStatus": "",
+    "grade": "8B",
+    "gradeUpdatedAt": "2026-08-15T17:15:00.302Z",
+    "contactUpdatedAt": "2026-08-15T17:15:00.302Z",
+    "status": "offline",
+    "invisible": false,
+    "theme": "system",
+    "customTheme": {
+      "bg": "#f7f7f4",
+      "surface": "#ffffff",
+      "ink": "#151515",
+      "accent": "#245c4f"
+    },
+    "createdAt": "2026-08-15T17:15:00.363Z",
+    "updatedAt": "2026-08-15T17:15:00.302Z"
+  },
+  "finalsignuptwo": {
+    "displayName": "finalsignuptwo",
+    "bio": "",
+    "avatarUrl": "",
+    "bannerUrl": "",
+    "badges": [],
+    "customStatus": "",
+    "grade": "8C",
+    "gradeUpdatedAt": "2026-08-15T17:15:00.539Z",
+    "contactUpdatedAt": "2026-08-15T17:15:00.539Z",
+    "status": "offline",
+    "invisible": false,
+    "theme": "system",
+    "customTheme": {
+      "bg": "#f7f7f4",
+      "surface": "#ffffff",
+      "ink": "#151515",
+      "accent": "#245c4f"
+    },
+    "createdAt": "2026-08-15T17:15:00.585Z",
+    "updatedAt": "2026-08-15T17:15:00.539Z"
+  }
+}

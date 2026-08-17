@@ -1,0 +1,30 @@
+[
+  {
+    "id": "17291be4-5a30-4a62-beef-67912d19e13e",
+    "originalName": "smoke.txt",
+    "storedName": "1786811053860-fdfa8c6941f8e8d9.txt",
+    "category": "document",
+    "kind": "document",
+    "mimeType": "text/plain; charset=utf-8",
+    "size": 23,
+    "user": "admin",
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3161",
+    "sourceAgent": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.6.4",
+    "sourceDevice": "1063f772d4ba05384217053d",
+    "approximateLocation": {
+      "ip": "127.0.0.1",
+      "type": "private/local",
+      "note": "Approximate location unavailable for local/private IP"
+    },
+    "private": false,
+    "releaseAt": "",
+    "releaseRoom": "",
+    "createdAt": "2026-08-15T16:24:13.871Z",
+    "url": "/uploads/1786811053860-fdfa8c6941f8e8d9.txt",
+    "persistence": "disk+inline",
+    "inlineEncoding": "base64",
+    "inlineSize": 23,
+    "inlineData": "Y29ubmVjdGlmaSB1cGxvYWQgc21va2U="
+  }
+]

@@ -1,0 +1,54 @@
+[
+  {
+    "id": "d7a1cb6d-b58f-499e-9c30-7649abc8d695",
+    "action": "server.settings.updated",
+    "actor": "admin",
+    "details": {
+      "roomName": "Connectifi"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3174",
+    "createdAt": "2026-08-17T05:16:39.155Z"
+  },
+  {
+    "id": "9bb33f6c-8848-4388-803d-3b2bcf0d2ba3",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3174",
+    "createdAt": "2026-08-17T05:16:39.084Z"
+  },
+  {
+    "id": "41e04bbd-d90b-418a-8f3c-984530e25d18",
+    "action": "file.uploaded",
+    "actor": "admin",
+    "details": {
+      "id": "3efa6dd2-25b7-4788-9c25-6e927eda5961",
+      "name": "smoke-video.mp4",
+      "kind": "video",
+      "size": 24,
+      "private": false
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3174",
+    "createdAt": "2026-08-17T05:16:26.941Z"
+  },
+  {
+    "id": "21b1538d-f56d-468a-a045-3cbca6747e23",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3174",
+    "createdAt": "2026-08-17T05:16:26.906Z"
+  }
+]

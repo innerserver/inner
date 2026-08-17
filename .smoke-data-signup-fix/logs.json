@@ -1,0 +1,150 @@
+[
+  {
+    "id": "dcc239b1-69ac-420d-9b23-c5bfc1e310a2",
+    "action": "login.success",
+    "actor": "signupuser1",
+    "details": {
+      "role": "member",
+      "persistent": true,
+      "persistentReason": "per-account enabled"
+    },
+    "sourceIp": "203.0.113.52",
+    "sourceHost": "127.0.0.1:3162",
+    "createdAt": "2026-08-15T17:01:47.678Z"
+  },
+  {
+    "id": "d0764276-95c0-4b24-8121-e8618c6ff7a8",
+    "action": "email.queued",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi signup successful",
+      "recipients": [
+        "signupuser1@example.com"
+      ],
+      "reason": "No email provider configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-15T17:01:47.592Z"
+  },
+  {
+    "id": "d4ce8ceb-9f53-4d03-a749-0108b380793e",
+    "action": "email.skipped",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi open signup",
+      "reason": "No recipients configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-15T17:01:47.570Z"
+  },
+  {
+    "id": "581f767e-9db5-41d5-a469-01b3212498b6",
+    "action": "account.signup.created",
+    "actor": "signupuser1",
+    "details": {
+      "sourceIp": "203.0.113.52",
+      "contact": "signupuser1@example.com / +15550000011"
+    },
+    "sourceIp": "203.0.113.52",
+    "sourceHost": "127.0.0.1:3162",
+    "createdAt": "2026-08-15T17:01:47.563Z"
+  },
+  {
+    "id": "cff62288-433e-40c2-935c-77934d4c3689",
+    "action": "server.settings.updated",
+    "actor": "admin",
+    "details": {
+      "roomName": "Connectifi"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3162",
+    "createdAt": "2026-08-15T17:01:47.439Z"
+  },
+  {
+    "id": "9b509e8f-0c94-440d-ad23-a096423cd25f",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3162",
+    "createdAt": "2026-08-15T17:01:47.364Z"
+  },
+  {
+    "id": "898076e3-6dd6-4dea-9d2c-22cae8380a29",
+    "action": "email.queued",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi account request received",
+      "recipients": [
+        "phoneuser2@example.com"
+      ],
+      "reason": "No email provider configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-15T17:00:11.117Z"
+  },
+  {
+    "id": "c1d26be6-ee73-49c4-9feb-43869c383cc2",
+    "action": "email.skipped",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi account request",
+      "reason": "No recipients configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-15T17:00:11.107Z"
+  },
+  {
+    "id": "ea66092f-e5fd-4aa8-ac2e-c77a75cd04a2",
+    "action": "account.requested",
+    "actor": "phoneuser2",
+    "details": {
+      "displayName": "Phone User",
+      "location": {
+        "latitude": 19.076,
+        "longitude": 72.8777,
+        "accuracy": 25,
+        "source": "browser",
+        "reason": "",
+        "sharedAt": "2026-08-15T17:00:11.065Z"
+      }
+    },
+    "sourceIp": "203.0.113.42",
+    "sourceHost": "127.0.0.1:3162",
+    "createdAt": "2026-08-15T17:00:11.075Z"
+  },
+  {
+    "id": "2dfaf224-b207-4f8d-94d6-3dfe911c5497",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3162",
+    "createdAt": "2026-08-15T17:00:10.920Z"
+  },
+  {
+    "id": "63340023-da34-43d0-9244-133f7b4af251",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3162",
+    "createdAt": "2026-08-15T16:57:54.855Z"
+  }
+]

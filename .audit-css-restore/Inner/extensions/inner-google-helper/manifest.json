@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Inner Google Helper",
+  "version": "1.0.0",
+  "description": "Open Google Docs, Slides, and Sheets in real tabs and share links back to Inner.",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": [
+    "https://docs.google.com/*",
+    "https://*.onrender.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "action": {
+    "default_title": "Inner Google Helper",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://docs.google.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

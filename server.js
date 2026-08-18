@@ -103,6 +103,10 @@ const SESSION_IDLE_MS = Math.max(60 * 60 * 1000, Number(process.env.INNER_SESSIO
 const SESSION_PERSISTENT_MS = 180 * 24 * 60 * 60 * 1000;
 const sessions = new Map();
 const wsClients = new Map();
+const httpRealtimeClients = new Map();
+const httpRealtimeEvents = [];
+const HTTP_REALTIME_TTL_MS = Math.max(30000, Number(process.env.INNER_HTTP_REALTIME_TTL_MS || 90000));
+const HTTP_REALTIME_EVENT_TTL_MS = Math.max(15000, Number(process.env.INNER_HTTP_REALTIME_EVENT_TTL_MS || 45000));
 let wsHeartbeatTimer = null;
 const messageRateLimits = new Map();
 const banExpiryTimers = new Map();
@@ -947,6 +951,61 @@ async function routeApi(req, res, requestUrl) {
     const pingUser = requireUser(req, res);
     if (!pingUser) return;
     return json(res, 200, { ok: true, live: true, user: safeUser(pingUser) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/realtime/connect") {
+    const user = requireUser(req, res);
+    if (!user) return;
+    const body = await readJsonBody(req);
+    const client = upsertHttpRealtimeClient(user, body, req);
+    const [users, friends, profiles] = await Promise.all([
+      readJson(FILES.users, []),
+      readJson(FILES.friends, { requests: [], friendships: [] }),
+      readJson(FILES.profiles, {}),
+    ]);
+    return json(res, 200, {
+      ok: true,
+      clientId: client.id,
+      peers: peerList(client.id, user, users, friends),
+      presence: presenceList(profiles, user, users, friends),
+      rtcConfig: buildRtcConfig(),
+      fallback: "http",
+      now: Date.now(),
+    });
+  }
+
+  if (req.method === "GET" && pathname === "/api/realtime/poll") {
+    const user = requireUser(req, res);
+    if (!user) return;
+    pruneHttpRealtime();
+    const clientId = sanitizeRealtimeClientId(requestUrl.searchParams.get("clientId"));
+    const client = clientId ? httpRealtimeClients.get(clientId) : null;
+    if (!client || client.username !== user.username) return json(res, 404, { error: "Realtime fallback is not connected" });
+    client.lastSeenAt = Date.now();
+    const since = Math.max(0, Number(requestUrl.searchParams.get("since") || 0));
+    const events = httpRealtimeEvents
+      .filter((event) => event.targetId === client.id && event.createdAt > since)
+      .slice(-80);
+    const [users, friends] = await Promise.all([
+      readJson(FILES.users, []),
+      readJson(FILES.friends, { requests: [], friendships: [] }),
+    ]);
+    return json(res, 200, {
+      ok: true,
+      now: Date.now(),
+      events,
+      peers: peerList(client.id, user, users, friends),
+    });
+  }
+
+  if (req.method === "POST" && pathname === "/api/realtime/send") {
+    const user = requireUser(req, res);
+    if (!user) return;
+    const body = await readJsonBody(req);
+    const client = upsertHttpRealtimeClient(user, body, req);
+    const message = body && body.payload && typeof body.payload === "object" ? body.payload : {};
+    await handleHttpRealtimeMessage(client, message);
+    return json(res, 200, { ok: true, now: Date.now() });
   }
 
   if (req.method === "GET" && pathname === "/api/signup-status") {
@@ -4079,10 +4138,10 @@ async function handleWsMessage(client, message) {
 
   if (message.type === "signal") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
-    const target = wsClients.get(String(message.target || ""));
+    const target = getRealtimeClient(String(message.target || ""));
     if (!target) return;
     if (!canTargetRealtimeRoom(roomInfo, target)) return sendWs(client, { type: "error", error: "Target is not in this call" });
-    return sendWs(target, {
+    return deliverRealtime(target, {
       type: "signal",
       from: client.id,
       fromUser: client.username,
@@ -4093,9 +4152,9 @@ async function handleWsMessage(client, message) {
 
   if (message.type === "screen:request" || message.type === "location:request") {
     if (!canManage(client)) return sendWs(client, { type: "error", error: "Admin access required" });
-    const target = wsClients.get(String(message.target || ""));
+    const target = getRealtimeClient(String(message.target || ""));
     if (!target) return sendWs(client, { type: "error", error: "User is not online" });
-    return sendWs(target, {
+    return deliverRealtime(target, {
       type: message.type,
       from: client.id,
       fromUser: client.username,
@@ -4103,9 +4162,9 @@ async function handleWsMessage(client, message) {
   }
 
   if (message.type === "location:share") {
-    const target = wsClients.get(String(message.target || ""));
+    const target = getRealtimeClient(String(message.target || ""));
     if (!target) return;
-    return sendWs(target, {
+    return deliverRealtime(target, {
       type: "location:share",
       from: client.id,
       fromUser: client.username,
@@ -4163,12 +4222,12 @@ async function handleWsMessage(client, message) {
 
   if (message.type === "voice:signal") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || client.voiceRoomId || "lobby", client);
-    const target = wsClients.get(String(message.target || ""));
+    const target = getRealtimeClient(String(message.target || ""));
     if (!target) return;
     if (!canTargetRealtimeRoom(roomInfo, target) || target.voiceRoomId !== roomInfo.roomId) {
       return sendWs(client, { type: "error", error: "Target is not in this call" });
     }
-    return sendWs(target, {
+    return deliverRealtime(target, {
       type: "voice:signal",
       from: client.id,
       fromUser: client.username,
@@ -4224,6 +4283,179 @@ async function handleWsMessage(client, message) {
   }
 }
 
+async function handleHttpRealtimeMessage(client, message) {
+  if (!message || typeof message !== "object") return;
+  client.lastSeenAt = Date.now();
+
+  if (message.type === "ping") {
+    return deliverRealtime(client, { type: "pong", at: Date.now() });
+  }
+
+  if (message.type === "client:network") {
+    client.network = sanitizeClientNetwork(message.network);
+    await addSystemLog("client.network", client.username, { network: client.network, transport: "http" });
+    return;
+  }
+
+  if (message.type === "presence:update") {
+    client.status = normalizePresenceStatus(message.status);
+    client.invisible = Boolean(message.invisible);
+    const profiles = await readJson(FILES.profiles, {});
+    if (profiles[client.username]) {
+      profiles[client.username] = sanitizeProfile({
+        ...profiles[client.username],
+        status: client.status,
+        invisible: client.invisible,
+        customStatus: message.customStatus !== undefined ? message.customStatus : profiles[client.username].customStatus,
+        updatedAt: new Date().toISOString(),
+      });
+      await writeJson(FILES.profiles, profiles);
+    }
+    return broadcastPresenceUpdate(profiles);
+  }
+
+  if (message.type === "typing") {
+    client.typingRoomId = message.active ? String(message.roomId || "main").slice(0, 80) : "";
+    return broadcast({
+      type: "typing",
+      roomId: client.typingRoomId,
+      username: client.username,
+      active: Boolean(message.active),
+    }, client.id);
+  }
+
+  const settings = await readJson(FILES.settings, {});
+  if (
+    settings.serverEnabled === false &&
+    !canBypassShutdown(client) &&
+    (message.type === "signal" ||
+      message.type === "screen:status" ||
+      message.type === "screen:request" ||
+      message.type === "call:invite" ||
+      message.type === "soundboard:play" ||
+      message.type === "voice:join" ||
+      message.type === "voice:state" ||
+      message.type === "voice:leave" ||
+      message.type === "voice:signal")
+  ) {
+    return deliverRealtime(client, { type: "error", error: "Server is shut down. Only admin, HMD, and dev access is open right now." });
+  }
+
+  const screenFeatureError = await featureGateError(settings, "screen", client);
+  if (screenFeatureError && (message.type === "signal" || message.type === "screen:status" || message.type === "screen:request")) {
+    return deliverRealtime(client, { type: "error", error: screenFeatureError });
+  }
+
+  if (message.type === "signal") {
+    const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
+    const target = getRealtimeClient(String(message.target || ""));
+    if (!target) return;
+    if (!canTargetRealtimeRoom(roomInfo, target)) return deliverRealtime(client, { type: "error", error: "Target is not in this call" });
+    return deliverRealtime(target, {
+      type: "signal",
+      from: client.id,
+      fromUser: client.username,
+      roomId: roomInfo.roomId,
+      signal: message.signal,
+    });
+  }
+
+  if (message.type === "voice:join") {
+    const voiceFeatureError = await featureGateError(settings, "voice", client);
+    if (voiceFeatureError) return deliverRealtime(client, { type: "error", error: voiceFeatureError });
+    const roomInfo = await resolveRealtimeRoom(message.roomId || "lobby", client);
+    client.voiceRoomId = roomInfo.roomId;
+    client.muted = Boolean(message.muted);
+    client.deafened = Boolean(message.deafened);
+    client.videoEnabled = Boolean(message.videoEnabled);
+    client.cameraOff = Boolean(message.cameraOff);
+    await addSystemLog("voice.join", client.username, { roomId: client.voiceRoomId, videoEnabled: client.videoEnabled, transport: "http" });
+    return broadcastRealtimeRoom({
+      type: "voice:update",
+      roomId: client.voiceRoomId,
+      joinedPeerId: client.id,
+      peers: voicePeers(client.voiceRoomId),
+    }, roomInfo);
+  }
+
+  if (message.type === "voice:leave") {
+    const previousRoom = client.voiceRoomId;
+    const roomInfo = previousRoom ? await resolveRealtimeRoom(previousRoom, client, { allowAfterLeave: true }) : null;
+    client.voiceRoomId = "";
+    client.muted = false;
+    client.deafened = false;
+    client.videoEnabled = false;
+    client.cameraOff = true;
+    await addSystemLog("voice.leave", client.username, { roomId: previousRoom, transport: "http" });
+    return broadcastRealtimeRoom({
+      type: "voice:update",
+      leftPeerId: client.id,
+      roomId: previousRoom,
+      peers: previousRoom ? voicePeers(previousRoom) : [],
+    }, roomInfo);
+  }
+
+  if (message.type === "voice:state") {
+    client.muted = Boolean(message.muted);
+    client.deafened = Boolean(message.deafened);
+    client.videoEnabled = Boolean(message.videoEnabled);
+    client.cameraOff = Boolean(message.cameraOff);
+    const roomInfo = client.voiceRoomId ? await resolveRealtimeRoom(client.voiceRoomId, client) : null;
+    return broadcastRealtimeRoom({
+      type: "voice:update",
+      roomId: client.voiceRoomId,
+      peers: client.voiceRoomId ? voicePeers(client.voiceRoomId) : [],
+    }, roomInfo);
+  }
+
+  if (message.type === "voice:signal") {
+    const roomInfo = await resolveRealtimeRoom(message.roomId || client.voiceRoomId || "lobby", client);
+    const target = getRealtimeClient(String(message.target || ""));
+    if (!target) return;
+    if (!canTargetRealtimeRoom(roomInfo, target) || target.voiceRoomId !== roomInfo.roomId) {
+      return deliverRealtime(client, { type: "error", error: "Target is not in this call" });
+    }
+    return deliverRealtime(target, {
+      type: "voice:signal",
+      from: client.id,
+      fromUser: client.username,
+      roomId: roomInfo.roomId,
+      videoEnabled: Boolean(client.videoEnabled),
+      signal: message.signal,
+    });
+  }
+
+  if (message.type === "call:invite") {
+    const voiceFeatureError = await featureGateError(settings, "voice", client);
+    if (voiceFeatureError) return deliverRealtime(client, { type: "error", error: voiceFeatureError });
+    const roomInfo = await resolveRealtimeRoom(message.roomId || client.voiceRoomId || "lobby", client);
+    const mode = message.mode === "video" ? "video" : "voice";
+    await addSystemLog("call.invite", client.username, { roomId: roomInfo.roomId, mode, transport: "http" });
+    return broadcastRealtimeRoom({
+      type: "call:invite",
+      roomId: roomInfo.roomId,
+      roomLabel: String(message.roomLabel || roomInfo.label || "call").slice(0, 120),
+      mode,
+      from: client.id,
+      fromUser: client.username,
+    }, roomInfo, client.id);
+  }
+
+  if (message.type === "screen:status") {
+    const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
+    client.sharing = Boolean(message.sharing);
+    client.screenRoomId = client.sharing ? roomInfo.roomId : "";
+    await addSystemLog(client.sharing ? "screen.share.started" : "screen.share.stopped", client.username, { roomId: roomInfo.roomId, transport: "http" });
+    return broadcastRealtimeRoom({
+      type: "screen:status",
+      from: client.id,
+      fromUser: client.username,
+      roomId: roomInfo.roomId,
+      sharing: client.sharing,
+    }, roomInfo);
+  }
+}
+
 async function removeClient(id) {
   const client = wsClients.get(id);
   if (!client) return;
@@ -4258,6 +4490,86 @@ function startWsHeartbeat() {
     }
   }, 20000);
   if (typeof wsHeartbeatTimer.unref === "function") wsHeartbeatTimer.unref();
+}
+
+function realtimeClients() {
+  return [...wsClients.values(), ...httpRealtimeClients.values()];
+}
+
+function getRealtimeClient(id) {
+  return wsClients.get(id) || httpRealtimeClients.get(id) || null;
+}
+
+function deliverRealtime(client, payload) {
+  if (!client || !payload) return;
+  if (wsClients.has(client.id)) return sendWs(client, payload);
+  enqueueHttpRealtimeEvent(client.id, payload);
+}
+
+function enqueueHttpRealtimeEvent(targetId, payload) {
+  pruneHttpRealtime();
+  httpRealtimeEvents.push({
+    id: crypto.randomUUID(),
+    targetId,
+    createdAt: Date.now(),
+    payload,
+  });
+  while (httpRealtimeEvents.length > 2000) httpRealtimeEvents.shift();
+}
+
+function pruneHttpRealtime() {
+  const now = Date.now();
+  for (const [id, client] of httpRealtimeClients) {
+    if (now - Number(client.lastSeenAt || 0) > HTTP_REALTIME_TTL_MS) {
+      httpRealtimeClients.delete(id);
+      if (client.voiceRoomId) {
+        resolveRealtimeRoom(client.voiceRoomId, client, { allowAfterLeave: true })
+          .then((roomInfo) => broadcastRealtimeRoom({ type: "voice:update", roomId: client.voiceRoomId, peers: voicePeers(client.voiceRoomId) }, roomInfo))
+          .catch(() => {});
+      }
+    }
+  }
+  const cutoff = now - HTTP_REALTIME_EVENT_TTL_MS;
+  while (httpRealtimeEvents.length && httpRealtimeEvents[0].createdAt < cutoff) httpRealtimeEvents.shift();
+}
+
+function upsertHttpRealtimeClient(user, body = {}, req) {
+  pruneHttpRealtime();
+  const requestedId = sanitizeRealtimeClientId(body.clientId);
+  const id = requestedId || `http_${crypto.randomUUID()}`;
+  const existing = httpRealtimeClients.get(id);
+  const nowIso = new Date().toISOString();
+  const client = existing && existing.username === user.username ? existing : {
+    id,
+    username: user.username,
+    role: user.role,
+    ip: getClientIp(req),
+    device: deviceSignature(req),
+    network: {},
+    connectedAt: nowIso,
+    sharing: false,
+    screenRoomId: "",
+    status: "online",
+    invisible: false,
+    typingRoomId: "",
+    voiceRoomId: "",
+    muted: false,
+    deafened: false,
+    videoEnabled: false,
+    cameraOff: true,
+    httpFallback: true,
+  };
+  client.role = user.role;
+  client.ip = getClientIp(req);
+  client.device = deviceSignature(req);
+  client.lastSeenAt = Date.now();
+  httpRealtimeClients.set(id, client);
+  return client;
+}
+
+function sanitizeRealtimeClientId(value) {
+  const id = String(value || "").trim();
+  return /^[a-zA-Z0-9:_-]{8,100}$/.test(id) ? id : "";
 }
 
 function expireUserSessions(username) {
@@ -4296,7 +4608,8 @@ async function unmarkDeletedDefault(username, updatedBy) {
 }
 
 function peerList(exceptId, viewer, users = [], friends = { friendships: [] }) {
-  return Array.from(wsClients.values())
+  pruneHttpRealtime();
+  return realtimeClients()
     .filter((client) => client.id !== exceptId)
     .filter((client) => canSeeOnlineUser(viewer, client, users, friends))
     .map(peerSummary);
@@ -4319,7 +4632,8 @@ function peerSummary(client) {
 }
 
 function voicePeers(roomId) {
-  return Array.from(wsClients.values())
+  pruneHttpRealtime();
+  return realtimeClients()
     .filter((client) => client.voiceRoomId === roomId)
     .map(peerSummary);
 }
@@ -4359,8 +4673,9 @@ function canTargetRealtimeRoom(roomInfo, target) {
 }
 
 function broadcast(payload, exceptId) {
-  for (const client of wsClients.values()) {
-    if (client.id !== exceptId) sendWs(client, payload);
+  pruneHttpRealtime();
+  for (const client of realtimeClients()) {
+    if (client.id !== exceptId) deliverRealtime(client, payload);
   }
 }
 
@@ -4369,10 +4684,10 @@ async function broadcastPeerJoined(joinedClient, exceptId) {
     readJson(FILES.users, []),
     readJson(FILES.friends, { requests: [], friendships: [] }),
   ]);
-  for (const client of wsClients.values()) {
+  for (const client of realtimeClients()) {
     if (client.id === exceptId) continue;
     if (canSeeOnlineUser(client, joinedClient, users, friends)) {
-      sendWs(client, { type: "peer:joined", peer: peerSummary(joinedClient) });
+      deliverRealtime(client, { type: "peer:joined", peer: peerSummary(joinedClient) });
     }
   }
 }
@@ -4382,8 +4697,8 @@ async function broadcastPresenceUpdate(profiles) {
     readJson(FILES.users, []),
     readJson(FILES.friends, { requests: [], friendships: [] }),
   ]);
-  for (const client of wsClients.values()) {
-    sendWs(client, { type: "presence:update", presence: presenceList(profiles, client, users, friends) });
+  for (const client of realtimeClients()) {
+    deliverRealtime(client, { type: "presence:update", presence: presenceList(profiles, client, users, friends) });
   }
 }
 
@@ -4407,9 +4722,10 @@ function broadcastAnnouncements(announcements, rooms) {
 
 function broadcastRealtimeRoom(payload, roomInfo, exceptId) {
   if (!roomInfo || !roomInfo.private) return broadcast(payload, exceptId);
-  for (const client of wsClients.values()) {
+  pruneHttpRealtime();
+  for (const client of realtimeClients()) {
     if (client.id === exceptId) continue;
-    if (roomInfo.participants.has(client.username) || canManage(client)) sendWs(client, payload);
+    if (roomInfo.participants.has(client.username) || canManage(client)) deliverRealtime(client, payload);
   }
 }
 

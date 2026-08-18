@@ -73,6 +73,11 @@ const state = {
   wsPingTimer: null,
   wsStatusTimer: null,
   wsRefreshTimer: null,
+  httpRealtimeTimer: null,
+  httpRealtimeActive: false,
+  httpRealtimeClientId: "",
+  httpRealtimeSince: 0,
+  httpRealtimePolling: false,
   sessionKeepAliveTimer: null,
   wsOutbox: [],
   wsEverConnected: false,
@@ -1180,6 +1185,7 @@ function fallbackAccountLocation(reason) {
 async function handleLogout() {
   state.loggedIn = false;
   stopSessionKeepAlive();
+  stopHttpRealtime();
   leaveVoice();
   closeSocket();
   stopShare({ silent: true });
@@ -2810,11 +2816,19 @@ async function handleNotifications() {
   notify(state.notificationsEnabled ? "Alerts enabled" : "Alerts disabled");
 }
 
-function connectSocket() {
+function connectSocket(options = {}) {
   if (!window.location.host) {
     setConnection("Not live");
     return;
   }
+  if (!("WebSocket" in window)) {
+    state.wsLastCloseReason = "This browser does not support WebSockets.";
+    setConnection("Not live");
+    return;
+  }
+  const readyState = socketReadyState(state.ws);
+  if (!options.force && readyState === 1) return;
+  if (!options.force && readyState === 0 && Date.now() - (state.wsConnectingSince || Date.now()) < 6500) return;
   closeSocket();
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
@@ -2839,7 +2853,7 @@ function connectSocket() {
     recoverRealtimeState(wasReconnect).catch(() => {});
     clearInterval(state.wsPingTimer);
     state.wsPingTimer = setInterval(() => {
-      if (state.ws === ws && ws.readyState === WebSocket.OPEN) {
+      if (state.ws === ws && socketReadyState(ws) === 1) {
         ws.send(JSON.stringify({ type: "ping", at: Date.now() }));
       }
     }, 15000);
@@ -3863,37 +3877,47 @@ function playMedia(element) {
 }
 
 function isRealtimeReady() {
-  return Boolean(state.ws && state.ws.readyState === WebSocket.OPEN);
+  return socketReadyState(state.ws) === 1;
 }
 
 async function ensureRealtimeReady(label = "live features") {
   if (isRealtimeReady()) return true;
+  if (state.httpRealtimeActive) return true;
   if (state.loggedIn) setConnection("Live");
-  const staleConnecting = state.ws && state.ws.readyState === WebSocket.CONNECTING && Date.now() - (state.wsConnectingSince || 0) > 4500;
-  if (!state.ws || state.ws.readyState === WebSocket.CLOSED || state.ws.readyState === WebSocket.CLOSING || staleConnecting) {
-    connectSocket();
+  const staleConnecting = state.ws && socketReadyState(state.ws) === 0 && Date.now() - (state.wsConnectingSince || 0) > 4500;
+  if (!state.ws || socketReadyState(state.ws) === 3 || socketReadyState(state.ws) === 2 || staleConnecting) {
+    connectSocket({ force: staleConnecting });
   }
   const started = Date.now();
-  while (Date.now() - started < 15000) {
+  while (Date.now() - started < 20000) {
     if (isRealtimeReady()) return true;
-    if (state.ws && state.ws.readyState === WebSocket.CONNECTING && Date.now() - (state.wsConnectingSince || started) > 6500) {
-      connectSocket();
+    if (state.ws && socketReadyState(state.ws) === 0 && Date.now() - (state.wsConnectingSince || started) > 7000) {
+      connectSocket({ force: true });
     }
-    await sleep(160);
+    await sleep(180);
   }
+  if (await ensureHttpRealtime(label)) return true;
   const stateName = websocketStateName();
   const closeDetail = state.wsLastCloseCode ? ` Last close code: ${state.wsLastCloseCode}.` : "";
-  notify(`Live connection is not ready yet for ${label}. Status: ${stateName}.${closeDetail} Refresh once; if this repeats, Render or the network is blocking WebSockets.`);
+  const reasonDetail = state.wsLastCloseReason ? ` ${state.wsLastCloseReason}` : "";
+  notify(`Live connection is not ready yet for ${label}. Status: ${stateName}.${closeDetail}${reasonDetail} Refresh once; if this repeats, Render or the network is blocking WebSockets.`);
   return false;
 }
 
 function websocketStateName() {
-  if (!state.ws) return "not connected";
-  if (state.ws.readyState === WebSocket.CONNECTING) return "connecting";
-  if (state.ws.readyState === WebSocket.OPEN) return "live";
-  if (state.ws.readyState === WebSocket.CLOSING) return "closing";
-  if (state.ws.readyState === WebSocket.CLOSED) return "closed";
-  return "unknown";
+  const readyState = socketReadyState(state.ws);
+  if (readyState === -1) return "not connected";
+  if (readyState === 0) return "connecting";
+  if (readyState === 1) return "live";
+  if (readyState === 2) return "closing";
+  if (readyState === 3) return "closed";
+  return `unknown (${String(state.ws && state.ws.readyState)})`;
+}
+
+function socketReadyState(socket) {
+  if (!socket) return -1;
+  const readyState = Number(socket.readyState);
+  return Number.isFinite(readyState) ? readyState : 99;
 }
 
 function sleep(ms) {
@@ -3901,11 +3925,114 @@ function sleep(ms) {
 }
 
 function sendWs(payload) {
+  if (state.httpRealtimeActive) return sendHttpRealtime(payload);
   if (!isRealtimeReady()) {
     queueRealtimePayload(payload);
     return false;
   }
   state.ws.send(JSON.stringify(payload));
+  return true;
+}
+
+async function ensureHttpRealtime(label = "live features") {
+  if (!state.loggedIn) return false;
+  if (state.httpRealtimeActive) return true;
+  try {
+    const data = await api("/api/realtime/connect", {
+      method: "POST",
+      json: {
+        clientId: state.httpRealtimeClientId || getHttpRealtimeClientId(),
+      },
+    });
+    state.httpRealtimeClientId = data.clientId || state.httpRealtimeClientId || getHttpRealtimeClientId();
+    state.clientId = state.clientId || state.httpRealtimeClientId;
+    state.httpRealtimeSince = Number(data.now || Date.now());
+    state.httpRealtimeActive = true;
+    if (Array.isArray(data.peers)) {
+      state.peers = new Map(data.peers.map((peer) => [peer.id, peer]));
+      state.voicePeers = data.peers.filter((peer) => peer.voiceRoomId);
+    }
+    if (Array.isArray(data.presence)) state.presence = data.presence;
+    if (data.rtcConfig && Array.isArray(data.rtcConfig.iceServers)) rtcConfig = data.rtcConfig;
+    setConnection("Live");
+    notify(`${label} is using HTTPS live fallback.`);
+    startHttpRealtimePoll();
+    return true;
+  } catch (error) {
+    state.httpRealtimeActive = false;
+    return false;
+  }
+}
+
+function getHttpRealtimeClientId() {
+  if (state.httpRealtimeClientId) return state.httpRealtimeClientId;
+  let id = "";
+  try {
+    id = localStorage.getItem("connectifiHttpRealtimeId") || "";
+  } catch (error) {}
+  const browserCrypto = window.crypto || window.msCrypto || {};
+  if (!/^[a-zA-Z0-9:_-]{8,100}$/.test(id)) id = `http_${typeof browserCrypto.randomUUID === "function" ? browserCrypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`}`;
+  try {
+    localStorage.setItem("connectifiHttpRealtimeId", id);
+  } catch (error) {}
+  state.httpRealtimeClientId = id;
+  return id;
+}
+
+function startHttpRealtimePoll() {
+  clearInterval(state.httpRealtimeTimer);
+  state.httpRealtimeTimer = setInterval(pollHttpRealtime, 1200);
+  pollHttpRealtime();
+}
+
+function stopHttpRealtime() {
+  clearInterval(state.httpRealtimeTimer);
+  state.httpRealtimeTimer = null;
+  state.httpRealtimeActive = false;
+  state.httpRealtimePolling = false;
+}
+
+async function pollHttpRealtime() {
+  if (!state.loggedIn || !state.httpRealtimeActive || state.httpRealtimePolling) return;
+  state.httpRealtimePolling = true;
+  try {
+    const data = await api(`/api/realtime/poll?clientId=${encodeURIComponent(getHttpRealtimeClientId())}&since=${encodeURIComponent(state.httpRealtimeSince || 0)}`);
+    if (Array.isArray(data.peers) && !isRealtimeReady()) {
+      state.peers = new Map(data.peers.map((peer) => [peer.id, peer]));
+      state.voicePeers = data.peers.filter((peer) => peer.voiceRoomId);
+      renderPeers();
+      renderVoice();
+      renderDmCall();
+    }
+    const events = Array.isArray(data.events) ? data.events : [];
+    events.forEach((event) => {
+      state.httpRealtimeSince = Math.max(state.httpRealtimeSince || 0, Number(event.createdAt || 0));
+      if (event.payload) handleSocketMessage(event.payload);
+    });
+    state.httpRealtimeSince = Math.max(state.httpRealtimeSince || 0, Number(data.now || 0));
+    setConnection("Live");
+  } catch (error) {
+    state.httpRealtimeActive = false;
+    clearInterval(state.httpRealtimeTimer);
+    state.httpRealtimeTimer = null;
+  } finally {
+    state.httpRealtimePolling = false;
+  }
+}
+
+function sendHttpRealtime(payload) {
+  if (!payload) return false;
+  api("/api/realtime/send", {
+    method: "POST",
+    json: {
+      clientId: getHttpRealtimeClientId(),
+      payload,
+    },
+  }).catch(() => {
+    state.httpRealtimeActive = false;
+    clearInterval(state.httpRealtimeTimer);
+    state.httpRealtimeTimer = null;
+  });
   return true;
 }
 

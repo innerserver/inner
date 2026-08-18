@@ -77,6 +77,10 @@ const state = {
   wsOutbox: [],
   wsEverConnected: false,
   lastLiveAt: 0,
+  wsConnectingSince: 0,
+  wsLastCloseCode: 0,
+  wsLastCloseReason: "",
+  wsLastErrorAt: 0,
   reconnectDelay: 1600,
   lastReportAlertCount: 0,
   passwordResetToken: "",
@@ -2815,11 +2819,15 @@ function connectSocket() {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
   state.ws = ws;
+  state.wsConnectingSince = Date.now();
 
   ws.addEventListener("open", () => {
     const wasReconnect = state.wsEverConnected;
     state.wsEverConnected = true;
     state.lastLiveAt = Date.now();
+    state.wsConnectingSince = 0;
+    state.wsLastCloseCode = 0;
+    state.wsLastCloseReason = "";
     state.reconnectDelay = 1600;
     clearTimeout(state.wsStatusTimer);
     state.wsStatusTimer = null;
@@ -2836,8 +2844,11 @@ function connectSocket() {
       }
     }, 15000);
   });
-  ws.addEventListener("close", () => {
+  ws.addEventListener("close", (event) => {
     if (state.ws !== ws) return;
+    state.wsLastCloseCode = event.code || 0;
+    state.wsLastCloseReason = event.reason || "";
+    state.wsConnectingSince = 0;
     clearInterval(state.wsPingTimer);
     state.wsPingTimer = null;
     if (state.loggedIn) {
@@ -2851,6 +2862,7 @@ function connectSocket() {
     }
   });
   ws.addEventListener("error", () => {
+    state.wsLastErrorAt = Date.now();
     if (!state.loggedIn) setConnection("Signed out");
     else scheduleConnectionDowngrade();
   });
@@ -3857,16 +3869,31 @@ function isRealtimeReady() {
 async function ensureRealtimeReady(label = "live features") {
   if (isRealtimeReady()) return true;
   if (state.loggedIn) setConnection("Live");
-  if (!state.ws || state.ws.readyState === WebSocket.CLOSED || state.ws.readyState === WebSocket.CLOSING) {
+  const staleConnecting = state.ws && state.ws.readyState === WebSocket.CONNECTING && Date.now() - (state.wsConnectingSince || 0) > 4500;
+  if (!state.ws || state.ws.readyState === WebSocket.CLOSED || state.ws.readyState === WebSocket.CLOSING || staleConnecting) {
     connectSocket();
   }
   const started = Date.now();
-  while (Date.now() - started < 7000) {
+  while (Date.now() - started < 15000) {
     if (isRealtimeReady()) return true;
-    await sleep(120);
+    if (state.ws && state.ws.readyState === WebSocket.CONNECTING && Date.now() - (state.wsConnectingSince || started) > 6500) {
+      connectSocket();
+    }
+    await sleep(160);
   }
-  notify(`Live connection is still reconnecting. ${label} needs the server opened from its live URL.`);
+  const stateName = websocketStateName();
+  const closeDetail = state.wsLastCloseCode ? ` Last close code: ${state.wsLastCloseCode}.` : "";
+  notify(`Live connection is not ready yet for ${label}. Status: ${stateName}.${closeDetail} Refresh once; if this repeats, Render or the network is blocking WebSockets.`);
   return false;
+}
+
+function websocketStateName() {
+  if (!state.ws) return "not connected";
+  if (state.ws.readyState === WebSocket.CONNECTING) return "connecting";
+  if (state.ws.readyState === WebSocket.OPEN) return "live";
+  if (state.ws.readyState === WebSocket.CLOSING) return "closing";
+  if (state.ws.readyState === WebSocket.CLOSED) return "closed";
+  return "unknown";
 }
 
 function sleep(ms) {

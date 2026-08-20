@@ -181,6 +181,7 @@ function cacheElements() {
     "requestDisplayName",
     "requestEmail",
     "requestPhone",
+    "requestEmailDomainHint",
     "requestGrade",
     "requestRole",
     "requestPassword",
@@ -193,6 +194,7 @@ function cacheElements() {
     "signupDisplayName",
     "signupEmail",
     "signupPhone",
+    "signupEmailDomainHint",
     "signupGrade",
     "signupPassword",
     "signupButton",
@@ -422,6 +424,7 @@ function cacheElements() {
     "roomNameInput",
     "signupMode",
     "requireContact",
+    "acceptedEmailDomains",
     "adminContactEmail",
     "passwordResetEnabled",
     "requireProfileUpdate",
@@ -1060,6 +1063,7 @@ async function refreshSignupStatus() {
     ...state.settings,
     signupMode: data.signupMode || state.settings.signupMode,
     requireContact: typeof data.requireContact === "boolean" ? data.requireContact : state.settings.requireContact,
+    acceptedEmailDomains: Array.isArray(data.acceptedEmailDomains) ? data.acceptedEmailDomains : state.settings.acceptedEmailDomains || [],
     passwordResetEnabled: typeof data.passwordResetEnabled === "boolean" ? data.passwordResetEnabled : state.settings.passwordResetEnabled,
     adminContactEmail: data.adminContactEmail || state.settings.adminContactEmail,
     serverEnabled: typeof data.serverEnabled === "boolean" ? data.serverEnabled : state.settings.serverEnabled,
@@ -1070,9 +1074,20 @@ async function refreshSignupStatus() {
     els.signupStatus.textContent = "Open signup is on.";
   }
   syncSignupModePanels(data.signupMode || state.settings.signupMode || "request");
+  syncSignupDomainHints();
   if (els.forgotPasswordButton) {
     els.forgotPasswordButton.classList.toggle("hidden", state.settings.passwordResetEnabled === false);
   }
+}
+
+function syncSignupDomainHints() {
+  const domains = Array.isArray(state.settings.acceptedEmailDomains) ? state.settings.acceptedEmailDomains : [];
+  const text = domains.length ? `Use your approved email domain: ${domains.join(", ")}` : "";
+  [els.requestEmailDomainHint, els.signupEmailDomainHint].forEach((hint) => {
+    if (!hint) return;
+    hint.textContent = text;
+    hint.classList.toggle("hidden", !text);
+  });
 }
 
 function syncSignupModePanels(mode) {
@@ -1940,6 +1955,7 @@ function serverSettingsPayload(extra = {}) {
     serverEnabled: els.serverEnabled.checked,
     signupMode: els.signupMode.value,
     requireContact: els.requireContact.checked,
+    acceptedEmailDomains: splitUserList(els.acceptedEmailDomains ? els.acceptedEmailDomains.value : ""),
     adminContactEmail: els.adminContactEmail ? els.adminContactEmail.value.trim() : "",
     passwordResetEnabled: els.passwordResetEnabled ? els.passwordResetEnabled.checked : true,
     requireProfileUpdate: Boolean(els.requireProfileUpdate && els.requireProfileUpdate.checked),
@@ -6243,6 +6259,7 @@ function renderServerInner() {
   setInputIfNotFocused(els.roomNameInput, state.settings.roomName || "Connectifi");
   setInputIfNotFocused(els.signupMode, state.settings.signupMode || "request");
   els.requireContact.checked = state.settings.requireContact !== false;
+  setInputIfNotFocused(els.acceptedEmailDomains, Array.isArray(state.settings.acceptedEmailDomains) ? state.settings.acceptedEmailDomains.join(", ") : "");
   if (els.requireProfileUpdate) els.requireProfileUpdate.checked = Boolean(state.settings.requireProfileUpdate);
   setInputIfNotFocused(els.adminContactEmail, state.settings.adminContactEmail || "");
   if (els.passwordResetEnabled) els.passwordResetEnabled.checked = state.settings.passwordResetEnabled !== false;
@@ -6285,7 +6302,7 @@ function renderServerInner() {
   if (els.newAccountPersistent) els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
 
   const admin = isOwner();
-  [els.roomNameInput, els.signupMode, els.requireContact, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.triggerProfileUpdateButton, els.clearProfileUpdateButton, els.reportEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.emailGeneral, els.emailContactNoreply, els.emailContactReports, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+  [els.roomNameInput, els.signupMode, els.requireContact, els.acceptedEmailDomains, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.triggerProfileUpdateButton, els.clearProfileUpdateButton, els.reportEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.emailGeneral, els.emailContactNoreply, els.emailContactReports, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
   });

@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-129-realtime-screen-fix" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-130-email-domain-gate" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -70,6 +70,7 @@
             <label>Email<input id="requestEmail" type="email" autocomplete="email" placeholder="you@example.com" /></label>
             <label>Phone<input id="requestPhone" type="tel" autocomplete="tel" placeholder="+1 555 000 0000" /></label>
           </div>
+          <p id="requestEmailDomainHint" class="panel-note hidden"></p>
           <label>Grade<select id="requestGrade"><option value="">Choose grade</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
           <label>Requested account type<select id="requestRole"><option value="member">Student / member</option><option value="moderator">Teacher / moderator</option></select></label>
           <label>Password<input id="requestPassword" type="password" autocomplete="new-password" placeholder="used after approval" required /></label>
@@ -90,6 +91,7 @@
             <label>Email<input id="signupEmail" type="email" autocomplete="email" placeholder="you@example.com" /></label>
             <label>Phone<input id="signupPhone" type="tel" autocomplete="tel" placeholder="+1 555 000 0000" /></label>
           </div>
+          <p id="signupEmailDomainHint" class="panel-note hidden"></p>
           <label>Grade<select id="signupGrade"><option value="">Choose grade</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
           <label>Password<input id="signupPassword" type="password" autocomplete="new-password" /></label>
           <button id="signupButton" class="secondary-button" type="submit">Create member account</button>
@@ -615,6 +617,7 @@
               <label>Room name<input id="roomNameInput" maxlength="80" placeholder="Connectifi" /></label>
               <label>Signup mode<select id="signupMode"><option value="request">Request approval</option><option value="open">Open signup</option></select></label>
               <label class="switch-row"><input id="requireContact" type="checkbox" /><span>Require contact details</span></label>
+              <label>Accepted email domains<input id="acceptedEmailDomains" maxlength="400" placeholder="connectifi.in, bdsint.org, *.school.edu" /></label>
               <label>Admin contact email<input id="adminContactEmail" type="email" maxlength="160" placeholder="admin@yourdomain.com" /></label>
               <label class="switch-row"><input id="passwordResetEnabled" type="checkbox" checked /><span>Allow users to reset passwords by email</span></label>
               <label class="switch-row"><input id="requireProfileUpdate" type="checkbox" /><span>Tell users to update grade, class, email, and phone</span></label>
@@ -930,11 +933,11 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=connectifi-129-realtime-screen-fix" defer></script>
-    <script src="/status-guard.js?v=connectifi-129-realtime-screen-fix" defer></script>
-    <script src="/ui-boot.js?v=connectifi-129-realtime-screen-fix" defer></script>
-    <script src="/app.js?v=connectifi-129-realtime-screen-fix" defer></script>
-    <script src="/force-logout.js?v=connectifi-129-realtime-screen-fix" defer></script>
+    <script src="/session-guard.js?v=connectifi-130-email-domain-gate" defer></script>
+    <script src="/status-guard.js?v=connectifi-130-email-domain-gate" defer></script>
+    <script src="/ui-boot.js?v=connectifi-130-email-domain-gate" defer></script>
+    <script src="/app.js?v=connectifi-130-email-domain-gate" defer></script>
+    <script src="/force-logout.js?v=connectifi-130-email-domain-gate" defer></script>
   </body>
 </html>
 

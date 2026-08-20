@@ -422,6 +422,7 @@ async function ensureStorage() {
     roomName: "Connectifi",
     signupMode: DEFAULT_SIGNUP_MODE,
     requireContact: DEFAULT_REQUIRE_CONTACT,
+    acceptedEmailDomains: [],
     adminContactEmail: REPORT_EMAILS[0] || "",
     passwordResetEnabled: true,
     reportEmails: REPORT_EMAILS,
@@ -691,6 +692,13 @@ async function ensureSettings() {
   }
   if (typeof next.requireContact !== "boolean") {
     next.requireContact = DEFAULT_REQUIRE_CONTACT;
+    changed = true;
+  }
+  if (!Array.isArray(next.acceptedEmailDomains)) {
+    next.acceptedEmailDomains = sanitizeAcceptedEmailDomains(next.acceptedEmailDomains || []);
+    changed = true;
+  } else {
+    next.acceptedEmailDomains = sanitizeAcceptedEmailDomains(next.acceptedEmailDomains);
     changed = true;
   }
   if (!Array.isArray(next.reportEmails)) {
@@ -1041,6 +1049,7 @@ async function routeApi(req, res, requestUrl) {
     return json(res, 200, {
       signupMode: String(settings.signupMode || DEFAULT_SIGNUP_MODE) === "open" ? "open" : "request",
       requireContact: settings.requireContact !== false,
+      acceptedEmailDomains: sanitizeAcceptedEmailDomains(settings.acceptedEmailDomains || []),
       passwordResetEnabled: settings.passwordResetEnabled !== false,
       adminContactEmail: String(settings.adminContactEmail || "").slice(0, 160),
       serverEnabled: settings.serverEnabled !== false,
@@ -1142,6 +1151,8 @@ async function routeApi(req, res, requestUrl) {
     if (settings.requireContact !== false && !contact) {
       return json(res, 400, { error: "Add an email or phone number so admins can contact you after review." });
     }
+    const emailDomainError = emailDomainValidationError(email, settings);
+    if (emailDomainError) return json(res, 400, { error: emailDomainError });
 
     const location = sanitizeLocation(body.location);
     if (!location) {
@@ -1231,6 +1242,8 @@ async function routeApi(req, res, requestUrl) {
     if (settings.requireContact !== false && !contact) {
       return json(res, 400, { error: "Add an email or phone number so admins can contact you." });
     }
+    const emailDomainError = emailDomainValidationError(email, settings);
+    if (emailDomainError) return json(res, 400, { error: emailDomainError });
     if (!sanitizeLocation(body.location)) {
       return json(res, 400, { error: "Turn on location so Connectifi can allocate the nearest server area for this account." });
     }
@@ -3107,6 +3120,7 @@ async function routeApi(req, res, requestUrl) {
         ? String(body.signupMode || settings.signupMode).toLowerCase()
         : DEFAULT_SIGNUP_MODE,
       requireContact: typeof body.requireContact === "boolean" ? body.requireContact : settings.requireContact !== false,
+      acceptedEmailDomains: sanitizeAcceptedEmailDomains(body.acceptedEmailDomains !== undefined ? body.acceptedEmailDomains : settings.acceptedEmailDomains || []),
       adminContactEmail: String(body.adminContactEmail || settings.adminContactEmail || "").trim().slice(0, 160),
       passwordResetEnabled: typeof body.passwordResetEnabled === "boolean" ? body.passwordResetEnabled : settings.passwordResetEnabled !== false,
       requireProfileUpdate: nextRequireProfileUpdate,
@@ -6052,6 +6066,7 @@ function safeSettings(settings, viewer = null) {
     ...settings,
     emailRoutes: sanitizeEmailRoutes(settings.emailRoutes || {}),
     emailContacts: sanitizeEmailContacts(settings.emailContacts || {}),
+    acceptedEmailDomains: sanitizeAcceptedEmailDomains(settings.acceptedEmailDomains || []),
     gameLinks: sanitizeGameLinks(settings.gameLinks || []),
     customizations: sanitizeCustomizations(settings.customizations || {}),
     serviceScale: sanitizeServiceScale(settings.serviceScale || {}),
@@ -7108,6 +7123,41 @@ function recipientsForEmailRoute(settings, route) {
 function cleanEmailAddress(value) {
   const email = String(value || "").trim();
   return email.includes("@") ? email : "";
+}
+
+function sanitizeAcceptedEmailDomains(source = []) {
+  const rawList = Array.isArray(source)
+    ? source
+    : String(source || "").split(",");
+  const seen = new Set();
+  return rawList
+    .map((entry) => String(entry || "").trim().toLowerCase())
+    .map((entry) => entry.replace(/^@+/, "").replace(/^https?:\/\//, "").replace(/\/.*$/, ""))
+    .map((entry) => entry.replace(/[^a-z0-9.*-]/g, ""))
+    .filter((entry) => entry && entry.includes(".") && !entry.includes(".."))
+    .map((entry) => entry.startsWith("*.") ? entry : entry.startsWith(".") ? `*${entry}` : entry)
+    .filter((entry) => {
+      if (seen.has(entry)) return false;
+      seen.add(entry);
+      return true;
+    })
+    .slice(0, 25);
+}
+
+function emailDomainValidationError(email, settings = {}) {
+  const allowed = sanitizeAcceptedEmailDomains(settings.acceptedEmailDomains || []);
+  if (!allowed.length) return "";
+  const clean = cleanEmailAddress(email).toLowerCase();
+  if (!clean) return `Use an email from: ${allowed.join(", ")}`;
+  const domain = clean.split("@").pop();
+  const matched = allowed.some((rule) => {
+    if (rule.startsWith("*.")) {
+      const suffix = rule.slice(2);
+      return domain === suffix || domain.endsWith(`.${suffix}`);
+    }
+    return domain === rule;
+  });
+  return matched ? "" : `Use an email from: ${allowed.join(", ")}`;
 }
 
 function sanitizeEmailRoutes(routes = {}) {

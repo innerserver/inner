@@ -469,6 +469,10 @@ function cacheElements() {
     "featureLockForm",
     "featureName",
     "featureMinutes",
+    "featureStartAt",
+    "featureEndAt",
+    "featureLockRoom",
+    "featureLockRoles",
     "featureReason",
     "saveFeatureLockButton",
     "featureLockList",
@@ -2223,7 +2227,7 @@ async function createAccount(event) {
 
 async function saveFeatureLock(event) {
   event.preventDefault();
-  if (!isOwner()) return notify("Admin access required");
+  if (!isModerator()) return notify("Moderator access required");
 
   try {
     const data = await api("/api/features/lock", {
@@ -2231,6 +2235,10 @@ async function saveFeatureLock(event) {
       json: {
         feature: els.featureName.value,
         minutes: Number(els.featureMinutes.value || 0),
+        startAt: els.featureStartAt ? localDateTimeToIso(els.featureStartAt.value) : "",
+        endAt: els.featureEndAt ? localDateTimeToIso(els.featureEndAt.value) : "",
+        roomId: els.featureLockRoom ? els.featureLockRoom.value : "",
+        roles: splitUserList(els.featureLockRoles ? els.featureLockRoles.value : "member"),
         reason: els.featureReason.value,
       },
     });
@@ -5376,7 +5384,7 @@ function renderProfileInner() {
 function applyProfileTheme(themeOverride = "") {
   const profile = state.user ? state.profiles[state.user.username] || {} : {};
   const theme = themeOverride || profile.theme || "system";
-  const normalized = ["midnight", "ocean", "forest", "rose", "slate", "glass", "custom"].includes(theme) ? theme : "";
+  const normalized = ["connectifi", "dark", "bd-somani", "midnight", "ocean", "forest", "rose", "slate", "glass", "custom"].includes(theme) ? theme : "";
   document.body.dataset.theme = normalized;
   const editorTheme = els.profileThemeBg && els.profileTheme && els.profileTheme.value === "custom" ? currentProfileThemeEditor() : null;
   applyCustomThemeVariables(normalized === "custom" ? editorTheme || profile.customTheme : null);
@@ -6203,9 +6211,11 @@ function renderQuickEdit() {
 function renderUsers() {
   if (!els.ownerPasswordForm) return;
   const admin = isOwner();
-  [els.ownerPasswordForm, els.createAccountForm, els.accountManager, els.featureLockForm, els.roomForm].forEach((element) => {
+  [els.ownerPasswordForm, els.createAccountForm, els.accountManager, els.roomForm].forEach((element) => {
     element.classList.toggle("hidden", !admin);
   });
+  if (els.featureLockForm) els.featureLockForm.classList.toggle("hidden", !isModerator());
+  renderFeatureLockControls();
   if (!admin) return;
   if (document.activeElement !== els.accountSearchInput) {
     els.accountSearchInput.value = state.accountSearch || "";
@@ -6271,6 +6281,7 @@ function renderUsers() {
     if (user.lastLoginIp) meta.append(textNode(`From ${user.lastLoginIp}`));
     if (user.lastLoginDevice) meta.append(textNode(`Device ${user.lastLoginDevice}`));
     if (user.lastLoginApproximateLocation) meta.append(textNode(`Approx ${formatApproxLocation(user.lastLoginApproximateLocation)}`));
+    if (user.tempAdminUntil) meta.append(textNode(`Temp admin until ${formatDate(user.tempAdminUntil)}`));
     if (user.bannedUntil) meta.append(textNode(`Ban until ${formatDate(user.bannedUntil)}`));
     if (user.banReason) meta.append(textNode(user.banReason));
 
@@ -6295,6 +6306,9 @@ function renderUsers() {
     );
     const detailsButton = accountButton("Details", () => openAccountDetails(user.username));
     const detailTabButton = accountButton("Open tab", () => openAccountDetailTab(user.username));
+    const tempAdminHour = accountButton("Temp admin 1h", () => updateUser(user.username, { tempAdminMinutes: 60 }));
+    const tempAdminDay = accountButton("Temp admin 24h", () => updateUser(user.username, { tempAdminMinutes: 1440 }));
+    const clearTempAdmin = accountButton("Clear temp admin", () => updateUser(user.username, { clearTempAdmin: true }));
     const banFive = accountButton("Ban 5m", () => banUser(user.username, 5));
     const banShort = accountButton("Ban 15m", () => banUser(user.username, 15));
     const banHour = accountButton("Ban 1h", () => banUser(user.username, 60));
@@ -6306,8 +6320,11 @@ function renderUsers() {
     banHour.disabled = isMainAdmin;
     banDay.disabled = isMainAdmin;
     unban.disabled = isMainAdmin;
+    tempAdminHour.disabled = isMainAdmin || String(user.role || "").toLowerCase() === "admin";
+    tempAdminDay.disabled = isMainAdmin || String(user.role || "").toLowerCase() === "admin";
+    clearTempAdmin.disabled = isMainAdmin || !user.tempAdminUntil;
     remove.disabled = isMainAdmin || isCurrentUser;
-    actions.append(gradeSelect, gradeButton, roleButton, persistentButton, detailsButton, detailTabButton, banFive, banShort, banHour, banDay, unban, remove);
+    actions.append(gradeSelect, gradeButton, roleButton, persistentButton, detailsButton, detailTabButton, tempAdminHour, tempAdminDay, clearTempAdmin, banFive, banShort, banHour, banDay, unban, remove);
 
     item.append(head, meta, actions);
     els.accountList.append(item);
@@ -6332,19 +6349,39 @@ function renderFeatureLocks() {
     name.textContent = featureLabel(feature);
     const badge = document.createElement("span");
     badge.className = "tag";
-    badge.textContent = "Locked";
+    const startsAt = Date.parse(lock.disabledFrom || "");
+    badge.textContent = Number.isFinite(startsAt) && startsAt > Date.now() ? "Scheduled" : "Locked";
     head.append(name, badge);
 
     const meta = document.createElement("div");
     meta.className = "account-meta";
+    if (lock.disabledFrom) meta.append(textNode(`Starts ${formatDate(lock.disabledFrom)}`));
     meta.append(textNode(`Until ${formatDate(lock.disabledUntil)}`));
     if (lock.disabledBy) meta.append(textNode(`By ${lock.disabledBy}`));
+    if (lock.roomId) meta.append(textNode(`Room ${lock.roomId}`));
+    if (Array.isArray(lock.roles) && lock.roles.length) meta.append(textNode(`Roles ${lock.roles.join(", ")}`));
     if (lock.reason) meta.append(textNode(lock.reason));
 
     const unlock = accountButton("Unlock", () => quickFeatureUnlock(feature));
     item.append(head, meta, unlock);
     els.featureLockList.append(item);
   });
+}
+
+function renderFeatureLockControls() {
+  if (!els.featureLockRoom) return;
+  const current = els.featureLockRoom.value || "";
+  const options = [new Option("All rooms / global", "")];
+  (state.rooms || []).forEach((room) => {
+    const option = new Option(room.name || room.id, room.id);
+    options.push(option);
+  });
+  els.featureLockRoom.replaceChildren(...options);
+  els.featureLockRoom.value = options.some((option) => option.value === current) ? current : "";
+  if (els.featureLockRoles && !els.featureLockRoles.value) els.featureLockRoles.value = "member";
+  if (!isOwner() && els.featureLockRoom && !els.featureLockRoom.value && state.rooms[0]) {
+    els.featureLockRoom.value = state.rooms[0].id || "";
+  }
 }
 
 function syncSearchedAccountDetails(visibleUsers) {
@@ -7780,6 +7817,12 @@ function normalizeClientGrade(grade) {
   return ["6", "7", "8", "9", "10", "11", "12", "college", "staff", "other"].includes(value) ? value : "";
 }
 
+function localDateTimeToIso(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : "";
+}
+
 function nextRole(role) {
   if (role === "admin") return "admin";
   const roles = isDev() ? ["member", "moderator", "hmd", "dev"] : ["member", "moderator"];
@@ -7826,6 +7869,8 @@ async function updateUser(username, changes) {
           typeof changes.allowPersistentLogin === "boolean"
             ? changes.allowPersistentLogin
             : Boolean(existing.allowPersistentLogin),
+        tempAdminMinutes: Number(changes.tempAdminMinutes || 0),
+        clearTempAdmin: Boolean(changes.clearTempAdmin),
       },
     });
     state.users = data.users || state.users;
@@ -8184,6 +8229,9 @@ function selectDmFromCallRoom(roomId) {
 function featureLock(feature) {
   const lock = (state.settings.featureLocks || {})[feature];
   if (!lock) return null;
+  if (lock.roomId) return null;
+  const from = Date.parse(lock.disabledFrom || "");
+  if (Number.isFinite(from) && from > Date.now()) return null;
   const until = Date.parse(lock.disabledUntil);
   if (!Number.isFinite(until) || until <= Date.now()) return null;
   return lock;

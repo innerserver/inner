@@ -5493,3 +5493,149 @@ body {
     flex: 1 1 140px;
   }
 }
+
+/* v127 product polish: coherent themes and less "stacked demo" UI. */
+:root {
+  --shadow-sm: 0 1px 2px rgba(18, 24, 30, 0.06);
+  --shadow-md: 0 14px 34px rgba(18, 24, 30, 0.10);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+body[data-theme="connectifi"] {
+  --bg: #f5f7f6;
+  --surface: #ffffff;
+  --surface-muted: #edf3f1;
+  --ink: #121c19;
+  --muted: #5f706a;
+  --line: #d8e2de;
+  --accent: #176b5a;
+  --accent-soft: #e2f2ed;
+  --danger: #a43d37;
+}
+
+body[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1115;
+  --surface: #181b21;
+  --surface-muted: #222733;
+  --ink: #f4f6fb;
+  --muted: #aeb7c6;
+  --line: #303746;
+  --accent: #69d4ad;
+  --accent-soft: #15362d;
+  --danger: #f07871;
+}
+
+body[data-theme="bd-somani"] {
+  --bg: #f7f8fb;
+  --surface: #ffffff;
+  --surface-muted: #edf1f7;
+  --ink: #111827;
+  --muted: #637083;
+  --line: #dbe2ee;
+  --accent: #184f9f;
+  --accent-soft: #e5eefc;
+  --danger: #b23b3b;
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 8%, transparent), transparent 34rem),
+    var(--bg);
+}
+
+.sidebar,
+.topbar,
+.status-panel,
+.panel-form,
+.file-card,
+.account-card,
+.upload-bar,
+.composer,
+.message {
+  border-color: color-mix(in srgb, var(--line) 86%, transparent) !important;
+  box-shadow: var(--shadow-sm);
+}
+
+.status-panel,
+.panel-form,
+.file-card,
+.account-card {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, white), var(--surface));
+}
+
+.nav-button,
+button,
+.primary-button,
+.secondary-button,
+.ghost-light-button,
+input,
+select,
+textarea {
+  transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+button:hover,
+.primary-button:hover,
+.secondary-button:hover,
+.ghost-light-button:hover {
+  transform: translateY(-1px);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring) !important;
+}
+
+.primary-button,
+button.primary-button {
+  background: var(--ink) !important;
+  color: var(--surface) !important;
+}
+
+.secondary-button,
+.ghost-light-button {
+  background: color-mix(in srgb, var(--surface) 92%, var(--accent-soft)) !important;
+}
+
+.nav-button.active,
+.nav-button:hover {
+  background: var(--accent-soft) !important;
+  color: var(--ink) !important;
+}
+
+.tag,
+.metric-row span {
+  background: color-mix(in srgb, var(--surface) 72%, var(--accent-soft)) !important;
+}
+
+.admin-grid {
+  gap: 16px !important;
+}
+
+#adminView .panel-form,
+#adminView .status-panel {
+  min-height: 96px;
+}
+
+#adminView .account-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+@media (max-width: 860px) {
+  .sidebar,
+  .topbar,
+  .status-panel,
+  .panel-form,
+  .file-card,
+  .account-card {
+    border-radius: 10px !important;
+  }
+}

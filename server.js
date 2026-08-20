@@ -854,7 +854,9 @@ async function routeApi(req, res, requestUrl) {
     const token = crypto.randomBytes(32).toString("hex");
     sessions.set(token, {
       username: user.username,
-      role: normalizeRole(user.role),
+      role: effectiveRole(user),
+      tempAdminUntil: user.tempAdminUntil || "",
+      tempAdminPreviousRole: user.tempAdminPreviousRole || "",
       email: user.email || "",
       phone: user.phone || "",
       grade: normalizeGrade(user.grade || ""),
@@ -1418,12 +1420,14 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     let textValue = String(body.text || "").trim();
     const roomId = String(body.roomId || "main").trim() || "main";
+    const roomMessageFeatureError = await featureGateError(settings, "messages", user, { roomId });
+    if (roomMessageFeatureError) return json(res, 423, { error: roomMessageFeatureError });
     const attachment = await resolveChatAttachment(body.attachment);
     if (!textValue && !attachment) return json(res, 400, { error: "Message cannot be empty" });
     if (textValue.length > 2000) return json(res, 400, { error: "Message is too long" });
     textValue = applySlashCommand(textValue);
     if (roomId !== "main") {
-      const roomFeatureError = await featureGateError(settings, "rooms", user);
+      const roomFeatureError = await featureGateError(settings, "rooms", user, { roomId });
       if (roomFeatureError) return json(res, 423, { error: roomFeatureError });
     }
 
@@ -1461,7 +1465,7 @@ async function routeApi(req, res, requestUrl) {
   if (req.method === "POST" && pathname === "/api/upload") {
     const settings = await readJson(FILES.settings, {});
     if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
-    const featureError = await featureGateError(settings, "files", user);
+    const featureError = await featureGateError(settings, "files", user, { roomId: String(req.headers["x-file-release-room"] || "").trim().slice(0, 80) });
     if (featureError) return json(res, 423, { error: featureError });
     return saveUpload(req, res, user);
   }
@@ -2491,20 +2495,39 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "POST" && pathname === "/api/features/lock") {
-    if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
+    if (!canManage(user) && !canModerate(user)) return json(res, 403, { error: "Moderator access required" });
     const body = await readJsonBody(req);
     const feature = String(body.feature || "").toLowerCase();
     if (!allowedFeatureLocks.has(feature)) return json(res, 400, { error: "Unknown feature" });
 
-    const minutes = Math.max(0, Math.min(525600, Number(body.minutes || 0)));
+    const isManager = canManage(user);
+    const roomId = String(body.roomId || "").trim().slice(0, 80);
+    if (!isManager && !roomId) return json(res, 400, { error: "Moderators must choose a room for feature locks" });
+    if (!isManager && ["admin", "hmd", "domain", "vpn", "bots", "plugins"].includes(feature)) {
+      return json(res, 403, { error: "Moderators can lock room/member features only" });
+    }
+    const maxMinutes = isManager ? 525600 : 360;
+    const minutes = Math.max(0, Math.min(maxMinutes, Number(body.minutes || 0)));
     const reason = String(body.reason || "").trim().slice(0, 160);
+    const requestedStart = Date.parse(body.startAt || "");
+    const requestedEnd = Date.parse(body.endAt || "");
+    const disabledFrom = Number.isFinite(requestedStart) ? requestedStart : Date.now();
+    const disabledUntil = Number.isFinite(requestedEnd)
+      ? requestedEnd
+      : minutes > 0
+        ? Date.now() + minutes * 60 * 1000
+        : 0;
+    if (disabledUntil && disabledUntil <= disabledFrom) return json(res, 400, { error: "End time must be after start time" });
     const settings = await readJson(FILES.settings, {});
     const featureLocks = { ...(settings.featureLocks || {}) };
-    if (minutes > 0) {
+    if (disabledUntil > 0) {
       featureLocks[feature] = {
-        disabledUntil: new Date(Date.now() + minutes * 60 * 1000).toISOString(),
+        disabledFrom: new Date(disabledFrom).toISOString(),
+        disabledUntil: new Date(disabledUntil).toISOString(),
         disabledBy: user.username,
         reason,
+        roomId,
+        roles: isManager ? normalizeLockRoles(body.roles) : ["member"],
       };
     } else {
       delete featureLocks[feature];
@@ -2778,19 +2801,44 @@ async function routeApi(req, res, requestUrl) {
     if (index === -1) return json(res, 404, { error: "User not found" });
 
     const previous = users[index];
-    const nextRole = username.toLowerCase() === "admin" ? "admin" : normalizeRole(body.role);
+    const tempAdminMinutes = Math.max(0, Math.min(10080, Number(body.tempAdminMinutes || 0)));
+    const clearTempAdmin = Boolean(body.clearTempAdmin);
+    const wantsTempAdmin = tempAdminMinutes > 0;
+    const nextRole = wantsTempAdmin
+      ? "admin"
+      : username.toLowerCase() === "admin"
+        ? "admin"
+        : normalizeRole(body.role);
     const nextGrade = body.grade !== undefined ? normalizeGrade(body.grade) : normalizeGrade(previous.grade || "");
     const gradeChanged = nextGrade !== normalizeGrade(previous.grade || "");
-    if (nextRole === "admin" && normalizeRole(previous.role) !== "admin") {
+    if (wantsTempAdmin && !canOwn(user)) {
+      return json(res, 403, { error: "Only the owner admin can grant temporary admin" });
+    }
+    if (wantsTempAdmin && username.toLowerCase() === "admin") {
+      return json(res, 400, { error: "The main admin account is already permanent admin" });
+    }
+    if (nextRole === "admin" && normalizeRole(previous.role) !== "admin" && !wantsTempAdmin) {
       return json(res, 403, { error: "Promoting accounts to admin is locked. Existing admins only." });
     }
     if (["hmd", "dev"].includes(nextRole) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
+    const tempAdminUntil = wantsTempAdmin
+      ? new Date(Date.now() + tempAdminMinutes * 60 * 1000).toISOString()
+      : clearTempAdmin
+        ? ""
+        : previous.tempAdminUntil || "";
+    const tempAdminPreviousRole = wantsTempAdmin
+      ? effectiveRole(previous) === "admin" ? normalizeRole(previous.tempAdminPreviousRole || "moderator") : effectiveRole(previous)
+      : clearTempAdmin
+        ? ""
+        : previous.tempAdminPreviousRole || "";
     users[index] = {
       ...previous,
-      role: nextRole,
+      role: clearTempAdmin && previous.tempAdminPreviousRole ? normalizeRole(previous.tempAdminPreviousRole) : nextRole,
       grade: nextGrade,
       gradeUpdatedAt: gradeChanged ? new Date().toISOString() : previous.gradeUpdatedAt || "",
       allowPersistentLogin: Boolean(body.allowPersistentLogin),
+      tempAdminUntil,
+      tempAdminPreviousRole,
       mutedUntil: body.mutedUntil !== undefined ? String(body.mutedUntil || "") : previous.mutedUntil || "",
       shadowMuted: body.shadowMuted !== undefined ? Boolean(body.shadowMuted) : Boolean(previous.shadowMuted),
       updatedAt: new Date().toISOString(),
@@ -2804,7 +2852,7 @@ async function routeApi(req, res, requestUrl) {
       updatedAt: new Date().toISOString(),
     });
     await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles)]);
-    if (previous.role !== nextRole || previous.allowPersistentLogin !== users[index].allowPersistentLogin) {
+    if (previous.role !== users[index].role || previous.allowPersistentLogin !== users[index].allowPersistentLogin || tempAdminMinutes || clearTempAdmin) {
       expireUserSessions(username);
     }
     broadcast({ type: "profiles:update", profiles: safeProfiles(profiles, users, user) });
@@ -4893,7 +4941,9 @@ function getSessionUser(req) {
   if (!session.persistent) session.expiresAt = Date.now() + SESSION_IDLE_MS;
   return {
     username: session.username,
-    role: normalizeRole(session.role),
+    role: effectiveRole(session),
+    tempAdminUntil: session.tempAdminUntil || "",
+    tempAdminPreviousRole: session.tempAdminPreviousRole || "",
     email: session.email || "",
     phone: session.phone || "",
     grade: normalizeGrade(session.grade || ""),
@@ -4957,7 +5007,7 @@ function safeUser(user, viewer = null) {
   const ownerView = canOwn(viewer);
   const safe = {
     username: user.username,
-    role: normalizeRole(user.role),
+    role: effectiveRole(user),
     owner: canOwn(user),
     createdAt: user.createdAt || "",
     createdBy: user.createdBy || "",
@@ -4977,6 +5027,8 @@ function safeUser(user, viewer = null) {
     mutedUntil: user.mutedUntil || "",
     muted: isUserMuted(user),
     shadowMuted: Boolean(user.shadowMuted),
+    tempAdminUntil: user.tempAdminUntil || "",
+    tempAdminPreviousRole: user.tempAdminPreviousRole || "",
   };
   if (ownerView) {
     safe.lastLoginAt = user.lastLoginAt || "";
@@ -5003,7 +5055,7 @@ function mostLoggedInIp(counts, history) {
 function publicUser(user, profile = {}) {
   return {
     username: user.username,
-    role: normalizeRole(user.role),
+    role: effectiveRole(user),
     banned: isUserBanned(user),
     displayName: profile.displayName || user.username,
     avatarUrl: profile.avatarUrl || "",
@@ -5879,7 +5931,7 @@ function safeSettings(settings) {
     customizations: sanitizeCustomizations(settings.customizations || {}),
     serviceScale: sanitizeServiceScale(settings.serviceScale || {}),
     persistentLogin: sanitizePersistentLogin(settings.persistentLogin || {}),
-    featureLocks: activeFeatureLocks(settings.featureLocks || {}),
+    featureLocks: visibleFeatureLocks(settings.featureLocks || {}),
     featureVisibility: sanitizeFeatureVisibility(settings.featureVisibility || {}),
     paywalls: sanitizePaywalls(settings.paywalls || {}),
     browserPolicy: sanitizeBrowserPolicy(settings.browserPolicy || {}),
@@ -6212,18 +6264,43 @@ function activeFeatureLocks(featureLocks) {
   const now = Date.now();
   for (const [feature, lock] of Object.entries(featureLocks || {})) {
     if (!allowedFeatureLocks.has(feature)) continue;
+    const disabledFrom = Date.parse(lock && lock.disabledFrom);
     const disabledUntil = Date.parse(lock && lock.disabledUntil);
     if (!Number.isFinite(disabledUntil) || disabledUntil <= now) continue;
+    if (Number.isFinite(disabledFrom) && disabledFrom > now) continue;
     active[feature] = {
+      disabledFrom: Number.isFinite(disabledFrom) ? new Date(disabledFrom).toISOString() : "",
       disabledUntil: new Date(disabledUntil).toISOString(),
       disabledBy: String(lock.disabledBy || ""),
       reason: String(lock.reason || "").slice(0, 160),
+      roomId: String(lock.roomId || "").slice(0, 80),
+      roles: normalizeLockRoles(lock.roles),
     };
   }
   return active;
 }
 
-function featureBlocked(settings, feature, user) {
+function visibleFeatureLocks(featureLocks) {
+  const visible = {};
+  const now = Date.now();
+  for (const [feature, lock] of Object.entries(featureLocks || {})) {
+    if (!allowedFeatureLocks.has(feature)) continue;
+    const disabledFrom = Date.parse(lock && lock.disabledFrom);
+    const disabledUntil = Date.parse(lock && lock.disabledUntil);
+    if (!Number.isFinite(disabledUntil) || disabledUntil <= now) continue;
+    visible[feature] = {
+      disabledFrom: Number.isFinite(disabledFrom) ? new Date(disabledFrom).toISOString() : "",
+      disabledUntil: new Date(disabledUntil).toISOString(),
+      disabledBy: String(lock.disabledBy || ""),
+      reason: String(lock.reason || "").slice(0, 160),
+      roomId: String(lock.roomId || "").slice(0, 80),
+      roles: normalizeLockRoles(lock.roles),
+    };
+  }
+  return visible;
+}
+
+function featureBlocked(settings, feature, user, context = {}) {
   const visibility = sanitizeFeatureVisibility(settings.featureVisibility || {})[feature];
   if (visibility && visibility.hidden && !canOwn(user) && !visibility.allowedUsers.includes(String(user && user.username || "").toLowerCase())) {
     return `${featureLabel(feature)} is hidden for your account`;
@@ -6231,12 +6308,15 @@ function featureBlocked(settings, feature, user) {
   if (canManage(user)) return "";
   const lock = activeFeatureLocks(settings.featureLocks || {})[feature];
   if (!lock) return "";
+  if (lock.roomId && String(context.roomId || "") !== lock.roomId) return "";
+  if (lock.roles.length && !lock.roles.includes(effectiveRole(user))) return "";
   const label = feature === "dms" ? "DMs" : feature.charAt(0).toUpperCase() + feature.slice(1);
-  return `${label} disabled until ${new Date(lock.disabledUntil).toLocaleString()}${lock.reason ? `: ${lock.reason}` : ""}`;
+  const roomText = lock.roomId ? ` in room ${lock.roomId}` : "";
+  return `${label} disabled${roomText} until ${new Date(lock.disabledUntil).toLocaleString()}${lock.reason ? `: ${lock.reason}` : ""}`;
 }
 
-async function featureGateError(settings, feature, user) {
-  const blocked = featureBlocked(settings, feature, user);
+async function featureGateError(settings, feature, user, context = {}) {
+  const blocked = featureBlocked(settings, feature, user, context);
   if (blocked) return blocked;
   const paywalls = sanitizePaywalls(settings.paywalls || {});
   const wholeAppPaywall = paywalls.all;
@@ -6245,6 +6325,12 @@ async function featureGateError(settings, feature, user) {
   }
   if (!paywalls[feature] || !paywalls[feature].enabled) return "";
   return featurePaywallBlocked(settings, await readJson(FILES.store, { items: [], orders: [] }), feature, user);
+}
+
+function normalizeLockRoles(roles) {
+  const values = Array.isArray(roles) ? roles : splitEnvList(roles);
+  const allowed = new Set(["member", "moderator", "admin", "hmd", "dev"]);
+  return Array.from(new Set(values.map((role) => normalizeRole(role)).filter((role) => allowed.has(role))));
 }
 
 async function featurePaywallBlocked(settings, store, feature, user) {
@@ -6337,6 +6423,17 @@ function normalizeRole(role) {
   return "member";
 }
 
+function effectiveRole(user) {
+  const role = normalizeRole(user && user.role);
+  if (role !== "admin") return role;
+  const previousRole = normalizeRole(user && user.tempAdminPreviousRole);
+  const until = Date.parse(user && user.tempAdminUntil);
+  if (previousRole && previousRole !== "admin" && Number.isFinite(until) && until <= Date.now()) {
+    return previousRole;
+  }
+  return role;
+}
+
 function normalizeSoundboardSound(sound) {
   const value = String(sound || "").toLowerCase();
   if (["chime", "ping", "pop", "ring"].includes(value)) return value;
@@ -6344,7 +6441,7 @@ function normalizeSoundboardSound(sound) {
 }
 
 function canManage(user) {
-  return managerRoles.has(normalizeRole(user && user.role));
+  return managerRoles.has(effectiveRole(user));
 }
 
 function canOwn(user) {
@@ -6352,7 +6449,7 @@ function canOwn(user) {
 }
 
 function canDev(user) {
-  return developerRoles.has(normalizeRole(user && user.role));
+  return developerRoles.has(effectiveRole(user));
 }
 
 function canBypassShutdown(user) {
@@ -6361,7 +6458,7 @@ function canBypassShutdown(user) {
 }
 
 function canModerate(user) {
-  return moderatorRoles.has(normalizeRole(user && user.role));
+  return moderatorRoles.has(effectiveRole(user));
 }
 
 function isUserBanned(user) {
@@ -6492,7 +6589,7 @@ function normalizePresenceStatus(status) {
 
 function normalizeRoomTheme(theme) {
   const value = String(theme || "system").trim().toLowerCase();
-  if (["system", "midnight", "ocean", "forest", "rose", "slate", "glass", "custom"].includes(value)) return value;
+  if (["system", "connectifi", "dark", "bd-somani", "midnight", "ocean", "forest", "rose", "slate", "glass", "custom"].includes(value)) return value;
   return "system";
 }
 

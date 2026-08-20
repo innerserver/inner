@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-126-http-realtime-fallback" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-127-ui-scheduled-locks" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -356,7 +356,7 @@
             <label>Grade<select id="profileGrade"><option value="">Choose grade</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
             <label>Email<input id="profileEmail" type="email" maxlength="120" autocomplete="email" /></label>
             <label>Phone<input id="profilePhone" maxlength="40" autocomplete="tel" /></label>
-            <label>Theme<select id="profileTheme"><option value="system">Light</option><option value="midnight">Night</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="custom">Custom</option></select></label>
+            <label>Theme<select id="profileTheme"><option value="system">Light</option><option value="connectifi">Connectifi</option><option value="dark">Dark</option><option value="bd-somani">BD Somani</option><option value="midnight">Night</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="custom">Custom</option></select></label>
             <div id="customThemeFields" class="theme-editor">
               <label>Background<input id="profileThemeBg" type="color" value="#f7f7f4" /></label>
               <label>Cards<input id="profileThemeSurface" type="color" value="#ffffff" /></label>
@@ -688,13 +688,17 @@
               <button id="createAccountButton" class="primary-button" type="submit">Create account</button>
             </form>
 
-            <form id="featureLockForm" class="panel-form owner-only hidden">
+            <form id="featureLockForm" class="panel-form hidden">
               <h3>Feature locks</h3>
               <label>Feature<select id="featureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="docs">Google Workspace</option><option value="browser">Browser</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option><option value="store">Store</option><option value="chess">Games</option><option value="domain">Domain</option><option value="admin">Admin</option><option value="hmd">HMD</option></select></label>
               <label>Minutes<input id="featureMinutes" type="number" min="0" max="525600" value="60" /></label>
+              <label>Starts optional<input id="featureStartAt" type="datetime-local" /></label>
+              <label>Ends optional<input id="featureEndAt" type="datetime-local" /></label>
+              <label>Room optional<select id="featureLockRoom"><option value="">All rooms / global</option></select></label>
+              <label>Roles affected<input id="featureLockRoles" maxlength="120" placeholder="member" /></label>
               <label>Reason<input id="featureReason" maxlength="160" placeholder="optional" /></label>
               <button id="saveFeatureLockButton" class="primary-button" type="submit">Set lock</button>
-              <p class="panel-note">Use 0 minutes to turn a feature back on.</p>
+              <p class="panel-note">Use 0 minutes to turn a feature back on. Moderators can schedule room-only locks for members.</p>
             </form>
 
             <form id="featureVisibilityForm" class="panel-form owner-only hidden">
@@ -903,11 +907,11 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=connectifi-126-http-realtime-fallback" defer></script>
-    <script src="/status-guard.js?v=connectifi-126-http-realtime-fallback" defer></script>
-    <script src="/ui-boot.js?v=connectifi-126-http-realtime-fallback" defer></script>
-    <script src="/app.js?v=connectifi-126-http-realtime-fallback" defer></script>
-    <script src="/force-logout.js?v=connectifi-126-http-realtime-fallback" defer></script>
+    <script src="/session-guard.js?v=connectifi-127-ui-scheduled-locks" defer></script>
+    <script src="/status-guard.js?v=connectifi-127-ui-scheduled-locks" defer></script>
+    <script src="/ui-boot.js?v=connectifi-127-ui-scheduled-locks" defer></script>
+    <script src="/app.js?v=connectifi-127-ui-scheduled-locks" defer></script>
+    <script src="/force-logout.js?v=connectifi-127-ui-scheduled-locks" defer></script>
   </body>
 </html>
 

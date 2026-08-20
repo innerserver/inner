@@ -5,6 +5,7 @@ const state = {
   rooms: [],
   selectedRoomId: "main",
   messages: [],
+  secretMessages: [],
   pendingSends: [],
   replyToMessage: null,
   dms: [],
@@ -23,6 +24,7 @@ const state = {
   accountGradeFilter: "",
   accountShowAll: false,
   selectedAccountDetails: "",
+  accountDetailFiles: { username: "", files: [], loading: false, error: "" },
   logSearch: "",
   logDate: "",
   files: [],
@@ -122,6 +124,7 @@ const viewRoutes = {
   dashboard: "/",
   messages: "/messages",
   dms: "/dms",
+  secret: "/secret",
   friends: "/friends",
   profile: "/profile",
   store: "/store",
@@ -225,6 +228,7 @@ function cacheElements() {
     "mentionList",
     "messagesView",
     "dmsView",
+    "secretView",
     "friendsView",
     "profileView",
     "storeView",
@@ -329,6 +333,13 @@ function cacheElements() {
     "dmSelfieInput",
     "dmSelfieButton",
     "sendDmButton",
+    "secretNavButton",
+    "secretState",
+    "secretMessageList",
+    "secretMessageForm",
+    "secretMessageInput",
+    "secretMessageAttachment",
+    "sendSecretMessageButton",
     "friendRequestForm",
     "friendSearchInput",
     "friendGradeSearch",
@@ -482,6 +493,9 @@ function cacheElements() {
     "visibilityAllowedUsers",
     "saveFeatureVisibilityButton",
     "featureVisibilityList",
+    "secretMessagingForm",
+    "secretMessagingUsers",
+    "saveSecretMessagingButton",
     "paywallForm",
     "paywallFeatureName",
     "paywallItemId",
@@ -665,6 +679,7 @@ function bindEvents() {
   els.dmJumpBottomButton.addEventListener("click", () => scrollToBottom(els.dmList, true));
   els.dmSelfieButton.addEventListener("click", () => els.dmSelfieInput.click());
   els.dmSelfieInput.addEventListener("change", () => sendSelfie("dm"));
+  if (els.secretMessageForm) els.secretMessageForm.addEventListener("submit", sendSecretMessage);
   els.dmGroupForm.addEventListener("submit", createDmGroup);
   els.deleteDmGroupButton.addEventListener("click", deleteCurrentDmGroup);
   if (els.shareLinkForm) els.shareLinkForm.addEventListener("submit", shareLinkToFriends);
@@ -792,6 +807,7 @@ function bindEvents() {
   if (els.closeAccountDetailButton) {
     els.closeAccountDetailButton.addEventListener("click", () => {
       state.selectedAccountDetails = "";
+      state.accountDetailFiles = { username: "", files: [], loading: false, error: "" };
       renderAccountDetails();
     });
   }
@@ -800,6 +816,7 @@ function bindEvents() {
   els.featureLockForm.addEventListener("submit", saveFeatureLock);
   if (els.featureVisibilityForm) els.featureVisibilityForm.addEventListener("submit", saveFeatureVisibility);
   if (els.visibilityFeatureName) els.visibilityFeatureName.addEventListener("change", renderFeatureVisibility);
+  if (els.secretMessagingForm) els.secretMessagingForm.addEventListener("submit", saveSecretMessaging);
   if (els.paywallForm) els.paywallForm.addEventListener("submit", savePaywall);
   if (els.paywallFeatureName) els.paywallFeatureName.addEventListener("change", renderPaywalls);
   els.quickEditForm.addEventListener("submit", saveQuickEdit);
@@ -1207,6 +1224,7 @@ async function loadState() {
   }
   state.rooms = data.rooms || [];
   state.messages = data.messages || [];
+  state.secretMessages = data.secretMessages || [];
   state.dms = data.dms || [];
   state.dmGroups = data.dmGroups || [];
   state.files = data.files || [];
@@ -1289,6 +1307,7 @@ function showView(viewName, options = {}) {
   if (viewName === "domain" && !isOwner()) viewName = "dashboard";
   if (viewName === "admin" && !isOwner()) viewName = "dashboard";
   if (viewName === "hmd" && !isDev()) viewName = "dashboard";
+  if (viewName === "secret" && !secretMessagingEnabled()) viewName = "dashboard";
   const feature = viewFeature(viewName);
   if (feature && viewName !== "profile" && !featureAvailable(feature)) {
     notify(lockMessage(feature) || `${featureLabel(feature)} is not available for this account`);
@@ -1333,6 +1352,31 @@ async function sendMessage(event) {
     els.messageAttachment.value = "";
     state.replyToMessage = null;
     focusWithoutJump(els.messageInput);
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    updateControls();
+  }
+}
+
+async function sendSecretMessage(event) {
+  event.preventDefault();
+  if (!secretMessagingEnabled()) return notify("Secret messaging is not enabled for this account");
+  const text = els.secretMessageInput.value.trim();
+  const file = els.secretMessageAttachment.files[0];
+  if (!text && !file) return;
+
+  try {
+    els.sendSecretMessageButton.disabled = true;
+    const attachment = file ? await uploadChatAttachment(file) : null;
+    const data = await api("/api/secret-messages", {
+      method: "POST",
+      json: { text, attachment },
+    });
+    addSecretMessage(data.message);
+    els.secretMessageInput.value = "";
+    els.secretMessageAttachment.value = "";
+    focusWithoutJump(els.secretMessageInput);
   } catch (error) {
     notify(error.message);
   } finally {
@@ -2278,6 +2322,27 @@ async function saveFeatureVisibility(event) {
   }
 }
 
+async function saveSecretMessaging(event) {
+  event.preventDefault();
+  if (!isOwner()) return notify("Hardcoded admin owner access required");
+  try {
+    const data = await api("/api/settings", {
+      method: "POST",
+      json: {
+        ...serverSettingsPayload(),
+        secretMessaging: {
+          allowedUsers: splitUserList(els.secretMessagingUsers ? els.secretMessagingUsers.value : ""),
+        },
+      },
+    });
+    state.settings = data.settings || state.settings;
+    renderAll();
+    notify("Secret messaging access saved");
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
 async function savePaywall(event) {
   event.preventDefault();
   if (!isOwner()) return notify("Hardcoded admin owner access required");
@@ -2844,6 +2909,7 @@ function connectSocket(options = {}) {
   state.wsConnectingSince = Date.now();
 
   ws.addEventListener("open", () => {
+    stopHttpRealtime();
     const wasReconnect = state.wsEverConnected;
     state.wsEverConnected = true;
     state.lastLiveAt = Date.now();
@@ -2911,6 +2977,7 @@ function closeSocket() {
     state.ws = null;
     ws.close();
   }
+  state.clientId = state.httpRealtimeActive ? state.httpRealtimeClientId : "";
   state.peers.clear();
   state.voicePeers = [];
   state.peerLocations.clear();
@@ -3028,6 +3095,11 @@ function handleSocketMessage(message) {
     const incoming = state.user && message.message && message.message.user !== state.user.username;
     addMessage(message.message);
     if (incoming) showIncomingMessageAlert(message.message);
+    return;
+  }
+
+  if (message.type === "secret-message:new") {
+    addSecretMessage(message.message);
     return;
   }
 
@@ -3382,6 +3454,7 @@ async function startShare(options = {}) {
   }
 
   try {
+    await refreshRealtimePeers();
     let stream;
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({
@@ -3407,14 +3480,24 @@ async function startShare(options = {}) {
       stopShare({ silent: true });
       return notify("Live connection is not ready");
     }
-    for (const peer of screenPeersForRoom(roomId)) {
-      await makeOffer(peer.id, roomId);
-    }
+    const offered = await offerScreenToRoom(roomId);
+    setTimeout(() => offerScreenToRoom(roomId).catch(() => {}), 900);
+    setTimeout(() => offerScreenToRoom(roomId).catch(() => {}), 2200);
+    if (!offered) notify(isDmCallRoom(roomId) ? "No selected DM/group members are online yet. Keep sharing open; Connectifi will retry when they connect." : "No other users are online yet. Keep sharing open; Connectifi will retry when someone connects.");
     renderScreen();
     renderDmCall();
   } catch (error) {
     notify(error.message || "Screen sharing was cancelled");
   }
+}
+
+async function offerScreenToRoom(roomId) {
+  await refreshRealtimePeers();
+  const peers = screenPeersForRoom(roomId).filter((peer) => peer.id !== state.clientId);
+  for (const peer of peers) {
+    await makeOffer(peer.id, roomId);
+  }
+  return peers.length;
 }
 
 async function answerScreenRequest(target, fromUser) {
@@ -3953,7 +4036,7 @@ async function ensureHttpRealtime(label = "live features") {
       },
     });
     state.httpRealtimeClientId = data.clientId || state.httpRealtimeClientId || getHttpRealtimeClientId();
-    state.clientId = state.clientId || state.httpRealtimeClientId;
+    state.clientId = state.httpRealtimeClientId;
     state.httpRealtimeSince = Number(data.now || Date.now());
     state.httpRealtimeActive = true;
     if (Array.isArray(data.peers)) {
@@ -4028,6 +4111,25 @@ async function pollHttpRealtime() {
   }
 }
 
+async function refreshRealtimePeers() {
+  if (!state.loggedIn) return [];
+  try {
+    const data = await api("/api/realtime/peers");
+    if (Array.isArray(data.peers)) {
+      state.peers = new Map(data.peers.map((peer) => [peer.id, peer]));
+    }
+    if (Array.isArray(data.presence)) state.presence = data.presence;
+    renderPeers();
+    renderVoice();
+    renderDmCall();
+    renderDashboard();
+    return Array.from(state.peers.values());
+  } catch (error) {
+    if (state.httpRealtimeActive) await pollHttpRealtime();
+    return Array.from(state.peers.values());
+  }
+}
+
 function sendHttpRealtime(payload) {
   if (!payload) return false;
   api("/api/realtime/send", {
@@ -4045,7 +4147,7 @@ function sendHttpRealtime(payload) {
 }
 
 function queueRealtimePayload(payload) {
-  if (!payload || !["presence:update", "typing", "voice:state", "screen:status", "voice:join"].includes(payload.type)) return;
+  if (!payload || !["presence:update", "typing", "voice:state", "screen:status", "voice:join", "signal", "voice:signal"].includes(payload.type)) return;
   state.wsOutbox.push({ ...payload, queuedAt: Date.now() });
   state.wsOutbox = state.wsOutbox.filter((entry) => Date.now() - entry.queuedAt < 15000).slice(-20);
 }
@@ -4088,6 +4190,7 @@ async function refreshStateFromServer() {
   state.settings = data.settings || state.settings;
   state.rooms = data.rooms || state.rooms;
   state.messages = data.messages || state.messages;
+  state.secretMessages = data.secretMessages || state.secretMessages;
   state.dms = data.dms || state.dms;
   state.dmGroups = data.dmGroups || state.dmGroups;
   state.files = data.files || state.files;
@@ -4146,6 +4249,7 @@ function renderAll() {
     renderDashboard();
     renderRooms();
     renderMessages();
+    renderSecretMessages();
     renderDms();
     renderDmCall();
     renderFriends();
@@ -4163,6 +4267,7 @@ function renderAll() {
     renderUsers();
     renderFeatureLocks();
     renderFeatureVisibility();
+    renderSecretMessaging();
     renderPaywalls();
     renderRoomManager();
     renderAnnouncements();
@@ -4303,6 +4408,7 @@ function renderShell() {
   if (!isOwner() && state.activeView === "admin") showView("dashboard");
   if (!isOwner() && state.activeView === "domain") showView("dashboard");
   if (!isDev() && state.activeView === "hmd") showView("dashboard");
+  if (state.activeView === "secret" && !secretMessagingEnabled()) showView("dashboard");
 }
 
 function renderDashboard() {
@@ -4779,6 +4885,43 @@ function canAccessVisibleRoom(room) {
 
 function renderMessages() {
   return renderWithFocusPreserved(renderMessagesInner);
+}
+
+function renderSecretMessages() {
+  if (!els.secretView || !els.secretMessageList) return;
+  const enabled = secretMessagingEnabled();
+  els.secretView.classList.toggle("hidden", !enabled);
+  if (els.secretNavButton) setNavVisibility(els.secretNavButton, enabled);
+  if (!enabled) return;
+  els.secretState.textContent = isOwner()
+    ? "Owner monitor for all secret messages"
+    : "Private owner-enabled messages";
+  const shouldStick =
+    els.secretMessageList.scrollTop + els.secretMessageList.clientHeight >= els.secretMessageList.scrollHeight - 24;
+  const scrollOffset = els.secretMessageList.scrollHeight - els.secretMessageList.scrollTop;
+  els.secretMessageList.replaceChildren();
+  if (!state.secretMessages.length) {
+    els.secretMessageList.append(emptyBlock("No secret messages yet"));
+  } else {
+    state.secretMessages.forEach((message) => {
+      const item = document.createElement("article");
+      item.className = `message ${message.user === state.user.username ? "mine" : ""}`;
+      const meta = document.createElement("div");
+      meta.className = "message-meta";
+      meta.append(textNode(message.user), textNode(formatDate(message.createdAt)));
+      if (isOwner() && message.sourceIp) meta.append(textNode(`From ${message.sourceIp}`));
+      const body = document.createElement("div");
+      body.className = "message-text";
+      body.textContent = message.text || "";
+      item.append(meta, body);
+      appendMessageAttachment(item, message.attachment);
+      els.secretMessageList.append(item);
+    });
+  }
+  requestAnimationFrame(() => {
+    if (shouldStick) scrollToBottom(els.secretMessageList);
+    else els.secretMessageList.scrollTop = Math.max(0, els.secretMessageList.scrollHeight - scrollOffset);
+  });
 }
 
 function renderMessagesInner() {
@@ -6404,7 +6547,9 @@ function syncSearchedAccountDetails(visibleUsers) {
 
 function openAccountDetails(username) {
   state.selectedAccountDetails = username;
+  state.accountDetailFiles = { username, files: [], loading: true, error: "" };
   renderAccountDetails();
+  loadAccountDetailFiles(username);
   if (els.accountDetailPanel) els.accountDetailPanel.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
@@ -6416,6 +6561,20 @@ function openAccountDetailTab(username) {
 
 function openSelectedAccountDetailTab() {
   openAccountDetailTab(state.selectedAccountDetails);
+}
+
+async function loadAccountDetailFiles(username) {
+  if (!isOwner() || !username) return;
+  const target = String(username || "");
+  try {
+    const data = await api(`/api/users/files?username=${encodeURIComponent(target)}`);
+    if (state.selectedAccountDetails !== target) return;
+    state.accountDetailFiles = { username: target, files: data.files || [], loading: false, error: "" };
+  } catch (error) {
+    if (state.selectedAccountDetails !== target) return;
+    state.accountDetailFiles = { username: target, files: [], loading: false, error: error.message || "Could not load files" };
+  }
+  renderAccountDetails();
 }
 
 function renderAccountDetails() {
@@ -6484,6 +6643,7 @@ function renderAccountDetails() {
       `Created ${formatDate(report.createdAt)}`,
     ].filter(Boolean)));
   });
+  els.accountDetailBody.append(accountUploadedFilesCard(user.username));
   if (!history.length) {
     els.accountDetailBody.append(adminCard("Recent browser/search history", "Empty", ["No Inner Browser opens logged for this account."]));
     return;
@@ -6500,6 +6660,67 @@ function renderAccountDetails() {
     ];
     els.accountDetailBody.append(adminCard(details.query ? "Browser search" : "Browser open", details.host || "history", lines));
   });
+}
+
+function accountUploadedFilesCard(username) {
+  const holder = document.createElement("article");
+  holder.className = "account-card account-files-card";
+  const title = document.createElement("strong");
+  const fileState = state.accountDetailFiles || {};
+  const files = fileState.username === username && Array.isArray(fileState.files) ? fileState.files : [];
+  title.textContent = fileState.loading && fileState.username === username
+    ? "Uploaded files loading"
+    : `Uploaded files (${files.length})`;
+  holder.append(title);
+  if (fileState.error && fileState.username === username) {
+    holder.append(textNode(fileState.error));
+    return holder;
+  }
+  if (fileState.loading && fileState.username === username) {
+    holder.append(textNode("Loading this user's uploads, including private files."));
+    return holder;
+  }
+  if (!files.length) {
+    holder.append(textNode("No uploads saved for this account."));
+    return holder;
+  }
+  const list = document.createElement("div");
+  list.className = "account-file-list";
+  files
+    .slice()
+    .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0))
+    .forEach((file) => {
+      const row = document.createElement("div");
+      row.className = "account-file-row";
+      const info = document.createElement("div");
+      info.className = "account-file-info";
+      const name = document.createElement("strong");
+      name.textContent = file.originalName || "File";
+      const meta = document.createElement("span");
+      meta.textContent = [
+        file.private ? "Private" : file.category || "file",
+        file.kind || "",
+        formatBytes(file.size),
+        formatDate(file.createdAt),
+        file.releaseAt ? `release ${formatDate(file.releaseAt)}` : "",
+      ].filter(Boolean).join(" - ");
+      info.append(name, meta);
+      const actions = document.createElement("div");
+      actions.className = "account-actions";
+      const open = document.createElement("a");
+      open.className = "ghost-light-button compact-button";
+      open.href = file.url;
+      open.target = "_blank";
+      open.rel = "noopener";
+      open.textContent = "Open";
+      const download = accountButton("Download", () => downloadUrl(downloadableUrl(file.url), file.originalName || "file"));
+      const remove = accountButton("Delete", () => deleteFile(file.id));
+      actions.append(open, download, remove);
+      row.append(info, actions);
+      list.append(row);
+    });
+  holder.append(list);
+  return holder;
 }
 
 function browserHistoryForUser(username) {
@@ -6623,6 +6844,17 @@ function renderFeatureVisibility() {
       (rule.allowedUsers || []).length ? `Allowed: ${(rule.allowedUsers || []).join(", ")}` : "No allowed users",
     ]));
   });
+}
+
+function renderSecretMessaging() {
+  if (!els.secretMessagingForm) return;
+  const admin = isOwner();
+  els.secretMessagingForm.classList.toggle("hidden", !admin);
+  if (!admin) return;
+  const allowed = state.settings.secretMessaging && Array.isArray(state.settings.secretMessaging.allowedUsers)
+    ? state.settings.secretMessaging.allowedUsers
+    : [];
+  setInputIfNotFocused(els.secretMessagingUsers, allowed.join(", "));
 }
 
 function renderPaywalls() {
@@ -7253,6 +7485,7 @@ function updateControls() {
   const room = state.rooms.find((entry) => entry.id === state.selectedRoomId) || { id: "main" };
   const messagesEnabled = serverEnabled && featureAvailable("messages") && (room.id === "main" || featureAvailable("rooms"));
   const dmsEnabled = serverEnabled && featureAvailable("dms") && Boolean(state.selectedDmUser);
+  const secretEnabled = serverEnabled && secretMessagingEnabled();
   const filesEnabled = serverEnabled && featureAvailable("files");
   const screenEnabled = serverEnabled && featureAvailable("screen");
   const friendsEnabled = serverEnabled && featureAvailable("friends");
@@ -7271,6 +7504,9 @@ function updateControls() {
   els.dmAttachment.disabled = !dmsEnabled;
   els.dmSelfieButton.disabled = !dmsEnabled;
   els.sendDmButton.disabled = !dmsEnabled;
+  if (els.secretMessageInput) els.secretMessageInput.disabled = !secretEnabled;
+  if (els.secretMessageAttachment) els.secretMessageAttachment.disabled = !secretEnabled;
+  if (els.sendSecretMessageButton) els.sendSecretMessageButton.disabled = !secretEnabled;
   els.dmGroupName.disabled = !dmsEnabled;
   els.dmGroupMembers.classList.toggle("disabled", !dmsEnabled);
   els.dmGroupMembers.querySelectorAll("input").forEach((input) => {
@@ -7304,6 +7540,13 @@ function addMessage(message) {
   state.messages = state.messages.slice(-500);
   renderShell();
   renderMessages();
+}
+
+function addSecretMessage(message) {
+  if (!message || state.secretMessages.some((entry) => entry.id === message.id)) return;
+  state.secretMessages.push(message);
+  state.secretMessages = state.secretMessages.slice(-500);
+  renderSecretMessages();
 }
 
 function addDm(dm) {
@@ -7562,6 +7805,13 @@ async function deleteFile(id) {
   if (!isOwner()) return notify("Admin access required");
   try {
     await api(`/api/files/${encodeURIComponent(id)}`, { method: "DELETE" });
+    state.files = state.files.filter((file) => file.id !== id);
+    if (state.accountDetailFiles && Array.isArray(state.accountDetailFiles.files)) {
+      state.accountDetailFiles.files = state.accountDetailFiles.files.filter((file) => file.id !== id);
+    }
+    renderFiles();
+    renderAccountDetails();
+    renderShell();
   } catch (error) {
     notify(error.message);
   }
@@ -8247,6 +8497,15 @@ function featureAvailable(feature) {
   return true;
 }
 
+function secretMessagingEnabled() {
+  if (!state.user) return false;
+  if (isOwner()) return true;
+  if (!featureAvailable("secret")) return false;
+  if (state.settings.secretMessaging && state.settings.secretMessaging.enabled) return true;
+  const allowed = (state.settings.secretMessaging && state.settings.secretMessaging.allowedUsers) || [];
+  return allowed.includes(String(state.user.username || "").toLowerCase());
+}
+
 function lockMessage(feature) {
   const hidden = hiddenRule(feature);
   if (!isOwner() && hidden.hidden && !hidden.allowedUsers.includes((state.user && state.user.username || "").toLowerCase())) {
@@ -8268,6 +8527,7 @@ function featureLabel(feature) {
     hmd: "HMD",
     browser: "Browser",
     dms: "DMs",
+    secret: "Secret",
     files: "Files",
     messages: "Messages",
     rooms: "Side rooms",
@@ -8292,6 +8552,7 @@ function viewFeature(viewName) {
   const map = {
     messages: "messages",
     dms: "dms",
+    secret: "secret",
     friends: "friends",
     profile: "profiles",
     store: "store",
@@ -8363,6 +8624,10 @@ function syncHiddenNav() {
       button.style.display = "";
       button.setAttribute("aria-hidden", "false");
       button.tabIndex = 0;
+      return;
+    }
+    if (button.dataset.view === "secret") {
+      setNavVisibility(button, secretMessagingEnabled());
       return;
     }
     const feature = viewFeature(button.dataset.view);

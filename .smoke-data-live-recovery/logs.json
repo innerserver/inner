@@ -1,0 +1,15 @@
+[
+  {
+    "id": "55ac4cff-086a-412d-9ace-fd5bc31e19b1",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3182",
+    "createdAt": "2026-08-18T02:56:39.252Z"
+  }
+]

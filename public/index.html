@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-127-ui-scheduled-locks" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-129-realtime-screen-fix" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -114,6 +114,7 @@
           <button class="nav-button active" type="button" data-view="dashboard">Dashboard</button>
           <button class="nav-button" type="button" data-view="messages">Messages</button>
           <button class="nav-button" type="button" data-view="dms">DMs</button>
+          <button id="secretNavButton" class="nav-button hidden" type="button" data-view="secret">Secret</button>
           <button class="nav-button" type="button" data-view="friends">Friends</button>
           <button class="nav-button" type="button" data-view="profile">Profile</button>
           <button class="nav-button" type="button" data-view="store">Store</button>
@@ -301,6 +302,21 @@
             <input id="dmSelfieInput" class="hidden" type="file" accept="image/*" capture="user" />
             <button id="dmSelfieButton" class="secondary-button" type="button">Selfie</button>
             <button id="sendDmButton" class="primary-button" type="submit">Send</button>
+          </form>
+        </section>
+
+        <section id="secretView" class="view">
+          <div class="section-header">
+            <div>
+              <h2>Secret</h2>
+              <p id="secretState">Private owner-enabled messages</p>
+            </div>
+          </div>
+          <div id="secretMessageList" class="message-list" aria-live="polite"></div>
+          <form id="secretMessageForm" class="composer">
+            <input id="secretMessageInput" maxlength="2000" placeholder="Write a secret message" autocomplete="off" />
+            <input id="secretMessageAttachment" type="file" accept="image/*,video/*,audio/*" />
+            <button id="sendSecretMessageButton" class="primary-button" type="submit">Send</button>
           </form>
         </section>
 
@@ -690,7 +706,7 @@
 
             <form id="featureLockForm" class="panel-form hidden">
               <h3>Feature locks</h3>
-              <label>Feature<select id="featureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="docs">Google Workspace</option><option value="browser">Browser</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option><option value="store">Store</option><option value="chess">Games</option><option value="domain">Domain</option><option value="admin">Admin</option><option value="hmd">HMD</option></select></label>
+              <label>Feature<select id="featureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="secret">Secret</option><option value="files">Files</option><option value="docs">Google Workspace</option><option value="browser">Browser</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option><option value="store">Store</option><option value="chess">Games</option><option value="domain">Domain</option><option value="admin">Admin</option><option value="hmd">HMD</option></select></label>
               <label>Minutes<input id="featureMinutes" type="number" min="0" max="525600" value="60" /></label>
               <label>Starts optional<input id="featureStartAt" type="datetime-local" /></label>
               <label>Ends optional<input id="featureEndAt" type="datetime-local" /></label>
@@ -704,16 +720,23 @@
             <form id="featureVisibilityForm" class="panel-form owner-only hidden">
               <h3>Hidden tabs</h3>
               <p class="panel-note">Hardcoded owner controls for the admin account. Hidden tabs disappear from member sidebars.</p>
-              <label>Feature<select id="visibilityFeatureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="docs">Google Workspace</option><option value="browser">Browser</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option><option value="store">Store</option><option value="chess">Games</option><option value="domain">Domain</option><option value="admin">Admin</option><option value="hmd">HMD</option></select></label>
+              <label>Feature<select id="visibilityFeatureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="secret">Secret</option><option value="files">Files</option><option value="docs">Google Workspace</option><option value="browser">Browser</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option><option value="store">Store</option><option value="chess">Games</option><option value="domain">Domain</option><option value="admin">Admin</option><option value="hmd">HMD</option></select></label>
               <label class="switch-row"><input id="visibilityHidden" type="checkbox" /><span>Hide from normal users</span></label>
               <label>Allowed users<input id="visibilityAllowedUsers" maxlength="300" placeholder="username1, username2" /></label>
               <button id="saveFeatureVisibilityButton" class="primary-button" type="submit">Save hidden tab</button>
             </form>
 
+            <form id="secretMessagingForm" class="panel-form owner-only hidden">
+              <h3>Secret messaging</h3>
+              <p class="panel-note">Type usernames here. Those users get the Secret tab. Owner admins can monitor all secret messages.</p>
+              <label>Enabled users<textarea id="secretMessagingUsers" rows="3" maxlength="1200" placeholder="username1, username2"></textarea></label>
+              <button id="saveSecretMessagingButton" class="primary-button" type="submit">Save secret access</button>
+            </form>
+
             <form id="paywallForm" class="panel-form owner-only hidden">
               <h3>Paywall</h3>
               <p class="panel-note">Choose a Store item as the pass. Mark the user's order paid to unlock the feature.</p>
-              <label>Feature<select id="paywallFeatureName"><option value="all">All / whole app</option><option value="messages">Messages</option><option value="dms">DMs</option><option value="files">Files</option><option value="docs">Google Workspace</option><option value="browser">Browser</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="store">Store</option><option value="chess">Games</option><option value="domain">Domain</option><option value="admin">Admin</option><option value="hmd">HMD</option></select></label>
+              <label>Feature<select id="paywallFeatureName"><option value="all">All / whole app</option><option value="messages">Messages</option><option value="dms">DMs</option><option value="secret">Secret</option><option value="files">Files</option><option value="docs">Google Workspace</option><option value="browser">Browser</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="store">Store</option><option value="chess">Games</option><option value="domain">Domain</option><option value="admin">Admin</option><option value="hmd">HMD</option></select></label>
               <label>Store item<select id="paywallItemId"></select></label>
               <label class="switch-row"><input id="paywallEnabled" type="checkbox" /><span>Enable paywall</span></label>
               <label>Message<input id="paywallMessage" maxlength="220" placeholder="Buy the access pass in Store to unlock this." /></label>
@@ -907,11 +930,11 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=connectifi-127-ui-scheduled-locks" defer></script>
-    <script src="/status-guard.js?v=connectifi-127-ui-scheduled-locks" defer></script>
-    <script src="/ui-boot.js?v=connectifi-127-ui-scheduled-locks" defer></script>
-    <script src="/app.js?v=connectifi-127-ui-scheduled-locks" defer></script>
-    <script src="/force-logout.js?v=connectifi-127-ui-scheduled-locks" defer></script>
+    <script src="/session-guard.js?v=connectifi-129-realtime-screen-fix" defer></script>
+    <script src="/status-guard.js?v=connectifi-129-realtime-screen-fix" defer></script>
+    <script src="/ui-boot.js?v=connectifi-129-realtime-screen-fix" defer></script>
+    <script src="/app.js?v=connectifi-129-realtime-screen-fix" defer></script>
+    <script src="/force-logout.js?v=connectifi-129-realtime-screen-fix" defer></script>
   </body>
 </html>
 

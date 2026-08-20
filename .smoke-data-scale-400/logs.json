@@ -1,0 +1,28 @@
+[
+  {
+    "id": "58d8b5de-1cc0-4b16-8671-f721f58ccae0",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3181",
+    "createdAt": "2026-08-17T06:57:05.356Z"
+  },
+  {
+    "id": "11dbcff6-7823-47d7-ab04-5705368d475e",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3181",
+    "createdAt": "2026-08-17T06:56:43.821Z"
+  }
+]

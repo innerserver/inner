@@ -172,6 +172,50 @@ select:disabled {
   display: none !important;
 }
 
+.account-files-card {
+  gap: 12px;
+}
+
+.account-file-list {
+  display: grid;
+  gap: 10px;
+}
+
+.account-file-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+
+.account-file-info {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.account-file-info strong,
+.account-file-info span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#secretView .message-list {
+  min-height: 360px;
+}
+
+@media (max-width: 640px) {
+  .account-file-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .login-shell {
   min-height: 100vh;
   display: grid;

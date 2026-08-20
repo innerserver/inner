@@ -62,6 +62,7 @@ const FILES = {
   users: path.join(DATA_DIR, "users.json"),
   rooms: path.join(DATA_DIR, "rooms.json"),
   messages: path.join(DATA_DIR, "messages.json"),
+  secretMessages: path.join(DATA_DIR, "secret-messages.json"),
   dms: path.join(DATA_DIR, "dms.json"),
   dmGroups: path.join(DATA_DIR, "dm-groups.json"),
   uploads: path.join(DATA_DIR, "files.json"),
@@ -129,6 +130,7 @@ const allowedFeatureLocks = new Set([
   "docs",
   "browser",
   "messages",
+  "secret",
   "files",
   "screen",
   "dms",
@@ -371,6 +373,7 @@ async function ensureStorage() {
     },
   ]);
   await ensureJson(FILES.messages, []);
+  await ensureJson(FILES.secretMessages, []);
   await ensureJson(FILES.dms, []);
   await ensureJson(FILES.dmGroups, []);
   await ensureJson(FILES.uploads, []);
@@ -427,6 +430,7 @@ async function ensureStorage() {
     reportRetentionDays: 30,
     featureLocks: {},
     featureVisibility: {},
+    secretMessaging: { allowedUsers: [] },
     paywalls: {},
     persistentLogin: {
       defaultEnabled: true,
@@ -672,6 +676,13 @@ async function ensureSettings() {
   let changed = false;
   if (!next.featureLocks || typeof next.featureLocks !== "object" || Array.isArray(next.featureLocks)) {
     next.featureLocks = {};
+    changed = true;
+  }
+  if (!next.secretMessaging || typeof next.secretMessaging !== "object" || Array.isArray(next.secretMessaging)) {
+    next.secretMessaging = { allowedUsers: [] };
+    changed = true;
+  } else {
+    next.secretMessaging = sanitizeSecretMessaging(next.secretMessaging);
     changed = true;
   }
   if (!["open", "request"].includes(String(next.signupMode || "").toLowerCase())) {
@@ -1000,6 +1011,21 @@ async function routeApi(req, res, requestUrl) {
     });
   }
 
+  if (req.method === "GET" && pathname === "/api/realtime/peers") {
+    const user = requireUser(req, res);
+    if (!user) return;
+    const [users, friends, profiles] = await Promise.all([
+      readJson(FILES.users, []),
+      readJson(FILES.friends, { requests: [], friendships: [] }),
+      readJson(FILES.profiles, {}),
+    ]);
+    return json(res, 200, {
+      peers: peerList("", user, users, friends).filter((peer) => peer.username !== user.username),
+      presence: presenceList(profiles, user, users, friends),
+      now: Date.now(),
+    });
+  }
+
   if (req.method === "POST" && pathname === "/api/realtime/send") {
     const user = requireUser(req, res);
     if (!user) return;
@@ -1297,6 +1323,7 @@ async function routeApi(req, res, requestUrl) {
       settings,
       rooms,
       messages,
+      secretMessages,
       dms,
       dmGroups,
       files,
@@ -1325,6 +1352,7 @@ async function routeApi(req, res, requestUrl) {
       readJson(FILES.settings, {}),
       readJson(FILES.rooms, []),
       readJson(FILES.messages, []),
+      readJson(FILES.secretMessages, []),
       readJson(FILES.dms, []),
       readJson(FILES.dmGroups, []),
       readJson(FILES.uploads, []),
@@ -1370,11 +1398,12 @@ async function routeApi(req, res, requestUrl) {
       : dms.filter((entry) => Array.isArray(entry.participants) && entry.participants.includes(user.username));
     return json(res, 200, {
       user: safeUser(user, user),
-      settings: safeSettings(settings),
+      settings: safeSettings(settings, user),
       rtcConfig: buildRtcConfig(),
       uploadConfig: safeUploadConfig(settings),
       rooms: safeRoomsForUser(rooms, user),
       messages: normalizedMessages.slice(-STATE_MESSAGE_LIMIT),
+      secretMessages: safeSecretMessages(secretMessages, user, settings).slice(-STATE_MESSAGE_LIMIT),
       dms: visibleDms.slice(-STATE_DM_LIMIT),
       dmGroups: safeDmGroups(dmGroups, user),
       files: safeFileRecords(files, user, rooms).slice(0, STATE_FILE_LIMIT),
@@ -1460,6 +1489,46 @@ async function routeApi(req, res, requestUrl) {
     await addSystemLog("message.sent", user.username, { roomId, hasAttachment: Boolean(attachment), mentions: message.mentions }, req);
     broadcast({ type: "message:new", message });
     return json(res, 201, { message });
+  }
+
+  if (req.method === "GET" && pathname === "/api/secret-messages") {
+    const settings = await readJson(FILES.settings, {});
+    if (!canAccessSecretMessaging(settings, user)) return json(res, 403, { error: "Secret messaging is not enabled for this account" });
+    const secretMessages = await readJson(FILES.secretMessages, []);
+    return json(res, 200, { secretMessages: safeSecretMessages(secretMessages, user, settings).slice(-STATE_MESSAGE_LIMIT) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/secret-messages") {
+    const settings = await readJson(FILES.settings, {});
+    if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
+    if (!canAccessSecretMessaging(settings, user)) return json(res, 403, { error: "Secret messaging is not enabled for this account" });
+    const rateError = await checkMessageRate(user);
+    if (rateError) return json(res, 429, { error: rateError });
+    const body = await readJsonBody(req);
+    const textValue = String(body.text || "").trim().slice(0, 2000);
+    const attachment = await resolveChatAttachment(body.attachment);
+    if (!textValue && !attachment) return json(res, 400, { error: "Message cannot be empty" });
+    const automodError = await checkAutomod(textValue, user);
+    if (automodError) return json(res, 400, { error: automodError });
+    const secretMessages = await readJson(FILES.secretMessages, []);
+    const message = {
+      id: crypto.randomUUID(),
+      text: textValue,
+      attachment,
+      reactions: {},
+      user: user.username,
+      sourceIp: getClientIp(req),
+      sourceHost: req.headers.host || "",
+      sourceAgent: String(req.headers["user-agent"] || "").slice(0, 240),
+      sourceDevice: deviceSignature(req),
+      approximateLocation: approximateLocationFromIp(getClientIp(req)),
+      createdAt: new Date().toISOString(),
+    };
+    secretMessages.push(message);
+    await writeJson(FILES.secretMessages, secretMessages.slice(-MESSAGE_STORE_LIMIT));
+    await addSystemLog("secret-message.sent", user.username, { hasAttachment: Boolean(attachment) }, req);
+    broadcastSecretMessage({ type: "secret-message:new", message }, settings);
+    return json(res, 201, { message: safeSecretMessages([message], user, settings)[0] });
   }
 
   if (req.method === "POST" && pathname === "/api/upload") {
@@ -2541,8 +2610,8 @@ async function routeApi(req, res, requestUrl) {
     };
     await writeJson(FILES.settings, next);
     await addSystemLog("feature.lock.updated", user.username, { feature, minutes, reason }, req);
-    broadcast({ type: "state:update", settings: safeSettings(next) });
-    return json(res, 200, { settings: safeSettings(next) });
+    broadcastSettings(next);
+    return json(res, 200, { settings: safeSettings(next, user) });
   }
 
   if (req.method === "GET" && pathname === "/api/backups") {
@@ -2860,6 +2929,15 @@ async function routeApi(req, res, requestUrl) {
     return json(res, 200, { users: users.map((entry) => safeUser(entry, user)), profiles: safeProfiles(profiles, users, user) });
   }
 
+  if (req.method === "GET" && pathname === "/api/users/files") {
+    if (!canOwn(user)) return json(res, 403, { error: "Owner admin access required" });
+    const username = normalizeUsername(requestUrl.searchParams.get("username") || "");
+    if (!username) return json(res, 400, { error: "Choose a user" });
+    const [files, rooms] = await Promise.all([readJson(FILES.uploads, []), readJson(FILES.rooms, [])]);
+    const userFiles = files.filter((file) => String(file.user || "").toLowerCase() === username.toLowerCase());
+    return json(res, 200, { username, files: safeFileRecords(userFiles, user, rooms) });
+  }
+
   if (req.method === "DELETE" && pathname.startsWith("/api/users/")) {
     if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
     const username = decodeURIComponent(pathname.split("/").pop() || "");
@@ -3062,6 +3140,7 @@ async function routeApi(req, res, requestUrl) {
       persistentLogin: sanitizePersistentLogin(body.persistentLogin && typeof body.persistentLogin === "object" ? body.persistentLogin : settings.persistentLogin || {}),
       serviceScale: sanitizeServiceScale(body.serviceScale && typeof body.serviceScale === "object" ? body.serviceScale : settings.serviceScale || {}),
       featureVisibility: sanitizeFeatureVisibility(canOwn(user) && body.featureVisibility && typeof body.featureVisibility === "object" ? body.featureVisibility : settings.featureVisibility || {}),
+      secretMessaging: sanitizeSecretMessaging(canOwn(user) && body.secretMessaging && typeof body.secretMessaging === "object" ? body.secretMessaging : settings.secretMessaging || {}),
       paywalls: sanitizePaywalls(canOwn(user) && body.paywalls && typeof body.paywalls === "object" ? body.paywalls : settings.paywalls || {}),
       browserPolicy: sanitizeBrowserPolicy(canOwn(user) && body.browserPolicy && typeof body.browserPolicy === "object" ? body.browserPolicy : settings.browserPolicy || {}),
       shutdownAt: nextServerEnabled ? "" : settings.shutdownAt || new Date().toISOString(),
@@ -3071,7 +3150,7 @@ async function routeApi(req, res, requestUrl) {
       updatedBy: user.username,
     };
     await writeJson(FILES.settings, next);
-    broadcast({ type: "state:update", settings: safeSettings(next) });
+    broadcastSettings(next);
     let kicked = { sessions: 0, clients: 0 };
     if (!next.serverEnabled) {
       kicked = kickNonShutdownUsers();
@@ -3081,7 +3160,7 @@ async function routeApi(req, res, requestUrl) {
     } else {
       await addSystemLog("server.settings.updated", user.username, { roomName: next.roomName }, req);
     }
-    return json(res, 200, { settings: safeSettings(next) });
+    return json(res, 200, { settings: safeSettings(next, user) });
   }
 
   if (req.method === "POST" && pathname === "/api/vpn") {
@@ -4121,7 +4200,8 @@ function handleWsData(client, chunk) {
         sendWs(client, { type: "error", error: error.message || "Live update failed" });
       });
     } catch (error) {
-      sendWs(client, { type: "error", error: "Bad websocket message" });
+      closeWs(client);
+      return;
     }
   }
 }
@@ -4783,6 +4863,27 @@ function broadcastManagers(payload) {
   }
 }
 
+function broadcastSettings(settings) {
+  pruneHttpRealtime();
+  for (const client of realtimeClients()) {
+    deliverRealtime(client, { type: "state:update", settings: safeSettings(settings, client) });
+  }
+}
+
+function broadcastSecretMessage(payload, settings) {
+  const allowed = new Set(sanitizeSecretMessaging(settings.secretMessaging || {}).allowedUsers);
+  const sender = String(payload && payload.message && payload.message.user || "").toLowerCase();
+  for (const client of realtimeClients()) {
+    const username = String(client.username || "").toLowerCase();
+    if (canOwn(client) || username === sender || allowed.has(username)) {
+      deliverRealtime(client, {
+        ...payload,
+        message: safeSecretMessages([payload.message], client, settings)[0],
+      });
+    }
+  }
+}
+
 function broadcastDm(payload, dm) {
   const participants = new Set(Array.isArray(dm.participants) ? dm.participants : [dm.from, dm.to]);
   for (const client of wsClients.values()) {
@@ -5388,6 +5489,30 @@ function canAccessFileRecord(file, user, rooms = []) {
   return room ? canAccessRoom(room, user) : false;
 }
 
+function canAccessSecretMessaging(settings, user) {
+  if (!user) return false;
+  if (canOwn(user)) return true;
+  const allowed = sanitizeSecretMessaging(settings.secretMessaging || {}).allowedUsers;
+  return allowed.includes(String(user.username || "").toLowerCase());
+}
+
+function safeSecretMessages(messages, user, settings = {}) {
+  if (!user) return [];
+  const allowed = canAccessSecretMessaging(settings, user);
+  return (messages || [])
+    .filter((message) => canOwn(user) || allowed || message.user === user.username)
+    .map((message) => ({
+      id: message.id,
+      text: message.text,
+      user: message.user,
+      attachment: message.attachment || null,
+      reactions: message.reactions || {},
+      sourceIp: canOwn(user) ? message.sourceIp || "" : "",
+      sourceAgent: canOwn(user) ? message.sourceAgent || "" : "",
+      createdAt: message.createdAt || "",
+    }));
+}
+
 function safeFileRecords(files, user, rooms = []) {
   return (files || [])
     .filter((file) => canAccessFileRecord(file, user, rooms))
@@ -5922,7 +6047,7 @@ function normalizeAccountRequestStatus(status) {
   return "pending";
 }
 
-function safeSettings(settings) {
+function safeSettings(settings, viewer = null) {
   return {
     ...settings,
     emailRoutes: sanitizeEmailRoutes(settings.emailRoutes || {}),
@@ -5933,6 +6058,7 @@ function safeSettings(settings) {
     persistentLogin: sanitizePersistentLogin(settings.persistentLogin || {}),
     featureLocks: visibleFeatureLocks(settings.featureLocks || {}),
     featureVisibility: sanitizeFeatureVisibility(settings.featureVisibility || {}),
+    secretMessaging: safeSecretMessagingSettings(settings.secretMessaging || {}, viewer),
     paywalls: sanitizePaywalls(settings.paywalls || {}),
     browserPolicy: sanitizeBrowserPolicy(settings.browserPolicy || {}),
     reportRetentionDays: Math.max(1, Math.min(3650, Number(settings.reportRetentionDays || 30))),
@@ -5940,6 +6066,20 @@ function safeSettings(settings) {
     shutdownAt: settings.serverEnabled === false ? String(settings.shutdownAt || "") : "",
     shutdownBy: settings.serverEnabled === false ? String(settings.shutdownBy || "") : "",
     shutdownReason: settings.serverEnabled === false ? String(settings.shutdownReason || "") : "",
+  };
+}
+
+function safeSecretMessagingSettings(source = {}, viewer = null) {
+  const clean = sanitizeSecretMessaging(source);
+  if (canOwn(viewer)) return { ...clean, enabled: true };
+  const username = String(viewer && viewer.username || "").toLowerCase();
+  const enabled = Boolean(username && clean.allowedUsers.includes(username));
+  return { allowedUsers: enabled ? [username] : [], enabled };
+}
+
+function sanitizeSecretMessaging(source = {}) {
+  return {
+    allowedUsers: normalizeUsernameList(source.allowedUsers || source.users || source.enabledUsers || []).slice(0, 200),
   };
 }
 

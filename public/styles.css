@@ -5683,3 +5683,46 @@ button.primary-button {
     border-radius: 10px !important;
   }
 }
+
+/* v131 sidebar close guard. Older recovery blocks intentionally kept the
+   desktop rail visible; this makes the hamburger close state actually remove
+   the rail and its reserved column while preserving the mobile drawer. */
+@media (min-width: 861px) {
+  #appView.app:not(.hidden).sidebar-closed {
+    display: grid !important;
+    grid-template-columns: 0 minmax(0, 1fr) !important;
+  }
+
+  #appView.app:not(.hidden).sidebar-closed > .sidebar {
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    overflow: hidden !important;
+    transform: translateX(-100%) !important;
+  }
+
+  #appView.app:not(.hidden).sidebar-closed > .workspace {
+    grid-column: 2 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+@media (max-width: 860px) {
+  #appView.app:not(.hidden):not(.sidebar-open) > .sidebar,
+  #appView.app:not(.hidden).sidebar-closed > .sidebar {
+    transform: translateX(-105%) !important;
+    pointer-events: none !important;
+  }
+
+  #appView.app:not(.hidden).sidebar-open > .sidebar {
+    transform: translateX(0) !important;
+    pointer-events: auto !important;
+    visibility: visible !important;
+  }
+}

@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-131-sidebar-close" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-132-realtime-screen-time" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -708,7 +708,7 @@
             </form>
 
             <form id="featureLockForm" class="panel-form hidden">
-              <h3>Feature locks</h3>
+              <h3>Screen time / feature locks</h3>
               <label>Feature<select id="featureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="secret">Secret</option><option value="files">Files</option><option value="docs">Google Workspace</option><option value="browser">Browser</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option><option value="store">Store</option><option value="chess">Games</option><option value="domain">Domain</option><option value="admin">Admin</option><option value="hmd">HMD</option></select></label>
               <label>Minutes<input id="featureMinutes" type="number" min="0" max="525600" value="60" /></label>
               <label>Starts optional<input id="featureStartAt" type="datetime-local" /></label>
@@ -717,7 +717,7 @@
               <label>Roles affected<input id="featureLockRoles" maxlength="120" placeholder="member" /></label>
               <label>Reason<input id="featureReason" maxlength="160" placeholder="optional" /></label>
               <button id="saveFeatureLockButton" class="primary-button" type="submit">Set lock</button>
-              <p class="panel-note">Use 0 minutes to turn a feature back on. Moderators can schedule room-only locks for members.</p>
+              <p class="panel-note">Use this like screen time: choose a feature, start/end time, room, and roles. Use 0 minutes to turn it back on. Moderators can schedule room-only locks for members.</p>
             </form>
 
             <form id="featureVisibilityForm" class="panel-form owner-only hidden">
@@ -933,11 +933,11 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=connectifi-131-sidebar-close" defer></script>
-    <script src="/status-guard.js?v=connectifi-131-sidebar-close" defer></script>
-    <script src="/ui-boot.js?v=connectifi-131-sidebar-close" defer></script>
-    <script src="/app.js?v=connectifi-131-sidebar-close" defer></script>
-    <script src="/force-logout.js?v=connectifi-131-sidebar-close" defer></script>
+    <script src="/session-guard.js?v=connectifi-132-realtime-screen-time" defer></script>
+    <script src="/status-guard.js?v=connectifi-132-realtime-screen-time" defer></script>
+    <script src="/ui-boot.js?v=connectifi-132-realtime-screen-time" defer></script>
+    <script src="/app.js?v=connectifi-132-realtime-screen-time" defer></script>
+    <script src="/force-logout.js?v=connectifi-132-realtime-screen-time" defer></script>
   </body>
 </html>
 

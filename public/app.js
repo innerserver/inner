@@ -3492,7 +3492,7 @@ async function startShare(options = {}) {
     stream.getTracks().forEach((track) => {
       track.addEventListener("ended", () => stopShare());
     });
-    if (!sendWs({ type: "screen:status", sharing: true, roomId })) {
+    if (!(await sendRealtimeNow({ type: "screen:status", sharing: true, roomId }, "screen sharing"))) {
       stopShare({ silent: true });
       return notify("Live connection is not ready");
     }
@@ -3996,7 +3996,7 @@ async function ensureRealtimeReady(label = "live features") {
     connectSocket({ force: staleConnecting });
   }
   const started = Date.now();
-  while (Date.now() - started < 20000) {
+  while (Date.now() - started < 5000) {
     if (isRealtimeReady()) return true;
     if (state.ws && socketReadyState(state.ws) === 0 && Date.now() - (state.wsConnectingSince || started) > 7000) {
       connectSocket({ force: true });
@@ -4008,6 +4008,12 @@ async function ensureRealtimeReady(label = "live features") {
   const closeDetail = state.wsLastCloseCode ? ` Last close code: ${state.wsLastCloseCode}.` : "";
   const reasonDetail = state.wsLastCloseReason ? ` ${state.wsLastCloseReason}` : "";
   notify(`Live connection is not ready yet for ${label}. Status: ${stateName}.${closeDetail}${reasonDetail} Refresh once; if this repeats, Render or the network is blocking WebSockets.`);
+  return false;
+}
+
+async function sendRealtimeNow(payload, label = "live features") {
+  if (sendWs(payload)) return true;
+  if (await ensureHttpRealtime(label)) return sendWs(payload);
   return false;
 }
 

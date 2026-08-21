@@ -18,6 +18,7 @@ const state = {
   friendGradeFilter: "",
   friendAlphaFilter: "",
   friendSearchTimer: 0,
+  editingFeatureScheduleId: "",
   selectedDmUser: "",
   adminDmFilter: "all",
   accountSearch: "",
@@ -370,6 +371,7 @@ function cacheElements() {
     "profileEmail",
     "profilePhone",
     "profileTheme",
+    "profileVisualStyle",
     "customThemeFields",
     "profileThemeBg",
     "profileThemeSurface",
@@ -488,6 +490,11 @@ function cacheElements() {
     "featureLockRoom",
     "featureLockRoles",
     "featureReason",
+    "featureScheduleId",
+    "featureScheduleStartTime",
+    "featureScheduleEndTime",
+    "featureScheduleRepeats",
+    "cancelFeatureScheduleEditButton",
     "saveFeatureLockButton",
     "featureLockList",
     "featureVisibilityForm",
@@ -516,6 +523,8 @@ function cacheElements() {
     "quickUpdateTitle",
     "quickUpdateNote",
     "quickNotice",
+    "quickGlobalTheme",
+    "quickGlobalVisualStyle",
     "quickAccent",
     "quickDensity",
     "quickRounded",
@@ -754,6 +763,12 @@ function bindEvents() {
     applyProfileTheme(els.profileTheme.value);
     updateProfilePreview();
   });
+  if (els.profileVisualStyle) {
+    els.profileVisualStyle.addEventListener("change", () => {
+      applyProfileVisualStyle(els.profileVisualStyle.value);
+      updateProfilePreview();
+    });
+  }
   if (els.profileAvatarFile) els.profileAvatarFile.addEventListener("change", handleProfileAvatarFile);
   if (els.clearProfileAvatarButton) els.clearProfileAvatarButton.addEventListener("click", clearProfileAvatar);
   [els.profileDisplayName, els.profileAvatarUrl, els.profileBannerUrl, els.profileStatus, els.profileCustomStatus, els.profileThemeBg, els.profileThemeSurface, els.profileThemeInk, els.profileThemeAccent].forEach((input) => {
@@ -817,6 +832,7 @@ function bindEvents() {
   if (els.wipeAccountBrowserHistoryButton) els.wipeAccountBrowserHistoryButton.addEventListener("click", wipeSelectedAccountBrowserHistory);
   if (els.openAccountDetailTabButton) els.openAccountDetailTabButton.addEventListener("click", openSelectedAccountDetailTab);
   els.featureLockForm.addEventListener("submit", saveFeatureLock);
+  if (els.cancelFeatureScheduleEditButton) els.cancelFeatureScheduleEditButton.addEventListener("click", resetFeatureScheduleEditor);
   if (els.featureVisibilityForm) els.featureVisibilityForm.addEventListener("submit", saveFeatureVisibility);
   if (els.visibilityFeatureName) els.visibilityFeatureName.addEventListener("change", renderFeatureVisibility);
   if (els.secretMessagingForm) els.secretMessagingForm.addEventListener("submit", saveSecretMessaging);
@@ -2094,6 +2110,8 @@ async function saveQuickEdit(event) {
           updateTitle: els.quickUpdateTitle ? els.quickUpdateTitle.value : "",
           updateNote: els.quickUpdateNote ? els.quickUpdateNote.value : "",
           notice: els.quickNotice.value,
+          globalTheme: els.quickGlobalTheme ? els.quickGlobalTheme.value : "",
+          globalVisualStyle: els.quickGlobalVisualStyle ? els.quickGlobalVisualStyle.value : "",
           accent: els.quickAccent.value,
           density: els.quickDensity.value,
           rounded: els.quickRounded.checked,
@@ -2288,6 +2306,7 @@ async function createAccount(event) {
 async function saveFeatureLock(event) {
   event.preventDefault();
   if (!isModerator()) return notify("Moderator access required");
+  const schedule = currentFeatureScheduleEditor();
 
   try {
     const data = await api("/api/features/lock", {
@@ -2297,6 +2316,11 @@ async function saveFeatureLock(event) {
         minutes: Number(els.featureMinutes.value || 0),
         startAt: els.featureStartAt ? localDateTimeToIso(els.featureStartAt.value) : "",
         endAt: els.featureEndAt ? localDateTimeToIso(els.featureEndAt.value) : "",
+        scheduleId: schedule.id,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        days: schedule.days,
+        repeats: schedule.repeats,
         roomId: els.featureLockRoom ? els.featureLockRoom.value : "",
         roles: splitUserList(els.featureLockRoles ? els.featureLockRoles.value : "member"),
         reason: els.featureReason.value,
@@ -2304,8 +2328,9 @@ async function saveFeatureLock(event) {
     });
     state.settings = data.settings || state.settings;
     els.featureReason.value = "";
+    if (schedule.days.length) resetFeatureScheduleEditor();
     renderAll();
-    notify(Number(els.featureMinutes.value || 0) > 0 ? "Feature locked" : "Feature unlocked");
+    notify(schedule.days.length ? "Screen-time schedule saved" : Number(els.featureMinutes.value || 0) > 0 ? "Feature locked" : "Feature unlocked");
   } catch (error) {
     notify(error.message);
   }
@@ -5537,6 +5562,7 @@ function renderProfileInner() {
   setInputIfNotFocused(els.profileEmail, state.user.email || "");
   setInputIfNotFocused(els.profilePhone, state.user.phone || "");
   setInputIfNotFocused(els.profileTheme, profile.theme || "system");
+  setInputIfNotFocused(els.profileVisualStyle, normalizeVisualStyle(profile.visualStyle || "forest"));
   setInputIfNotFocused(els.profileThemeBg, safeColor(customTheme.bg, "#f7f7f4"));
   setInputIfNotFocused(els.profileThemeSurface, safeColor(customTheme.surface, "#ffffff"));
   setInputIfNotFocused(els.profileThemeInk, safeColor(customTheme.ink, "#151515"));
@@ -5548,11 +5574,25 @@ function renderProfileInner() {
 
 function applyProfileTheme(themeOverride = "") {
   const profile = state.user ? state.profiles[state.user.username] || {} : {};
-  const theme = themeOverride || profile.theme || "system";
+  const custom = state.settings && state.settings.customizations ? state.settings.customizations : {};
+  const adminTheme = normalizeThemeName(custom.globalTheme || "");
+  const adminVisualStyle = custom.globalVisualStyle ? normalizeVisualStyle(custom.globalVisualStyle) : "";
+  const theme = adminTheme || themeOverride || profile.theme || "system";
   const normalized = ["connectifi", "dark", "bd-somani", "midnight", "ocean", "forest", "rose", "slate", "glass", "custom"].includes(theme) ? theme : "";
   document.body.dataset.theme = normalized;
-  const editorTheme = els.profileThemeBg && els.profileTheme && els.profileTheme.value === "custom" ? currentProfileThemeEditor() : null;
+  const editorTheme = !adminTheme && els.profileThemeBg && els.profileTheme && els.profileTheme.value === "custom" ? currentProfileThemeEditor() : null;
   applyCustomThemeVariables(normalized === "custom" ? editorTheme || profile.customTheme : null);
+  applyProfileVisualStyle(adminVisualStyle || (els.profileVisualStyle && els.profileVisualStyle.value) || profile.visualStyle || "forest");
+}
+
+function applyProfileVisualStyle(styleOverride = "") {
+  const style = normalizeVisualStyle(styleOverride);
+  document.body.dataset.visualStyle = style;
+}
+
+function normalizeThemeName(value) {
+  const theme = String(value || "").trim().toLowerCase();
+  return ["system", "connectifi", "dark", "bd-somani", "midnight", "ocean", "forest", "rose", "slate", "glass", "custom"].includes(theme) ? theme : "";
 }
 
 function updateProfilePreview() {
@@ -5571,6 +5611,36 @@ function updateProfilePreview() {
   els.profilePreview.style.setProperty("--preview-accent", customTheme.accent || "#245c4f");
   els.customThemeFields.classList.toggle("hidden", els.profileTheme.value !== "custom");
   if (els.profileTheme.value === "custom") applyCustomThemeVariables(customTheme);
+}
+
+function normalizeVisualStyle(value) {
+  const style = String(value || "forest").trim().toLowerCase();
+  return ["forest", "ocean", "mountains", "space", "city", "abstract", "nature"].includes(style) ? style : "forest";
+}
+
+function normalizeScheduleTime(value) {
+  const time = String(value || "").trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? time : "";
+}
+
+function normalizeScheduleDays(days) {
+  const allowed = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+  const selected = Array.isArray(days) ? days : [];
+  return allowed.filter((day) => selected.includes(day));
+}
+
+function formatScheduleTime(time) {
+  const [hourText, minuteText] = String(time || "").split(":");
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return time || "";
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${String(minute).padStart(2, "0")} ${suffix}`;
+}
+
+function dayLabel(day) {
+  return ({ mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" })[day] || day;
 }
 
 async function handleProfileAvatarFile() {
@@ -5674,6 +5744,7 @@ function applyCustomizations() {
     document.head.append(style);
   }
   style.textContent = custom.customCss || "";
+  applyProfileTheme();
 }
 
 function renderDocs() {
@@ -6368,6 +6439,8 @@ function renderQuickEdit() {
   setInputIfNotFocused(els.quickUpdateTitle, custom.updateTitle || "");
   setInputIfNotFocused(els.quickUpdateNote, custom.updateNote || "");
   setInputIfNotFocused(els.quickNotice, custom.notice || "");
+  setInputIfNotFocused(els.quickGlobalTheme, custom.globalTheme || "");
+  setInputIfNotFocused(els.quickGlobalVisualStyle, custom.globalVisualStyle || "");
   setInputIfNotFocused(els.quickAccent, /^#[0-9a-f]{6}$/i.test(custom.accent || "") ? custom.accent : "#245c4f");
   setInputIfNotFocused(els.quickDensity, custom.density || "comfortable");
   els.quickRounded.checked = custom.rounded !== false;
@@ -6515,23 +6588,108 @@ function renderFeatureLocks() {
     name.textContent = featureLabel(feature);
     const badge = document.createElement("span");
     badge.className = "tag";
+    const schedules = normalizeFeatureSchedules(lock.schedules || []);
     const startsAt = Date.parse(lock.disabledFrom || "");
-    badge.textContent = Number.isFinite(startsAt) && startsAt > Date.now() ? "Scheduled" : "Locked";
+    badge.textContent = schedules.length ? `${schedules.length} schedule${schedules.length === 1 ? "" : "s"}` : Number.isFinite(startsAt) && startsAt > Date.now() ? "Scheduled" : "Locked";
     head.append(name, badge);
 
     const meta = document.createElement("div");
     meta.className = "account-meta";
-    if (lock.disabledFrom) meta.append(textNode(`Starts ${formatDate(lock.disabledFrom)}`));
-    meta.append(textNode(`Until ${formatDate(lock.disabledUntil)}`));
+    if (lock.disabledUntil) {
+      if (lock.disabledFrom) meta.append(textNode(`Starts ${formatDate(lock.disabledFrom)}`));
+      meta.append(textNode(`Until ${formatDate(lock.disabledUntil)}`));
+    }
     if (lock.disabledBy) meta.append(textNode(`By ${lock.disabledBy}`));
     if (lock.roomId) meta.append(textNode(`Room ${lock.roomId}`));
     if (Array.isArray(lock.roles) && lock.roles.length) meta.append(textNode(`Roles ${lock.roles.join(", ")}`));
     if (lock.reason) meta.append(textNode(lock.reason));
+    schedules.forEach((schedule) => {
+      meta.append(textNode(`${formatScheduleTime(schedule.startTime)} - ${formatScheduleTime(schedule.endTime)} / ${schedule.days.map(dayLabel).join(", ")}${schedule.repeats ? " / repeats" : ""}${schedule.roomId ? ` / room ${schedule.roomId}` : ""}${schedule.roles.length ? ` / roles ${schedule.roles.join(", ")}` : ""}${schedule.reason ? ` / ${schedule.reason}` : ""}`));
+    });
 
-    const unlock = accountButton("Unlock", () => quickFeatureUnlock(feature));
-    item.append(head, meta, unlock);
+    const actions = document.createElement("div");
+    actions.className = "account-actions";
+    if (lock.disabledUntil) actions.append(accountButton("Unlock", () => quickFeatureUnlock(feature)));
+    schedules.forEach((schedule) => {
+      actions.append(
+        accountButton("Edit", () => editFeatureSchedule(feature, schedule)),
+        accountButton("Remove", () => removeFeatureSchedule(feature, schedule.id))
+      );
+    });
+    if (!actions.children.length) actions.append(accountButton("Unlock", () => quickFeatureUnlock(feature)));
+    item.append(head, meta, actions);
     els.featureLockList.append(item);
   });
+}
+
+function currentFeatureScheduleEditor() {
+  return {
+    id: els.featureScheduleId ? els.featureScheduleId.value : "",
+    startTime: normalizeScheduleTime(els.featureScheduleStartTime ? els.featureScheduleStartTime.value : ""),
+    endTime: normalizeScheduleTime(els.featureScheduleEndTime ? els.featureScheduleEndTime.value : ""),
+    days: normalizeScheduleDays(Array.from(document.querySelectorAll('input[name="featureScheduleDay"]:checked')).map((input) => input.value)),
+    repeats: els.featureScheduleRepeats ? els.featureScheduleRepeats.checked : true,
+  };
+}
+
+function normalizeFeatureSchedules(schedules) {
+  return (Array.isArray(schedules) ? schedules : [])
+    .map((schedule) => ({
+      id: String(schedule.id || ""),
+      startTime: normalizeScheduleTime(schedule.startTime),
+      endTime: normalizeScheduleTime(schedule.endTime),
+      days: normalizeScheduleDays(schedule.days),
+      repeats: schedule.repeats !== false,
+      roomId: String(schedule.roomId || ""),
+      roles: Array.isArray(schedule.roles) ? schedule.roles : [],
+      reason: String(schedule.reason || ""),
+      disabledBy: String(schedule.disabledBy || ""),
+    }))
+    .filter((schedule) => schedule.id && schedule.startTime && schedule.endTime && schedule.days.length);
+}
+
+function editFeatureSchedule(feature, schedule) {
+  if (els.featureName) els.featureName.value = feature;
+  if (els.featureScheduleId) els.featureScheduleId.value = schedule.id || "";
+  if (els.featureScheduleStartTime) els.featureScheduleStartTime.value = schedule.startTime || "";
+  if (els.featureScheduleEndTime) els.featureScheduleEndTime.value = schedule.endTime || "";
+  if (els.featureScheduleRepeats) els.featureScheduleRepeats.checked = schedule.repeats !== false;
+  if (els.featureLockRoom) els.featureLockRoom.value = schedule.roomId || "";
+  if (els.featureLockRoles) els.featureLockRoles.value = Array.isArray(schedule.roles) && schedule.roles.length ? schedule.roles.join(", ") : "member";
+  if (els.featureReason) els.featureReason.value = schedule.reason || "";
+  document.querySelectorAll('input[name="featureScheduleDay"]').forEach((input) => {
+    input.checked = Array.isArray(schedule.days) && schedule.days.includes(input.value);
+  });
+  if (els.saveFeatureLockButton) els.saveFeatureLockButton.textContent = "Update screen-time schedule";
+  if (els.cancelFeatureScheduleEditButton) els.cancelFeatureScheduleEditButton.classList.remove("hidden");
+  notify("Editing screen-time schedule");
+}
+
+function resetFeatureScheduleEditor() {
+  if (els.featureScheduleId) els.featureScheduleId.value = "";
+  if (els.featureScheduleStartTime) els.featureScheduleStartTime.value = "";
+  if (els.featureScheduleEndTime) els.featureScheduleEndTime.value = "";
+  if (els.featureScheduleRepeats) els.featureScheduleRepeats.checked = true;
+  document.querySelectorAll('input[name="featureScheduleDay"]').forEach((input) => {
+    input.checked = false;
+  });
+  if (els.saveFeatureLockButton) els.saveFeatureLockButton.textContent = "Save screen-time lock";
+  if (els.cancelFeatureScheduleEditButton) els.cancelFeatureScheduleEditButton.classList.add("hidden");
+}
+
+async function removeFeatureSchedule(feature, scheduleId) {
+  if (!scheduleId) return;
+  try {
+    const data = await api("/api/features/lock", {
+      method: "POST",
+      json: { feature, removeScheduleId: scheduleId },
+    });
+    state.settings = data.settings || state.settings;
+    renderAll();
+    notify("Screen-time schedule removed");
+  } catch (error) {
+    notify(error.message);
+  }
 }
 
 function renderFeatureLockControls() {
@@ -7939,7 +8097,7 @@ async function editRoom(room) {
   if (icon === null) return;
   const category = window.prompt("Room category", room.category || "General");
   if (category === null) return;
-  const theme = window.prompt("Room theme: system, midnight, ocean, forest, rose, slate", room.theme || "system");
+  const theme = window.prompt("Room theme: system, bd-somani, midnight, ocean, forest, rose, slate", room.theme || "system");
   if (theme === null) return;
   const privateAnswer = window.confirm("Make this room private?");
   const inviteAnswer = window.confirm("Make this room invite-only?");
@@ -8502,12 +8660,36 @@ function selectDmFromCallRoom(roomId) {
 function featureLock(feature) {
   const lock = (state.settings.featureLocks || {})[feature];
   if (!lock) return null;
+  const activeSchedule = normalizeFeatureSchedules(lock.schedules || []).find((schedule) => {
+    if (schedule.roomId) return false;
+    return featureScheduleActive(schedule);
+  });
+  if (activeSchedule) return activeSchedule;
   if (lock.roomId) return null;
   const from = Date.parse(lock.disabledFrom || "");
   if (Number.isFinite(from) && from > Date.now()) return null;
   const until = Date.parse(lock.disabledUntil);
   if (!Number.isFinite(until) || until <= Date.now()) return null;
   return lock;
+}
+
+function featureScheduleActive(schedule, now = new Date()) {
+  if (!schedule || !Array.isArray(schedule.days) || !schedule.days.length) return false;
+  const day = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][now.getDay()];
+  if (!schedule.days.includes(day)) return false;
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  const start = scheduleTimeToMinutes(schedule.startTime);
+  const end = scheduleTimeToMinutes(schedule.endTime);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start === end) return false;
+  return start < end ? minutes >= start && minutes < end : minutes >= start || minutes < end;
+}
+
+function scheduleTimeToMinutes(time) {
+  const [hourText, minuteText] = String(time || "").split(":");
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return NaN;
+  return hour * 60 + minute;
 }
 
 function featureAvailable(feature) {
@@ -8966,6 +9148,7 @@ async function saveProfile(event) {
         email: els.profileEmail ? els.profileEmail.value : "",
         phone: els.profilePhone ? els.profilePhone.value : "",
         theme: els.profileTheme.value,
+        visualStyle: els.profileVisualStyle ? els.profileVisualStyle.value : "forest",
         customTheme: currentProfileThemeEditor(),
         bio: els.profileBio.value,
         invisible: els.profileInvisible.checked,

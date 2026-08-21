@@ -1134,6 +1134,95 @@ textarea:focus {
   min-width: 0;
 }
 
+.profile-schedule-editor {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-muted) 52%, var(--surface));
+}
+
+.schedule-fields,
+.schedule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+
+.schedule-fields label {
+  flex: 1 1 180px;
+}
+
+.day-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.day-selector legend {
+  flex-basis: 100%;
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.day-selector label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.day-selector input {
+  width: auto;
+}
+
+.schedule-list {
+  display: grid;
+  gap: 10px;
+}
+
+.schedule-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.schedule-card > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.schedule-card span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.schedule-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .dm-call-panel h3 {
   margin: 0 0 4px;
 }
@@ -5724,5 +5813,285 @@ button.primary-button {
     transform: translateX(0) !important;
     pointer-events: auto !important;
     visibility: visible !important;
+  }
+}
+
+/* v133 visual theme upgrade. Real photo-backed themes and a more deliberate
+   product UI layer without changing app behavior. */
+:root {
+  --theme-photo: url("/assets/connectifi-workspace-theme.png");
+  --visual-photo: url("https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=1800&q=80");
+  --theme-photo-position: center center;
+  --theme-photo-opacity: 0.10;
+  --panel-mix: 96%;
+}
+
+body[data-visual-style="forest"] {
+  --visual-photo: url("https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=1800&q=80");
+  --theme-photo-position: center center;
+}
+
+body[data-visual-style="ocean"] {
+  --visual-photo: url("https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1800&q=80");
+  --theme-photo-position: center bottom;
+}
+
+body[data-visual-style="mountains"] {
+  --visual-photo: url("https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1800&q=80");
+  --theme-photo-position: center center;
+}
+
+body[data-visual-style="space"] {
+  --visual-photo: url("https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=1800&q=80");
+  --theme-photo-position: center center;
+}
+
+body[data-visual-style="city"] {
+  --visual-photo: url("https://images.unsplash.com/photo-1449824913935-59a10b8d2000?auto=format&fit=crop&w=1800&q=80");
+  --theme-photo-position: center center;
+}
+
+body[data-visual-style="abstract"] {
+  --visual-photo: url("https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&w=1800&q=80");
+  --theme-photo-position: center center;
+}
+
+body[data-visual-style="nature"] {
+  --visual-photo: url("https://images.unsplash.com/photo-1501854140801-50d01698950b?auto=format&fit=crop&w=1800&q=80");
+  --theme-photo-position: center center;
+}
+
+body[data-theme="connectifi"],
+body:not([data-theme]),
+body[data-theme=""] {
+  --theme-photo: var(--visual-photo);
+  --theme-photo-position: center center;
+  --theme-photo-opacity: 0.12;
+}
+
+body[data-theme="bd-somani"] {
+  color-scheme: light;
+  --bg: #f6f4ef;
+  --surface: #fffdf8;
+  --surface-muted: #efe8d8;
+  --ink: #10243b;
+  --muted: #657387;
+  --line: #ded4bd;
+  --accent: #0b4f8a;
+  --accent-soft: #e6f0f8;
+  --danger: #a23a34;
+  --theme-photo: var(--visual-photo);
+  --theme-photo-position: center center;
+  --theme-photo-opacity: 0.18;
+  --panel-mix: 94%;
+}
+
+body[data-theme="dark"],
+body[data-theme="midnight"],
+body[data-theme="slate"] {
+  --theme-photo: var(--visual-photo);
+  --theme-photo-opacity: 0.08;
+  --panel-mix: 88%;
+}
+
+body[data-visual-style="forest"] { --theme-photo-position: center center; }
+body[data-visual-style="ocean"] { --theme-photo-position: center bottom; }
+body[data-visual-style="mountains"] { --theme-photo-position: center center; }
+body[data-visual-style="space"] { --theme-photo-position: center center; }
+body[data-visual-style="city"] { --theme-photo-position: center center; }
+body[data-visual-style="abstract"] { --theme-photo-position: center center; }
+body[data-visual-style="nature"] { --theme-photo-position: center center; }
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg) 82%, transparent), var(--bg) 72%),
+    var(--theme-photo) var(--theme-photo-position) / cover no-repeat;
+  opacity: var(--theme-photo-opacity);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 28rem),
+    linear-gradient(135deg, transparent 0%, color-mix(in srgb, var(--surface-muted) 32%, transparent) 100%);
+}
+
+#dashboardView > .section-header {
+  min-height: 176px;
+  align-items: flex-end;
+  padding: 28px !important;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 18px;
+  overflow: hidden;
+  position: relative;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--surface) 92%, transparent), color-mix(in srgb, var(--surface) 56%, transparent)),
+    var(--theme-photo) var(--theme-photo-position) / cover no-repeat;
+  box-shadow: 0 24px 58px rgba(18, 24, 30, 0.14);
+}
+
+#dashboardView > .section-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--surface) 52%, transparent) 100%),
+    radial-gradient(circle at 14% 18%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 20rem);
+  pointer-events: none;
+}
+
+#dashboardView > .section-header > * {
+  position: relative;
+  z-index: 1;
+}
+
+#dashboardView > .section-header h2 {
+  font-size: clamp(2rem, 4vw, 3.9rem);
+  line-height: 0.98;
+  letter-spacing: 0;
+  margin-bottom: 8px;
+}
+
+#dashboardView > .section-header p {
+  max-width: 58ch;
+  color: color-mix(in srgb, var(--ink) 70%, var(--muted));
+}
+
+.topbar,
+.sidebar,
+.status-panel,
+.panel-form,
+.file-card,
+.account-card,
+.upload-bar,
+.composer,
+.message,
+.call-tile {
+  background: color-mix(in srgb, var(--surface) var(--panel-mix), transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent) !important;
+  box-shadow: 0 12px 34px rgba(16, 28, 42, 0.08) !important;
+}
+
+.sidebar {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 97%, transparent), color-mix(in srgb, var(--surface-muted) 82%, transparent)) !important;
+}
+
+.brand-mark,
+.profile-preview-avatar {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, white 45%, transparent),
+    0 14px 28px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.nav-button {
+  font-size: 0.96rem;
+  border-radius: 12px !important;
+}
+
+.nav-button.active {
+  box-shadow: inset 3px 0 0 var(--accent), 0 8px 22px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.file-grid,
+.settings-grid {
+  gap: 18px !important;
+}
+
+.metric-row,
+.profile-preview-main,
+.panel-title-row {
+  gap: 12px;
+}
+
+.profile-preview {
+  border-radius: 20px !important;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  background: var(--surface) !important;
+  box-shadow: 0 18px 44px rgba(16, 28, 42, 0.10);
+}
+
+.profile-preview-banner {
+  min-height: 124px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 44%, transparent), transparent),
+    var(--theme-photo) center center / cover no-repeat !important;
+}
+
+body[data-theme="bd-somani"] .brand-mark,
+body[data-theme="bd-somani"] .build-badge,
+body[data-theme="bd-somani"] .status-pill {
+  background: #f2ead6 !important;
+  color: #0b4f8a !important;
+  border-color: #d6c498 !important;
+}
+
+body[data-theme="bd-somani"] {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body[data-theme="bd-somani"] .sidebar,
+body[data-theme="bd-somani"] .topbar,
+body[data-theme="bd-somani"] .status-panel,
+body[data-theme="bd-somani"] .panel-form,
+body[data-theme="bd-somani"] .file-card,
+body[data-theme="bd-somani"] .account-card,
+body[data-theme="bd-somani"] .schedule-card {
+  border-color: color-mix(in srgb, #d6c498 56%, #e1e8f2) !important;
+  box-shadow: 0 16px 40px rgba(16, 36, 59, 0.08) !important;
+}
+
+body[data-theme="bd-somani"] .app-brand h1,
+body[data-theme="bd-somani"] .section-header h2,
+body[data-theme="bd-somani"] .panel-form h3,
+body[data-theme="bd-somani"] .status-panel h3 {
+  color: #10243b;
+  font-weight: 850;
+}
+
+body[data-theme="bd-somani"] .brand-glyph {
+  background:
+    linear-gradient(90deg, transparent 46%, #d6c498 46% 54%, transparent 54%),
+    linear-gradient(180deg, #0b4f8a 0 68%, #d6c498 68% 100%);
+  border-radius: 3px;
+}
+
+body[data-theme="bd-somani"] .profile-schedule-editor,
+body[data-theme="bd-somani"] .theme-editor {
+  background:
+    linear-gradient(135deg, rgba(230, 240, 248, 0.72), rgba(242, 234, 214, 0.48)),
+    var(--surface);
+}
+
+body[data-theme="bd-somani"] .primary-button,
+body[data-theme="bd-somani"] button.primary-button {
+  background: linear-gradient(135deg, #0b4f8a, #10243b) !important;
+  color: #fffdf8 !important;
+}
+
+body[data-theme="bd-somani"] .nav-button.active,
+body[data-theme="bd-somani"] .nav-button:hover {
+  background: linear-gradient(90deg, #e6f0f8, #f2ead6) !important;
+}
+
+@media (max-width: 860px) {
+  #dashboardView > .section-header {
+    min-height: 148px;
+    padding: 20px !important;
+    border-radius: 14px;
+  }
+
+  #dashboardView > .section-header h2 {
+    font-size: 2.1rem;
   }
 }

@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-132-realtime-screen-time" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-134-scheduling-visuals" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -375,6 +375,7 @@
             <label>Email<input id="profileEmail" type="email" maxlength="120" autocomplete="email" /></label>
             <label>Phone<input id="profilePhone" maxlength="40" autocomplete="tel" /></label>
             <label>Theme<select id="profileTheme"><option value="system">Light</option><option value="connectifi">Connectifi</option><option value="dark">Dark</option><option value="bd-somani">BD Somani</option><option value="midnight">Night</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="custom">Custom</option></select></label>
+            <label>Visual style<select id="profileVisualStyle"><option value="forest">Forest</option><option value="ocean">Ocean</option><option value="mountains">Mountains</option><option value="space">Space</option><option value="city">City</option><option value="abstract">Abstract</option><option value="nature">Nature</option></select></label>
             <div id="customThemeFields" class="theme-editor">
               <label>Background<input id="profileThemeBg" type="color" value="#f7f7f4" /></label>
               <label>Cards<input id="profileThemeSurface" type="color" value="#ffffff" /></label>
@@ -713,11 +714,38 @@
               <label>Minutes<input id="featureMinutes" type="number" min="0" max="525600" value="60" /></label>
               <label>Starts optional<input id="featureStartAt" type="datetime-local" /></label>
               <label>Ends optional<input id="featureEndAt" type="datetime-local" /></label>
+              <div class="profile-schedule-editor screen-time-schedule-editor">
+                <div class="panel-title-row">
+                  <div>
+                    <h3>Recurring schedule</h3>
+                    <p class="panel-note">Use this for weekly screen-time windows. Leave days empty to use the one-time lock fields above.</p>
+                  </div>
+                </div>
+                <input id="featureScheduleId" type="hidden" />
+                <div class="schedule-fields">
+                  <label>Start time<input id="featureScheduleStartTime" type="time" /></label>
+                  <label>End time<input id="featureScheduleEndTime" type="time" /></label>
+                </div>
+                <fieldset class="day-selector">
+                  <legend>Days</legend>
+                  <label><input type="checkbox" name="featureScheduleDay" value="mon" /><span>Mon</span></label>
+                  <label><input type="checkbox" name="featureScheduleDay" value="tue" /><span>Tue</span></label>
+                  <label><input type="checkbox" name="featureScheduleDay" value="wed" /><span>Wed</span></label>
+                  <label><input type="checkbox" name="featureScheduleDay" value="thu" /><span>Thu</span></label>
+                  <label><input type="checkbox" name="featureScheduleDay" value="fri" /><span>Fri</span></label>
+                  <label><input type="checkbox" name="featureScheduleDay" value="sat" /><span>Sat</span></label>
+                  <label><input type="checkbox" name="featureScheduleDay" value="sun" /><span>Sun</span></label>
+                </fieldset>
+                <div class="schedule-actions">
+                  <label class="switch-row"><input id="featureScheduleRepeats" type="checkbox" checked /><span>Repeat weekly</span></label>
+                  <button id="cancelFeatureScheduleEditButton" class="ghost-light-button compact-button hidden" type="button">Cancel edit</button>
+                </div>
+              </div>
               <label>Room optional<select id="featureLockRoom"><option value="">All rooms / global</option></select></label>
               <label>Roles affected<input id="featureLockRoles" maxlength="120" placeholder="member" /></label>
               <label>Reason<input id="featureReason" maxlength="160" placeholder="optional" /></label>
-              <button id="saveFeatureLockButton" class="primary-button" type="submit">Set lock</button>
-              <p class="panel-note">Use this like screen time: choose a feature, start/end time, room, and roles. Use 0 minutes to turn it back on. Moderators can schedule room-only locks for members.</p>
+              <button id="saveFeatureLockButton" class="primary-button" type="submit">Save screen-time lock</button>
+              <p class="panel-note">Use this like screen time: choose a feature, time window, room, and roles. Use 0 minutes with no recurring days to turn a feature back on. Moderators can schedule room-only locks for members.</p>
             </form>
 
             <form id="featureVisibilityForm" class="panel-form owner-only hidden">
@@ -752,7 +780,7 @@
               <label>Icon<input id="newRoomIcon" maxlength="12" placeholder="#" /></label>
               <label>Category<input id="newRoomCategory" maxlength="80" placeholder="General" /></label>
               <label>Password optional<input id="newRoomPassword" type="password" autocomplete="new-password" placeholder="Leave blank for no password" /></label>
-              <label>Theme<select id="newRoomTheme"><option value="system">System</option><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option></select></label>
+              <label>Theme<select id="newRoomTheme"><option value="system">System</option><option value="bd-somani">BD Somani</option><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option></select></label>
               <label class="switch-row"><input id="newRoomPrivate" type="checkbox" /><span>Private room</span></label>
               <label class="switch-row"><input id="newRoomInviteOnly" type="checkbox" /><span>Invite-only</span></label>
               <button id="createRoomButton" class="primary-button" type="submit">Create room</button>
@@ -770,6 +798,8 @@
               <label>Dashboard update title<input id="quickUpdateTitle" maxlength="100" placeholder="What's new" /></label>
               <label>Dashboard update note<textarea id="quickUpdateNote" rows="3" maxlength="800" placeholder="Tell users what changed in this update"></textarea></label>
               <label>Notice banner<input id="quickNotice" maxlength="240" placeholder="Announcement for everyone" /></label>
+              <label>Global theme<select id="quickGlobalTheme"><option value="">Account themes</option><option value="system">Light</option><option value="connectifi">Connectifi</option><option value="dark">Dark</option><option value="bd-somani">BD Somani</option><option value="midnight">Night</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option></select></label>
+              <label>Global visual style<select id="quickGlobalVisualStyle"><option value="">Account visuals</option><option value="forest">Forest</option><option value="ocean">Ocean</option><option value="mountains">Mountains</option><option value="space">Space</option><option value="city">City</option><option value="abstract">Abstract</option><option value="nature">Nature</option></select></label>
               <label>Accent color<input id="quickAccent" type="color" value="#245c4f" /></label>
               <label>Density<select id="quickDensity"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
               <label class="switch-row"><input id="quickRounded" type="checkbox" checked /><span>Rounded controls</span></label>
@@ -885,7 +915,7 @@
               <h3>Emergency controls</h3>
               <label class="switch-row"><input id="devEmergencyMode" type="checkbox" /><span>Emergency mode</span></label>
               <label class="switch-row"><input id="devMetricsEnabled" type="checkbox" /><span>Metrics enabled</span></label>
-              <label>Theme engine<select id="devTheme"><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option></select></label>
+              <label>Theme engine<select id="devTheme"><option value="bd-somani">BD Somani</option><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option></select></label>
               <button id="saveDevConfigButton" class="primary-button" type="submit">Save HMD</button>
             </form>
             <div class="status-panel wide-panel">
@@ -933,11 +963,11 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=connectifi-132-realtime-screen-time" defer></script>
-    <script src="/status-guard.js?v=connectifi-132-realtime-screen-time" defer></script>
-    <script src="/ui-boot.js?v=connectifi-132-realtime-screen-time" defer></script>
-    <script src="/app.js?v=connectifi-132-realtime-screen-time" defer></script>
-    <script src="/force-logout.js?v=connectifi-132-realtime-screen-time" defer></script>
+    <script src="/session-guard.js?v=connectifi-134-scheduling-visuals" defer></script>
+    <script src="/status-guard.js?v=connectifi-134-scheduling-visuals" defer></script>
+    <script src="/ui-boot.js?v=connectifi-134-scheduling-visuals" defer></script>
+    <script src="/app.js?v=connectifi-134-scheduling-visuals" defer></script>
+    <script src="/force-logout.js?v=connectifi-134-scheduling-visuals" defer></script>
   </body>
 </html>
 

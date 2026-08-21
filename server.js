@@ -1722,6 +1722,8 @@ async function routeApi(req, res, requestUrl) {
       status: body.status,
       invisible: Boolean(body.invisible),
       theme: body.theme,
+      visualStyle: body.visualStyle,
+      schedules: body.schedules,
       customTheme: body.customTheme,
       updatedAt: now,
     });
@@ -2602,8 +2604,45 @@ async function routeApi(req, res, requestUrl) {
     if (disabledUntil && disabledUntil <= disabledFrom) return json(res, 400, { error: "End time must be after start time" });
     const settings = await readJson(FILES.settings, {});
     const featureLocks = { ...(settings.featureLocks || {}) };
-    if (disabledUntil > 0) {
+    const previousLock = featureLocks[feature] && typeof featureLocks[feature] === "object" ? featureLocks[feature] : {};
+    const existingSchedules = sanitizeFeatureLockSchedules(previousLock.schedules || []);
+    const removeScheduleId = String(body.removeScheduleId || "").trim();
+    const scheduleDays = normalizeScheduleDays(body.days);
+    const scheduleStartTime = normalizeScheduleTime(body.startTime);
+    const scheduleEndTime = normalizeScheduleTime(body.endTime);
+
+    if (removeScheduleId) {
+      const schedules = existingSchedules.filter((schedule) => schedule.id !== removeScheduleId);
+      const nextLock = { ...previousLock, schedules };
+      if (!nextLock.disabledUntil && !schedules.length) delete featureLocks[feature];
+      else featureLocks[feature] = nextLock;
+    } else if (scheduleDays.length || scheduleStartTime || scheduleEndTime) {
+      if (!scheduleStartTime || !scheduleEndTime) return json(res, 400, { error: "Choose a schedule start and end time" });
+      if (!scheduleDays.length) return json(res, 400, { error: "Choose at least one schedule day" });
+      if (scheduleStartTime === scheduleEndTime) return json(res, 400, { error: "Schedule start and end cannot match" });
+      const scheduleId = String(body.scheduleId || crypto.randomUUID()).trim().slice(0, 80) || crypto.randomUUID();
+      const nextSchedule = {
+        id: scheduleId,
+        startTime: scheduleStartTime,
+        endTime: scheduleEndTime,
+        days: scheduleDays,
+        repeats: body.repeats !== false,
+        disabledBy: user.username,
+        reason,
+        roomId,
+        roles: isManager ? normalizeLockRoles(body.roles) : ["member"],
+        updatedAt: new Date().toISOString(),
+      };
+      const schedules = existingSchedules.some((schedule) => schedule.id === scheduleId)
+        ? existingSchedules.map((schedule) => schedule.id === scheduleId ? nextSchedule : schedule)
+        : [...existingSchedules, { ...nextSchedule, createdAt: new Date().toISOString() }];
       featureLocks[feature] = {
+        ...previousLock,
+        schedules: schedules.slice(0, 48),
+      };
+    } else if (disabledUntil > 0) {
+      featureLocks[feature] = {
+        ...previousLock,
         disabledFrom: new Date(disabledFrom).toISOString(),
         disabledUntil: new Date(disabledUntil).toISOString(),
         disabledBy: user.username,
@@ -5196,6 +5235,8 @@ function defaultProfile(username) {
     gradeUpdatedAt: "",
     contactUpdatedAt: "",
     theme: "system",
+    visualStyle: "forest",
+    schedules: [],
     customTheme: defaultCustomTheme(),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -5216,6 +5257,8 @@ function sanitizeProfile(profile) {
     status: normalizePresenceStatus(profile.status),
     invisible: Boolean(profile.invisible),
     theme: normalizeRoomTheme(profile.theme),
+    visualStyle: normalizeVisualStyle(profile.visualStyle),
+    schedules: sanitizeProfileSchedules(profile.schedules),
     customTheme: sanitizeCustomTheme(profile.customTheme || {}),
     createdAt: profile.createdAt || new Date().toISOString(),
     updatedAt: profile.updatedAt || new Date().toISOString(),
@@ -6236,6 +6279,8 @@ function defaultCustomizations() {
     updateTitle: "",
     updateNote: "",
     notice: "",
+    globalTheme: "",
+    globalVisualStyle: "",
     accent: "",
     density: "comfortable",
     rounded: true,
@@ -6258,6 +6303,8 @@ function sanitizeCustomizations(customizations) {
     updateTitle: String(customizations.updateTitle || "").trim().slice(0, 100),
     updateNote: String(customizations.updateNote || "").trim().slice(0, 800),
     notice: String(customizations.notice || "").trim().slice(0, 240),
+    globalTheme: normalizeGlobalTheme(customizations.globalTheme || ""),
+    globalVisualStyle: customizations.globalVisualStyle ? normalizeVisualStyle(customizations.globalVisualStyle) : "",
     accent: /^#[0-9a-f]{6}$/i.test(accent) ? accent : "",
     density: ["compact", "comfortable"].includes(String(customizations.density || "").toLowerCase()) ? String(customizations.density).toLowerCase() : "comfortable",
     rounded: customizations.rounded !== false,
@@ -6419,20 +6466,34 @@ function activeFeatureLocks(featureLocks) {
   const now = Date.now();
   for (const [feature, lock] of Object.entries(featureLocks || {})) {
     if (!allowedFeatureLocks.has(feature)) continue;
-    const disabledFrom = Date.parse(lock && lock.disabledFrom);
-    const disabledUntil = Date.parse(lock && lock.disabledUntil);
-    if (!Number.isFinite(disabledUntil) || disabledUntil <= now) continue;
-    if (Number.isFinite(disabledFrom) && disabledFrom > now) continue;
-    active[feature] = {
+    const candidates = activeFeatureLockCandidates(lock, new Date(now));
+    if (candidates.length) active[feature] = candidates[0];
+  }
+  return active;
+}
+
+function activeFeatureLockCandidates(lock, now = new Date()) {
+  const nowMs = now.getTime();
+  const schedules = sanitizeFeatureLockSchedules(lock && lock.schedules || [])
+    .filter((schedule) => featureScheduleActive(schedule, now))
+    .map((schedule) => ({
+      ...schedule,
+      disabledFrom: now.toISOString(),
+      disabledUntil: scheduleWindowEnd(schedule, now).toISOString(),
+    }));
+  const disabledFrom = Date.parse(lock && lock.disabledFrom);
+  const disabledUntil = Date.parse(lock && lock.disabledUntil);
+  if (Number.isFinite(disabledUntil) && disabledUntil > nowMs && (!Number.isFinite(disabledFrom) || disabledFrom <= nowMs)) {
+    schedules.push({
       disabledFrom: Number.isFinite(disabledFrom) ? new Date(disabledFrom).toISOString() : "",
       disabledUntil: new Date(disabledUntil).toISOString(),
       disabledBy: String(lock.disabledBy || ""),
       reason: String(lock.reason || "").slice(0, 160),
       roomId: String(lock.roomId || "").slice(0, 80),
       roles: normalizeLockRoles(lock.roles),
-    };
+    });
   }
-  return active;
+  return schedules;
 }
 
 function visibleFeatureLocks(featureLocks) {
@@ -6440,19 +6501,69 @@ function visibleFeatureLocks(featureLocks) {
   const now = Date.now();
   for (const [feature, lock] of Object.entries(featureLocks || {})) {
     if (!allowedFeatureLocks.has(feature)) continue;
+    const schedules = sanitizeFeatureLockSchedules(lock && lock.schedules || []);
     const disabledFrom = Date.parse(lock && lock.disabledFrom);
     const disabledUntil = Date.parse(lock && lock.disabledUntil);
-    if (!Number.isFinite(disabledUntil) || disabledUntil <= now) continue;
+    if ((!Number.isFinite(disabledUntil) || disabledUntil <= now) && !schedules.length) continue;
     visible[feature] = {
-      disabledFrom: Number.isFinite(disabledFrom) ? new Date(disabledFrom).toISOString() : "",
-      disabledUntil: new Date(disabledUntil).toISOString(),
+      disabledFrom: Number.isFinite(disabledFrom) && Number.isFinite(disabledUntil) && disabledUntil > now ? new Date(disabledFrom).toISOString() : "",
+      disabledUntil: Number.isFinite(disabledUntil) && disabledUntil > now ? new Date(disabledUntil).toISOString() : "",
       disabledBy: String(lock.disabledBy || ""),
       reason: String(lock.reason || "").slice(0, 160),
       roomId: String(lock.roomId || "").slice(0, 80),
       roles: normalizeLockRoles(lock.roles),
+      schedules,
     };
   }
   return visible;
+}
+
+function sanitizeFeatureLockSchedules(schedules) {
+  return (Array.isArray(schedules) ? schedules : [])
+    .map((schedule) => ({
+      id: String(schedule && schedule.id || crypto.randomUUID()).slice(0, 80),
+      startTime: normalizeScheduleTime(schedule && schedule.startTime),
+      endTime: normalizeScheduleTime(schedule && schedule.endTime),
+      days: normalizeScheduleDays(schedule && schedule.days),
+      repeats: !schedule || schedule.repeats !== false,
+      disabledBy: String(schedule && schedule.disabledBy || "").slice(0, 80),
+      reason: String(schedule && schedule.reason || "").trim().slice(0, 160),
+      roomId: String(schedule && schedule.roomId || "").trim().slice(0, 80),
+      roles: normalizeLockRoles(schedule && schedule.roles),
+      createdAt: String(schedule && schedule.createdAt || ""),
+      updatedAt: String(schedule && schedule.updatedAt || ""),
+    }))
+    .filter((schedule) => schedule.startTime && schedule.endTime && schedule.days.length)
+    .slice(0, 48);
+}
+
+function featureScheduleActive(schedule, now = new Date()) {
+  const days = normalizeScheduleDays(schedule && schedule.days);
+  const day = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][now.getDay()];
+  if (!days.includes(day)) return false;
+  const start = scheduleTimeToMinutes(schedule.startTime);
+  const end = scheduleTimeToMinutes(schedule.endTime);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start === end) return false;
+  const current = now.getHours() * 60 + now.getMinutes();
+  return start < end ? current >= start && current < end : current >= start || current < end;
+}
+
+function scheduleWindowEnd(schedule, now = new Date()) {
+  const end = scheduleTimeToMinutes(schedule.endTime);
+  const current = now.getHours() * 60 + now.getMinutes();
+  const result = new Date(now);
+  const [hour, minute] = String(schedule.endTime || "").split(":").map(Number);
+  result.setHours(Number.isFinite(hour) ? hour : now.getHours(), Number.isFinite(minute) ? minute : now.getMinutes(), 0, 0);
+  if (end <= current || scheduleTimeToMinutes(schedule.startTime) > end) result.setDate(result.getDate() + 1);
+  return result;
+}
+
+function scheduleTimeToMinutes(time) {
+  const [hourText, minuteText] = String(time || "").split(":");
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return NaN;
+  return hour * 60 + minute;
 }
 
 function featureBlocked(settings, feature, user, context = {}) {
@@ -6461,10 +6572,13 @@ function featureBlocked(settings, feature, user, context = {}) {
     return `${featureLabel(feature)} is hidden for your account`;
   }
   if (canManage(user)) return "";
-  const lock = activeFeatureLocks(settings.featureLocks || {})[feature];
+  const featureLockConfig = (settings.featureLocks || {})[feature];
+  const lock = activeFeatureLockCandidates(featureLockConfig, new Date()).find((candidate) => {
+    if (candidate.roomId && String(context.roomId || "") !== candidate.roomId) return false;
+    if (candidate.roles.length && !candidate.roles.includes(effectiveRole(user))) return false;
+    return true;
+  });
   if (!lock) return "";
-  if (lock.roomId && String(context.roomId || "") !== lock.roomId) return "";
-  if (lock.roles.length && !lock.roles.includes(effectiveRole(user))) return "";
   const label = feature === "dms" ? "DMs" : feature.charAt(0).toUpperCase() + feature.slice(1);
   const roomText = lock.roomId ? ` in room ${lock.roomId}` : "";
   return `${label} disabled${roomText} until ${new Date(lock.disabledUntil).toLocaleString()}${lock.reason ? `: ${lock.reason}` : ""}`;
@@ -6746,6 +6860,48 @@ function normalizeRoomTheme(theme) {
   const value = String(theme || "system").trim().toLowerCase();
   if (["system", "connectifi", "dark", "bd-somani", "midnight", "ocean", "forest", "rose", "slate", "glass", "custom"].includes(value)) return value;
   return "system";
+}
+
+function normalizeThemeOverride(theme) {
+  const value = String(theme || "").trim().toLowerCase();
+  if (["connectifi", "dark", "bd-somani", "midnight", "ocean", "forest", "rose", "slate", "glass", "custom"].includes(value)) return value;
+  return "";
+}
+
+function normalizeGlobalTheme(theme) {
+  const value = String(theme || "").trim().toLowerCase();
+  if (!value) return "";
+  if (value === "system") return "system";
+  return normalizeThemeOverride(value);
+}
+
+function normalizeVisualStyle(style) {
+  const value = String(style || "forest").trim().toLowerCase();
+  if (["forest", "ocean", "mountains", "space", "city", "abstract", "nature"].includes(value)) return value;
+  return "forest";
+}
+
+function sanitizeProfileSchedules(schedules) {
+  return (Array.isArray(schedules) ? schedules : [])
+    .map((schedule) => ({
+      id: String(schedule && schedule.id || crypto.randomUUID()).slice(0, 80),
+      startTime: normalizeScheduleTime(schedule && schedule.startTime),
+      endTime: normalizeScheduleTime(schedule && schedule.endTime),
+      days: normalizeScheduleDays(schedule && schedule.days),
+      repeats: !schedule || schedule.repeats !== false,
+    }))
+    .filter((schedule) => schedule.startTime && schedule.endTime && schedule.days.length)
+    .slice(0, 24);
+}
+
+function normalizeScheduleTime(value) {
+  const text = String(value || "").trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : "";
+}
+
+function normalizeScheduleDays(days) {
+  const selected = Array.isArray(days) ? days.map((day) => String(day || "").toLowerCase()) : [];
+  return ["mon", "tue", "wed", "thu", "fri", "sat", "sun"].filter((day) => selected.includes(day));
 }
 
 function defaultCustomTheme() {

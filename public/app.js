@@ -81,6 +81,7 @@ const state = {
   httpRealtimeClientId: "",
   httpRealtimeSince: 0,
   httpRealtimePolling: false,
+  httpRealtimeStarting: false,
   sessionKeepAliveTimer: null,
   wsOutbox: [],
   wsEverConnected: false,
@@ -2984,6 +2985,7 @@ function connectSocket(options = {}) {
       clearTimeout(state.reconnectTimer);
       setConnection("Live");
       scheduleConnectionDowngrade();
+      startHttpRealtimeFallback();
       state.reconnectTimer = setTimeout(connectSocket, state.reconnectDelay);
       state.reconnectDelay = Math.min(15000, Math.round(state.reconnectDelay * 1.5));
     } else {
@@ -2993,13 +2995,22 @@ function connectSocket(options = {}) {
   ws.addEventListener("error", () => {
     state.wsLastErrorAt = Date.now();
     if (!state.loggedIn) setConnection("Signed out");
-    else scheduleConnectionDowngrade();
+    else {
+      scheduleConnectionDowngrade();
+      startHttpRealtimeFallback();
+    }
   });
   ws.addEventListener("message", (event) => {
+    // Proxies or a closing connection can occasionally leave a non-JSON frame
+    // in transit. Let the normal reconnect path restore live updates instead
+    // of showing a noisy toast for each transient frame.
+    if (typeof event.data !== "string") return;
     try {
-      handleSocketMessage(JSON.parse(event.data));
-    } catch (error) {
-      notify("Could not read live update");
+      const message = JSON.parse(event.data);
+      if (!message || typeof message !== "object" || Array.isArray(message) || typeof message.type !== "string") return;
+      handleSocketMessage(message);
+    } catch {
+      state.wsLastErrorAt = Date.now();
     }
   });
 }
@@ -3044,8 +3055,12 @@ async function verifyLiveBeforeDowngrade() {
     const response = await fetch("/api/session/ping", { credentials: "same-origin", cache: "no-store" });
     if (response.ok) {
       state.lastLiveAt = Date.now();
-      setConnection("Live");
-      if (!isRealtimeReady() && state.loggedIn) connectSocket();
+      if (!isRealtimeReady() && state.loggedIn) {
+        startHttpRealtimeFallback();
+        connectSocket();
+      } else {
+        setConnection("Live");
+      }
       return;
     }
   } catch {}
@@ -3053,8 +3068,12 @@ async function verifyLiveBeforeDowngrade() {
     const response = await fetch("/api/health", { cache: "no-store" });
     if (response.ok) {
       state.lastLiveAt = Date.now();
-      setConnection("Live");
-      if (!isRealtimeReady() && state.loggedIn) connectSocket();
+      if (!isRealtimeReady() && state.loggedIn) {
+        startHttpRealtimeFallback();
+        connectSocket();
+      } else {
+        setConnection("Live");
+      }
       return;
     }
   } catch {}
@@ -4093,13 +4112,20 @@ async function ensureHttpRealtime(label = "live features") {
     if (Array.isArray(data.presence)) state.presence = data.presence;
     if (data.rtcConfig && Array.isArray(data.rtcConfig.iceServers)) rtcConfig = data.rtcConfig;
     setConnection("Live");
-    notify(`${label} is using HTTPS live fallback.`);
     startHttpRealtimePoll();
     return true;
   } catch (error) {
     state.httpRealtimeActive = false;
     return false;
   }
+}
+
+function startHttpRealtimeFallback() {
+  if (!state.loggedIn || state.httpRealtimeActive || state.httpRealtimeStarting) return;
+  state.httpRealtimeStarting = true;
+  ensureHttpRealtime("live features").finally(() => {
+    state.httpRealtimeStarting = false;
+  });
 }
 
 function getHttpRealtimeClientId() {
@@ -4128,6 +4154,7 @@ function stopHttpRealtime() {
   state.httpRealtimeTimer = null;
   state.httpRealtimeActive = false;
   state.httpRealtimePolling = false;
+  state.httpRealtimeStarting = false;
 }
 
 async function pollHttpRealtime() {

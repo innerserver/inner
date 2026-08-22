@@ -5283,7 +5283,7 @@ function safeProfiles(profiles, users, viewer) {
 
 function presenceList(profiles, viewer, users = [], friends = { friendships: [] }) {
   const online = new Map();
-  for (const client of wsClients.values()) {
+  for (const client of realtimeClients()) {
     if (client.invisible && (!viewer || viewer.username !== client.username)) continue;
     if (!canSeeOnlineUser(viewer, client, users, friends)) continue;
     online.set(client.username, {

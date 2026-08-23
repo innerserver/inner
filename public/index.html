@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-139-cross-device-realtime" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-140-media-theme-polish" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -376,6 +376,11 @@
             <label>Phone<input id="profilePhone" maxlength="40" autocomplete="tel" /></label>
             <label>Theme<select id="profileTheme"><option value="system">Light</option><option value="connectifi">Connectifi</option><option value="dark">Dark</option><option value="bd-somani">BD Somani</option><option value="midnight">Night</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="custom">Custom</option></select></label>
             <label>Visual style<select id="profileVisualStyle"><option value="forest">Forest</option><option value="ocean">Ocean</option><option value="mountains">Mountains</option><option value="space">Space</option><option value="city">City</option><option value="abstract">Abstract</option><option value="nature">Nature</option></select></label>
+            <label>Theme image<input id="profileThemeImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label>
+            <input id="profileThemeImageUrl" type="hidden" />
+            <div class="button-row profile-photo-actions">
+              <button id="clearProfileThemeImageButton" class="secondary-button compact-button" type="button">Remove theme image</button>
+            </div>
             <div id="customThemeFields" class="theme-editor">
               <label>Background<input id="profileThemeBg" type="color" value="#f7f7f4" /></label>
               <label>Cards<input id="profileThemeSurface" type="color" value="#ffffff" /></label>
@@ -471,7 +476,7 @@
 
           <div class="screen-layout">
             <div class="screen-stage">
-              <video id="remoteVideo" autoplay playsinline muted></video>
+              <video id="remoteVideo" autoplay playsinline></video>
               <div id="emptyScreen" class="empty-state">Waiting for a shared screen</div>
             </div>
             <aside class="screen-side">
@@ -966,7 +971,7 @@
     <script src="/session-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/status-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/ui-boot.js?v=connectifi-137-ui-polish" defer></script>
-    <script src="/app.js?v=connectifi-139-cross-device-realtime" defer></script>
+    <script src="/app.js?v=connectifi-140-media-theme-polish" defer></script>
     <script src="/force-logout.js?v=connectifi-137-ui-polish" defer></script>
   </body>
 </html>

@@ -6776,6 +6776,97 @@ body[data-theme="bd-somani"] .section-header h2 {
   }
 }
 
+/* v140 product finish: a personal visual surface with restrained, editorial
+   framing for the workspace and a calmer screen-share stage. */
+body[data-theme-image="true"] #appView.app:not(.hidden) {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg) 89%, transparent), color-mix(in srgb, var(--bg) 97%, transparent)),
+    var(--account-theme-image) center / cover fixed !important;
+}
+
+body[data-theme-image="true"] #appView .workspace {
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+#profileForm {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+#profileForm > .profile-preview,
+#profileForm > .theme-editor,
+#profileForm > label:has(textarea),
+#profileForm > .switch-row,
+#profileForm > #saveProfileButton {
+  grid-column: 1 / -1;
+}
+
+#profileForm .profile-photo-actions {
+  align-self: end;
+  min-height: 40px;
+}
+
+#profileForm .profile-preview {
+  min-height: 208px;
+  border-radius: 12px !important;
+}
+
+#profileForm .profile-preview-banner {
+  min-height: 148px !important;
+}
+
+.screen-layout {
+  gap: 20px !important;
+}
+
+.screen-stage {
+  min-height: 460px;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-md);
+}
+
+.screen-stage video {
+  min-height: 460px;
+}
+
+.screen-side {
+  gap: 18px !important;
+  padding: 18px !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-sm);
+}
+
+.screen-side > div + div {
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+}
+
+.peer-list {
+  gap: 10px !important;
+}
+
+.peer {
+  min-height: 48px;
+  padding: 10px 12px !important;
+  border-radius: 9px !important;
+}
+
+@media (max-width: 860px) {
+  #profileForm {
+    grid-template-columns: 1fr;
+  }
+
+  #profileForm > * {
+    grid-column: 1 !important;
+  }
+
+  .screen-stage,
+  .screen-stage video {
+    min-height: 260px;
+  }
+}
+
 /* v138 breathing-room pass: keep dense tools scannable without changing
    their order, behavior, or existing responsive structure. */
 #appView .workspace {

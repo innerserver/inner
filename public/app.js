@@ -103,6 +103,7 @@ const state = {
   screenRoomId: "",
   remoteScreenRoomId: "",
   remoteScreenStream: null,
+  screenShareWarningShown: false,
   remoteFrom: "",
   activeView: "dashboard",
   loggedIn: false,
@@ -373,6 +374,9 @@ function cacheElements() {
     "profilePhone",
     "profileTheme",
     "profileVisualStyle",
+    "profileThemeImageFile",
+    "profileThemeImageUrl",
+    "clearProfileThemeImageButton",
     "customThemeFields",
     "profileThemeBg",
     "profileThemeSurface",
@@ -772,6 +776,8 @@ function bindEvents() {
   }
   if (els.profileAvatarFile) els.profileAvatarFile.addEventListener("change", handleProfileAvatarFile);
   if (els.clearProfileAvatarButton) els.clearProfileAvatarButton.addEventListener("click", clearProfileAvatar);
+  if (els.profileThemeImageFile) els.profileThemeImageFile.addEventListener("change", handleProfileThemeImageFile);
+  if (els.clearProfileThemeImageButton) els.clearProfileThemeImageButton.addEventListener("click", clearProfileThemeImage);
   [els.profileDisplayName, els.profileAvatarUrl, els.profileBannerUrl, els.profileStatus, els.profileCustomStatus, els.profileThemeBg, els.profileThemeSurface, els.profileThemeInk, els.profileThemeAccent].forEach((input) => {
     if (input) input.addEventListener("input", updateProfilePreview);
   });
@@ -3531,6 +3537,7 @@ async function startShare(options = {}) {
     const roomId = options.roomId || "screen:global";
     state.screenRoomId = roomId;
     state.localStream = stream;
+    state.screenShareWarningShown = false;
     els.localVideo.srcObject = stream;
     playMedia(els.localVideo);
     stream.getTracks().forEach((track) => {
@@ -3803,6 +3810,7 @@ function createVoicePeer(peerId) {
     attachCallStream(peerId, event.streams[0]);
   };
   pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "connected") state.screenShareWarningShown = false;
     if (["failed", "disconnected"].includes(pc.connectionState) && typeof pc.restartIce === "function") {
       try {
         pc.restartIce();
@@ -3952,6 +3960,10 @@ function createPeer(peerId, roomId = "screen:global") {
       try {
         pc.restartIce();
       } catch (error) {}
+    }
+    if (pc.connectionState === "failed" && state.localStream && !state.screenShareWarningShown) {
+      state.screenShareWarningShown = true;
+      notify("Screen share could not reach the other device. A TURN relay is needed for different networks.");
     }
     renderScreen();
   };
@@ -4295,7 +4307,7 @@ function attachScreenStream(peerId, stream, roomId = "screen:global") {
   state.remoteScreenStream = stream;
   const target = isDmCallRoom(roomId) ? els.dmScreenVideo : els.remoteVideo;
   if (target) {
-    target.muted = true;
+    target.muted = false;
     target.srcObject = stream;
     playMedia(target);
   }
@@ -5590,6 +5602,7 @@ function renderProfileInner() {
   setInputIfNotFocused(els.profilePhone, state.user.phone || "");
   setInputIfNotFocused(els.profileTheme, profile.theme || "system");
   setInputIfNotFocused(els.profileVisualStyle, normalizeVisualStyle(profile.visualStyle || "forest"));
+  setInputIfNotFocused(els.profileThemeImageUrl, profile.themeImageUrl || "");
   setInputIfNotFocused(els.profileThemeBg, safeColor(customTheme.bg, "#f7f7f4"));
   setInputIfNotFocused(els.profileThemeSurface, safeColor(customTheme.surface, "#ffffff"));
   setInputIfNotFocused(els.profileThemeInk, safeColor(customTheme.ink, "#151515"));
@@ -5610,11 +5623,24 @@ function applyProfileTheme(themeOverride = "") {
   const editorTheme = !adminTheme && els.profileThemeBg && els.profileTheme && els.profileTheme.value === "custom" ? currentProfileThemeEditor() : null;
   applyCustomThemeVariables(normalized === "custom" ? editorTheme || profile.customTheme : null);
   applyProfileVisualStyle(adminVisualStyle || (els.profileVisualStyle && els.profileVisualStyle.value) || profile.visualStyle || "forest");
+  applyProfileThemeImage(adminTheme || adminVisualStyle ? "" : ((els.profileThemeImageUrl && els.profileThemeImageUrl.value) || profile.themeImageUrl || ""));
 }
 
 function applyProfileVisualStyle(styleOverride = "") {
   const style = normalizeVisualStyle(styleOverride);
   document.body.dataset.visualStyle = style;
+}
+
+function applyProfileThemeImage(imageUrl = "") {
+  const root = document.documentElement;
+  const image = cssUrl(imageUrl);
+  if (image) {
+    root.style.setProperty("--account-theme-image", `url("${image}")`);
+    document.body.dataset.themeImage = "true";
+  } else {
+    root.style.removeProperty("--account-theme-image");
+    delete document.body.dataset.themeImage;
+  }
 }
 
 function normalizeThemeName(value) {
@@ -5627,6 +5653,7 @@ function updateProfilePreview() {
   const displayName = (els.profileDisplayName && els.profileDisplayName.value.trim()) || (state.user && state.user.username) || "User";
   const avatarUrl = els.profileAvatarUrl ? els.profileAvatarUrl.value.trim() : "";
   const bannerUrl = els.profileBannerUrl ? els.profileBannerUrl.value.trim() : "";
+  const themeImageUrl = els.profileThemeImageUrl ? els.profileThemeImageUrl.value.trim() : "";
   const status = els.profileStatus ? els.profileStatus.value : "online";
   const customStatus = els.profileCustomStatus ? els.profileCustomStatus.value.trim() : "";
   const customTheme = currentProfileThemeEditor();
@@ -5634,7 +5661,7 @@ function updateProfilePreview() {
   els.profilePreviewStatus.textContent = customStatus || status;
   els.profilePreviewAvatar.textContent = avatarUrl ? "" : displayName.slice(0, 1).toUpperCase();
   els.profilePreviewAvatar.style.backgroundImage = avatarUrl ? `url("${cssUrl(avatarUrl)}")` : "";
-  els.profilePreviewBanner.style.backgroundImage = bannerUrl ? `url("${cssUrl(bannerUrl)}")` : "";
+  els.profilePreviewBanner.style.backgroundImage = bannerUrl ? `url("${cssUrl(bannerUrl)}")` : themeImageUrl ? `url("${cssUrl(themeImageUrl)}")` : "";
   els.profilePreview.style.setProperty("--preview-accent", customTheme.accent || "#245c4f");
   els.customThemeFields.classList.toggle("hidden", els.profileTheme.value !== "custom");
   if (els.profileTheme.value === "custom") applyCustomThemeVariables(customTheme);
@@ -5693,6 +5720,34 @@ async function handleProfileAvatarFile() {
 function clearProfileAvatar() {
   if (els.profileAvatarFile) els.profileAvatarFile.value = "";
   if (els.profileAvatarUrl) els.profileAvatarUrl.value = "";
+  updateProfilePreview();
+}
+
+async function handleProfileThemeImageFile() {
+  const file = els.profileThemeImageFile && els.profileThemeImageFile.files ? els.profileThemeImageFile.files[0] : null;
+  if (!file) return;
+  if (!String(file.type || "").match(/^image\/(png|jpe?g|webp|gif)$/i)) {
+    els.profileThemeImageFile.value = "";
+    return notify("Choose a PNG, JPG, WebP, or GIF for the theme image");
+  }
+  if (file.size > 700 * 1024) {
+    els.profileThemeImageFile.value = "";
+    return notify("Theme image must be under 700 KB");
+  }
+  try {
+    const dataUrl = await fileToDataUrl(file);
+    if (els.profileThemeImageUrl) els.profileThemeImageUrl.value = dataUrl;
+    applyProfileTheme();
+    updateProfilePreview();
+  } catch {
+    notify("Could not read that theme image");
+  }
+}
+
+function clearProfileThemeImage() {
+  if (els.profileThemeImageFile) els.profileThemeImageFile.value = "";
+  if (els.profileThemeImageUrl) els.profileThemeImageUrl.value = "";
+  applyProfileTheme();
   updateProfilePreview();
 }
 
@@ -9176,6 +9231,7 @@ async function saveProfile(event) {
         phone: els.profilePhone ? els.profilePhone.value : "",
         theme: els.profileTheme.value,
         visualStyle: els.profileVisualStyle ? els.profileVisualStyle.value : "forest",
+        themeImageUrl: els.profileThemeImageUrl ? els.profileThemeImageUrl.value : "",
         customTheme: currentProfileThemeEditor(),
         bio: els.profileBio.value,
         invisible: els.profileInvisible.checked,

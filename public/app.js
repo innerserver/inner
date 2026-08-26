@@ -504,6 +504,10 @@ function cacheElements() {
     "featureEndAt",
     "featureLockRoom",
     "featureLockRoles",
+    "classExemptionControls",
+    "featureExemptionGrade",
+    "featureExemptionMinutes",
+    "saveFeatureExemptionButton",
     "featureLockRolesLabel",
     "featureLockScopeNote",
     "featureReason",
@@ -851,6 +855,7 @@ function bindEvents() {
   if (els.wipeAccountBrowserHistoryButton) els.wipeAccountBrowserHistoryButton.addEventListener("click", wipeSelectedAccountBrowserHistory);
   if (els.openAccountDetailTabButton) els.openAccountDetailTabButton.addEventListener("click", openSelectedAccountDetailTab);
   els.featureLockForm.addEventListener("submit", saveFeatureLock);
+  els.saveFeatureExemptionButton.addEventListener("click", saveFeatureExemption);
   if (els.cancelFeatureScheduleEditButton) els.cancelFeatureScheduleEditButton.addEventListener("click", resetFeatureScheduleEditor);
   if (els.featureVisibilityForm) els.featureVisibilityForm.addEventListener("submit", saveFeatureVisibility);
   if (els.visibilityFeatureName) els.visibilityFeatureName.addEventListener("change", renderFeatureVisibility);
@@ -1355,7 +1360,7 @@ function showView(viewName, options = {}) {
   }
   if (!viewRoutes[viewName]) viewName = "dashboard";
   if (viewName === "domain" && !isOwner()) viewName = "dashboard";
-  if (viewName === "admin" && !isOwner()) viewName = "dashboard";
+  if (viewName === "admin" && !isDev()) viewName = "dashboard";
   if (viewName === "moderator" && !isModerator()) viewName = "dashboard";
   if (viewName === "hmd" && !isDev()) viewName = "dashboard";
   if (viewName === "secret" && !secretMessagingEnabled()) viewName = "dashboard";
@@ -2351,6 +2356,30 @@ async function saveFeatureLock(event) {
     if (schedule.days.length) resetFeatureScheduleEditor();
     renderAll();
     notify(schedule.days.length ? "Screen-time schedule saved" : Number(els.featureMinutes.value || 0) > 0 ? "Feature locked" : "Feature unlocked");
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function saveFeatureExemption() {
+  if (!isModerator()) return notify("Moderator access required");
+  const grade = els.featureExemptionGrade ? els.featureExemptionGrade.value : "";
+  const roomId = els.featureLockRoom ? els.featureLockRoom.value : "";
+  if (!grade) return notify("Choose a class");
+  if (!roomId) return notify("Choose a room");
+  try {
+    const data = await api("/api/features/lock", {
+      method: "POST",
+      json: {
+        feature: els.featureName.value,
+        roomId,
+        exemptionGrade: grade,
+        exemptionMinutes: Number(els.featureExemptionMinutes.value || 0),
+      },
+    });
+    state.settings = data.settings || state.settings;
+    renderAll();
+    notify(`${grade} can use ${featureLabel(els.featureName.value)} temporarily`);
   } catch (error) {
     notify(error.message);
   }
@@ -4424,7 +4453,7 @@ function renderWithFocusPreserved(callback) {
 }
 
 function setupAdminCollapsibles() {
-  if (!els.adminView || !isOwner()) return;
+  if (!els.adminView || !isDev()) return;
   els.adminView.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => {
     if (panel.dataset.collapsibleReady === "1") return;
     const title = panel.querySelector("h3");
@@ -4499,6 +4528,9 @@ function renderShell() {
   document.querySelectorAll(".owner-only").forEach((element) => {
     element.classList.toggle("hidden", !isOwner());
   });
+  document.querySelectorAll(".manager-only").forEach((element) => {
+    element.classList.toggle("hidden", !isDev());
+  });
   document.querySelectorAll(".dev-only").forEach((element) => {
     element.classList.toggle("hidden", !isDev());
   });
@@ -4508,8 +4540,8 @@ function renderShell() {
   syncPrivilegedNav();
   syncHiddenNav();
   updateNotificationButton();
-  if (!isOwner() && state.activeView === "admin") showView("dashboard");
-  if (!isModerator() && state.activeView === "moderator") showView("dashboard");
+  if (!isDev() && state.activeView === "admin") showView("dashboard");
+  if ((!isModerator() || isOwner()) && state.activeView === "moderator") showView("dashboard");
   if (!isOwner() && state.activeView === "domain") showView("dashboard");
   if (!isDev() && state.activeView === "hmd") showView("dashboard");
   if (state.activeView === "secret" && !secretMessagingEnabled()) showView("dashboard");
@@ -6703,6 +6735,9 @@ function renderFeatureLocks() {
     if (lock.roomId) meta.append(textNode(`Room ${lock.roomId}`));
     if (Array.isArray(lock.roles) && lock.roles.length) meta.append(textNode(`Roles ${lock.roles.join(", ")}`));
     if (lock.reason) meta.append(textNode(lock.reason));
+    (lock.exemptions || []).forEach((exemption) => {
+      meta.append(textNode(`Class ${exemption.grade} allowed in room ${exemption.roomId || "all rooms"} until ${formatDate(exemption.until)}`));
+    });
     schedules.forEach((schedule) => {
       meta.append(textNode(`${formatScheduleTime(schedule.startTime)} - ${formatScheduleTime(schedule.endTime)} / ${schedule.days.map(dayLabel).join(", ")}${schedule.repeats ? " / repeats" : ""}${schedule.roomId ? ` / room ${schedule.roomId}` : ""}${schedule.roles.length ? ` / roles ${schedule.roles.join(", ")}` : ""}${schedule.reason ? ` / ${schedule.reason}` : ""}`));
     });
@@ -6724,12 +6759,12 @@ function renderFeatureLocks() {
 }
 
 function renderModeratorPanel() {
-  const moderator = isModerator();
+  const moderator = isModerator() && !isOwner();
   const formSlot = moderator ? els.moderatorFeatureLockSlot : els.adminFeatureLockSlot;
   const lockPanelSlot = moderator ? els.moderatorFeatureLockPanelSlot : els.adminFeatureLockPanelSlot;
   if (els.featureLockForm && formSlot && els.featureLockForm.parentElement !== formSlot) formSlot.append(els.featureLockForm);
   if (els.featureLockPanel && lockPanelSlot && els.featureLockPanel.parentElement !== lockPanelSlot) lockPanelSlot.append(els.featureLockPanel);
-  if (els.featureLockPanel) els.featureLockPanel.classList.toggle("hidden", !moderator);
+  if (els.featureLockPanel) els.featureLockPanel.classList.toggle("hidden", !isDev() && !moderator);
 
   if (!els.moderatorRoomList) return;
   els.moderatorRoomList.replaceChildren();
@@ -6860,6 +6895,7 @@ function renderFeatureLockControls() {
     els.featureLockRoles.disabled = moderatorOnly;
   }
   if (els.featureLockRolesLabel) els.featureLockRolesLabel.classList.toggle("hidden", moderatorOnly);
+  if (els.classExemptionControls) els.classExemptionControls.classList.toggle("hidden", !moderatorOnly);
   if (els.featureLockScopeNote) {
     els.featureLockScopeNote.textContent = moderatorOnly
       ? "This rule applies to every member in the selected room."
@@ -8825,6 +8861,11 @@ function selectDmFromCallRoom(roomId) {
 function featureLock(feature) {
   const lock = (state.settings.featureLocks || {})[feature];
   if (!lock) return null;
+  const grade = normalizeClientGrade(state.user && state.user.grade || "");
+  const hasGlobalExemption = Array.isArray(lock.exemptions) && lock.exemptions.some((exemption) =>
+    exemption && !exemption.roomId && exemption.grade === grade && Date.parse(exemption.until || "") > Date.now()
+  );
+  if (hasGlobalExemption) return null;
   const activeSchedule = normalizeFeatureSchedules(lock.schedules || []).find((schedule) => {
     if (schedule.roomId) return false;
     return featureScheduleActive(schedule);
@@ -9009,8 +9050,8 @@ function syncHiddenNav() {
 
 function syncPrivilegedNav() {
   setNavVisibility(els.domainNavButton, isOwner());
-  setNavVisibility(els.moderatorNavButton, isModerator());
-  setNavVisibility(els.adminNavButton, isOwner());
+  setNavVisibility(els.moderatorNavButton, isModerator() && !isOwner());
+  setNavVisibility(els.adminNavButton, isDev());
   setNavVisibility(els.hmdNavButton, isDev());
 }
 

@@ -2588,6 +2588,7 @@ async function routeApi(req, res, requestUrl) {
     const isManager = canManage(user);
     const roomId = String(body.roomId || "").trim().slice(0, 80);
     const removeScheduleId = String(body.removeScheduleId || "").trim();
+    const exemptionGrade = normalizeGrade(body.exemptionGrade || "");
     if (!isManager && !roomId && !removeScheduleId) return json(res, 400, { error: "Moderators must choose a room for feature locks" });
     if (!isManager && roomId) {
       const rooms = await readJson(FILES.rooms, []);
@@ -2614,11 +2615,29 @@ async function routeApi(req, res, requestUrl) {
     const featureLocks = { ...(settings.featureLocks || {}) };
     const previousLock = featureLocks[feature] && typeof featureLocks[feature] === "object" ? featureLocks[feature] : {};
     const existingSchedules = sanitizeFeatureLockSchedules(previousLock.schedules || []);
+    const existingExemptions = sanitizeFeatureLockExemptions(previousLock.exemptions || []);
     const scheduleDays = normalizeScheduleDays(body.days);
     const scheduleStartTime = normalizeScheduleTime(body.startTime);
     const scheduleEndTime = normalizeScheduleTime(body.endTime);
 
-    if (removeScheduleId) {
+    if (exemptionGrade) {
+      if (!roomId) return json(res, 400, { error: "Choose a room for temporary class access" });
+      const exemptionMinutes = Math.max(1, Math.min(isManager ? 525600 : 360, Number(body.exemptionMinutes || 0)));
+      if (!Number.isFinite(exemptionMinutes) || exemptionMinutes < 1) return json(res, 400, { error: "Choose how long class access should last" });
+      const exemption = {
+        id: crypto.randomUUID(),
+        grade: exemptionGrade,
+        roomId,
+        until: new Date(Date.now() + exemptionMinutes * 60 * 1000).toISOString(),
+        exemptedBy: user.username,
+        createdAt: new Date().toISOString(),
+      };
+      const exemptions = [
+        ...existingExemptions.filter((entry) => entry.grade !== exemption.grade || entry.roomId !== exemption.roomId),
+        exemption,
+      ].slice(-96);
+      featureLocks[feature] = { ...previousLock, exemptions };
+    } else if (removeScheduleId) {
       const existingSchedule = existingSchedules.find((schedule) => schedule.id === removeScheduleId);
       if (!existingSchedule) return json(res, 404, { error: "Screen-time schedule not found" });
       if (!isManager && !existingSchedule.roomId) {
@@ -2626,7 +2645,7 @@ async function routeApi(req, res, requestUrl) {
       }
       const schedules = existingSchedules.filter((schedule) => schedule.id !== removeScheduleId);
       const nextLock = { ...previousLock, schedules };
-      if (!nextLock.disabledUntil && !schedules.length) delete featureLocks[feature];
+      if (!nextLock.disabledUntil && !schedules.length && !existingExemptions.length) delete featureLocks[feature];
       else featureLocks[feature] = nextLock;
     } else if (scheduleDays.length || scheduleStartTime || scheduleEndTime) {
       if (!scheduleStartTime || !scheduleEndTime) return json(res, 400, { error: "Choose a schedule start and end time" });
@@ -2680,7 +2699,7 @@ async function routeApi(req, res, requestUrl) {
       delete nextLock.reason;
       delete nextLock.roomId;
       delete nextLock.roles;
-      if (!nextLock.schedules || !nextLock.schedules.length) delete featureLocks[feature];
+      if ((!nextLock.schedules || !nextLock.schedules.length) && !existingExemptions.length) delete featureLocks[feature];
       else featureLocks[feature] = nextLock;
     }
 
@@ -6534,9 +6553,10 @@ function visibleFeatureLocks(featureLocks) {
   for (const [feature, lock] of Object.entries(featureLocks || {})) {
     if (!allowedFeatureLocks.has(feature)) continue;
     const schedules = sanitizeFeatureLockSchedules(lock && lock.schedules || []);
+    const exemptions = sanitizeFeatureLockExemptions(lock && lock.exemptions || []);
     const disabledFrom = Date.parse(lock && lock.disabledFrom);
     const disabledUntil = Date.parse(lock && lock.disabledUntil);
-    if ((!Number.isFinite(disabledUntil) || disabledUntil <= now) && !schedules.length) continue;
+    if ((!Number.isFinite(disabledUntil) || disabledUntil <= now) && !schedules.length && !exemptions.length) continue;
     visible[feature] = {
       disabledFrom: Number.isFinite(disabledFrom) && Number.isFinite(disabledUntil) && disabledUntil > now ? new Date(disabledFrom).toISOString() : "",
       disabledUntil: Number.isFinite(disabledUntil) && disabledUntil > now ? new Date(disabledUntil).toISOString() : "",
@@ -6545,6 +6565,7 @@ function visibleFeatureLocks(featureLocks) {
       roomId: String(lock.roomId || "").slice(0, 80),
       roles: normalizeLockRoles(lock.roles),
       schedules,
+      exemptions,
     };
   }
   return visible;
@@ -6567,6 +6588,21 @@ function sanitizeFeatureLockSchedules(schedules) {
     }))
     .filter((schedule) => schedule.startTime && schedule.endTime && schedule.days.length)
     .slice(0, 48);
+}
+
+function sanitizeFeatureLockExemptions(exemptions) {
+  const now = Date.now();
+  return (Array.isArray(exemptions) ? exemptions : [])
+    .map((exemption) => ({
+      id: String(exemption && exemption.id || crypto.randomUUID()).slice(0, 80),
+      grade: normalizeGrade(exemption && exemption.grade || ""),
+      roomId: String(exemption && exemption.roomId || "").trim().slice(0, 80),
+      until: String(exemption && exemption.until || ""),
+      exemptedBy: String(exemption && exemption.exemptedBy || "").slice(0, 80),
+      createdAt: String(exemption && exemption.createdAt || ""),
+    }))
+    .filter((exemption) => exemption.grade && Number.isFinite(Date.parse(exemption.until)) && Date.parse(exemption.until) > now)
+    .slice(-96);
 }
 
 function featureScheduleActive(schedule, now = new Date()) {
@@ -6605,6 +6641,11 @@ function featureBlocked(settings, feature, user, context = {}) {
   }
   if (canManage(user)) return "";
   const featureLockConfig = (settings.featureLocks || {})[feature];
+  const userGrade = normalizeGrade(user && user.grade || "");
+  const exempted = sanitizeFeatureLockExemptions(featureLockConfig && featureLockConfig.exemptions || []).some((exemption) =>
+    exemption.grade === userGrade && (!exemption.roomId || String(context.roomId || "") === exemption.roomId)
+  );
+  if (exempted) return "";
   const lock = activeFeatureLockCandidates(featureLockConfig, new Date()).find((candidate) => {
     if (candidate.roomId && String(context.roomId || "") !== candidate.roomId) return false;
     if (candidate.roles.length && !candidate.roles.includes(effectiveRole(user))) return false;

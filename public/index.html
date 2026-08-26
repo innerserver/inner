@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-143-moderation-desk" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-145-admin-mod-workspace" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -128,7 +128,7 @@
           <button class="nav-button" type="button" data-view="screen">Screen</button>
           <button id="moderatorNavButton" class="nav-button hidden" type="button" data-view="moderator">Moderation</button>
           <button id="domainNavButton" class="nav-button owner-only hidden" type="button" data-view="domain">Domain</button>
-          <button id="adminNavButton" class="nav-button owner-only hidden" type="button" data-view="admin">Admin</button>
+          <button id="adminNavButton" class="nav-button manager-only hidden" type="button" data-view="admin">Admin</button>
           <button id="hmdNavButton" class="nav-button dev-only hidden" type="button" data-view="hmd">HMD</button>
         </nav>
 
@@ -638,12 +638,25 @@
           </div>
         </section>
 
-        <section id="adminView" class="view owner-only hidden">
+        <section id="adminView" class="view manager-only hidden">
           <div class="section-header">
             <div>
               <h2>Admin</h2>
               <p id="serverStateText">Active</p>
             </div>
+          </div>
+          <div class="admin-intro">
+            <div>
+              <span class="eyebrow">Control centre</span>
+              <strong>Manage accounts, rooms, access, reports, and platform settings from one workspace.</strong>
+            </div>
+            <nav class="admin-quick-links" aria-label="Admin sections">
+              <a href="#accountManager">Accounts</a>
+              <a href="#roomForm">Rooms</a>
+              <a href="#adminFeatureLockSlot">Screen time</a>
+              <a href="#adminReportsPanel">Reports</a>
+              <a href="#adminBackupsPanel">Backups</a>
+            </nav>
           </div>
 
           <div class="settings-grid admin-grid">
@@ -777,6 +790,12 @@
                 </div>
               </div>
               <label>Room<select id="featureLockRoom"><option value="">All rooms / global</option></select></label>
+              <div id="classExemptionControls" class="class-exemption-controls hidden">
+                <div><h3>Temporary class access</h3><p class="panel-note">Let one class use this feature while the room limit stays active for everyone else.</p></div>
+                <label>Class<select id="featureExemptionGrade"><option value="">Choose class</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option></select></label>
+                <label>Access for minutes<input id="featureExemptionMinutes" type="number" min="1" max="360" value="30" /></label>
+                <button id="saveFeatureExemptionButton" class="secondary-button" type="button">Allow class temporarily</button>
+              </div>
               <label id="featureLockRolesLabel">Roles affected<input id="featureLockRoles" maxlength="120" placeholder="member" /></label>
               <label>Reason<input id="featureReason" maxlength="160" placeholder="optional" /></label>
               <button id="saveFeatureLockButton" class="primary-button" type="submit">Save screen-time lock</button>
@@ -900,12 +919,12 @@
             <div class="status-panel owner-only hidden wide-panel"><h3>Store manager</h3><div id="adminStoreList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Payment orders</h3><div id="adminOrderList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>AI requests</h3><div id="aiResponseList" class="account-list"></div></div>
-            <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>Backups</h3><button id="createBackupButton" class="secondary-button compact-button" type="button">Create backup</button></div><p class="panel-note">Backups save account data, messages, DMs, settings, and file records. Uploaded file contents stay in the data/uploads folder.</p><div id="backupList" class="account-list"></div></div>
+            <div id="adminBackupsPanel" class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>Backups</h3><button id="createBackupButton" class="secondary-button compact-button" type="button">Create backup</button></div><p class="panel-note">Backups save account data, messages, DMs, settings, and file records. Uploaded file contents stay in the data/uploads folder.</p><div id="backupList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Account requests</h3><p class="panel-note">Requests include browser location because users must turn on location for server allocation.</p><div id="accountRequestList" class="account-list"></div></div>
             <div id="accountManager" class="status-panel account-manager owner-only hidden"><div class="panel-title-row account-search-row"><h3>Accounts</h3><button id="showAllAccountsButton" class="secondary-button compact-button" type="button">Show all</button><select id="accountGradeFilter" class="compact-search" aria-label="Filter accounts by grade"><option value="">All grades</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option><option value="none">No grade</option></select><input id="accountSearchInput" class="compact-search" maxlength="120" placeholder="Search username, display name, email, phone, IP, device, role" autocomplete="off" /></div><p class="panel-note">Admin/HMD/dev accounts show by default. Use grade filter, search, or Show all to display member accounts.</p><div id="accountList" class="account-list compact-account-list"></div></div>
             <div id="accountDetailPanel" class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><div><h3 id="accountDetailTitle">Account details</h3><p id="accountDetailSubtitle" class="panel-note">Search and select a user to inspect account and browser activity.</p></div><div class="button-row"><button id="openAccountDetailTabButton" class="secondary-button compact-button" type="button">Open detail tab</button><button id="wipeAccountBrowserHistoryButton" class="danger-button compact-button" type="button">Wipe browser history</button><button id="closeAccountDetailButton" class="ghost-light-button compact-button" type="button">Close</button></div></div><div id="accountDetailBody" class="account-list compact-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Live IP tracking</h3><p class="panel-note">Shows active sessions first, then latest login/IP data for accounts.</p><div id="liveIpList" class="account-list compact-list"></div></div>
-            <div class="status-panel owner-only hidden wide-panel"><h3>Reports</h3><div id="reportList" class="account-list"></div></div>
+            <div id="adminReportsPanel" class="status-panel owner-only hidden wide-panel"><h3>Reports</h3><div id="reportList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>Moderation logs</h3><button id="exportModerationLogsButton" class="secondary-button compact-button" type="button">Export</button></div><div id="moderationLogList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>Wipe utilities</h3></div><div class="button-row"><button id="wipeLogsButton" class="danger-button compact-button" type="button">Wipe logs</button><button id="wipeReportsButton" class="danger-button compact-button" type="button">Clear reports</button><button id="wipeUploadsButton" class="danger-button compact-button" type="button">Clear uploads</button><button id="wipeRoomsButton" class="danger-button compact-button" type="button">Reset rooms</button></div><p class="panel-note">Room reset creates a backup first.</p></div>
             <div class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>System logs</h3><button id="exportLogsButton" class="secondary-button compact-button" type="button">Export</button></div><div class="log-filter-row"><input id="logSearchInput" class="compact-search" maxlength="120" placeholder="Search account, action, IP, details" autocomplete="off" /><input id="logDateInput" class="compact-search" type="date" /></div><div id="logList" class="account-list compact-list"></div></div>
@@ -1002,7 +1021,7 @@
     <script src="/session-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/status-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/ui-boot.js?v=connectifi-137-ui-polish" defer></script>
-    <script src="/app.js?v=connectifi-143-moderation-desk" defer></script>
+    <script src="/app.js?v=connectifi-145-admin-mod-workspace" defer></script>
     <script src="/force-logout.js?v=connectifi-137-ui-polish" defer></script>
   </body>
 </html>

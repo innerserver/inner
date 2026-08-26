@@ -4677,6 +4677,135 @@ body {
   background: color-mix(in srgb, var(--accent-soft) 38%, var(--surface));
 }
 
+.admin-intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-muted) 64%, var(--surface));
+}
+
+.admin-intro > div {
+  display: grid;
+  gap: 5px;
+  max-width: 620px;
+}
+
+.admin-intro strong {
+  color: var(--ink);
+  font-size: 0.98rem;
+}
+
+.admin-quick-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.admin-quick-links a {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.admin-quick-links a:hover,
+.admin-quick-links a:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  outline: none;
+}
+
+#adminView .admin-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 22px !important;
+}
+
+#adminView #serverForm {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 3px solid var(--accent);
+}
+
+#adminView #serverForm > h3,
+#adminView #serverForm > .panel-note,
+#adminView #serverForm > .email-contact-grid,
+#adminView #serverForm > .button-row,
+#adminView #serverForm > #emailStatusText,
+#adminView #serverForm > #saveServerButton {
+  grid-column: 1 / -1;
+}
+
+#adminView #serverForm > .split-fields {
+  grid-column: span 2;
+}
+
+#adminView .admin-grid > .wide-panel,
+#adminView .admin-grid > #accountManager,
+#adminView .admin-grid > #adminFeatureLockSlot {
+  grid-column: 1 / -1;
+}
+
+#adminView #adminFeatureLockSlot > .panel-form {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 3px solid var(--accent);
+}
+
+#adminView #adminFeatureLockSlot .panel-title-row,
+#adminView #adminFeatureLockSlot .screen-time-schedule-editor,
+#adminView #adminFeatureLockSlot .class-exemption-controls,
+#adminView #adminFeatureLockSlot #saveFeatureLockButton,
+#adminView #adminFeatureLockSlot > .panel-note {
+  grid-column: 1 / -1;
+}
+
+#adminView .admin-grid > .panel-form,
+#adminView .admin-grid > .status-panel {
+  min-width: 0;
+  border-top: 2px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+}
+
+@media (max-width: 1120px) {
+  #adminView .admin-grid,
+  #adminView #serverForm,
+  #adminView #adminFeatureLockSlot > .panel-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-intro {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 15px;
+  }
+
+  .admin-quick-links {
+    justify-content: flex-start;
+  }
+
+  #adminView .admin-grid,
+  #adminView #serverForm,
+  #adminView #adminFeatureLockSlot > .panel-form {
+    grid-template-columns: 1fr !important;
+  }
+
+  #adminView #serverForm > .split-fields {
+    grid-column: auto;
+  }
+}
+
 .moderator-intro > div {
   display: grid;
   gap: 5px;
@@ -4757,6 +4886,30 @@ body {
   background: color-mix(in srgb, var(--accent-soft) 20%, var(--surface-muted));
 }
 
+.class-exemption-controls {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(130px, 0.65fr) minmax(160px, 0.8fr);
+  align-items: end;
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent-soft) 28%, var(--surface));
+}
+
+.class-exemption-controls > div {
+  grid-column: 1 / -1;
+}
+
+.class-exemption-controls h3 {
+  margin: 0;
+}
+
+.class-exemption-controls .panel-note {
+  margin: 4px 0 0;
+}
+
 #moderatorFeatureLockSlot #saveFeatureLockButton {
   min-height: 44px;
 }
@@ -4799,6 +4952,10 @@ body {
 
   #moderatorFeatureLockSlot .screen-time-schedule-editor {
     padding: 14px;
+  }
+
+  .class-exemption-controls {
+    grid-template-columns: 1fr;
   }
 }
 

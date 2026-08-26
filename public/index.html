@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-146-built-in-admin-ui" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-152-baseline-finetune" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -624,17 +624,25 @@
             </div>
             <span id="moderatorScope" class="moderator-scope">Member access only</span>
           </div>
-          <div class="settings-grid moderator-grid">
-            <div class="status-panel moderator-rooms-panel">
+          <div class="moderator-overview" aria-label="Moderation overview">
+            <article class="moderator-metric"><span>Accessible rooms</span><strong id="moderatorRoomCount">0</strong><small>Open or restricted</small></article>
+            <article class="moderator-metric"><span>Open reports</span><strong id="moderatorReportCount">0</strong><small>Needs review</small></article>
+            <article class="moderator-metric"><span>Active limits</span><strong id="moderatorLimitCount">0</strong><small>Across your rooms</small></article>
+          </div>
+          <div class="moderator-grid">
+            <aside class="status-panel moderator-rooms-panel">
               <div class="panel-title-row"><div><h3>Rooms</h3><p class="panel-note">Moderators can enter every room, including restricted rooms.</p></div></div>
               <div id="moderatorRoomList" class="account-list"></div>
+            </aside>
+            <div class="moderator-workbench">
+              <div class="moderator-workbench-heading"><div><span class="eyebrow">Member access</span><h3>Screen-time controls</h3></div><p>Set room limits or temporarily allow a class without removing the rule for everyone else.</p></div>
+              <div id="moderatorFeatureLockSlot"></div>
+              <div id="moderatorFeatureLockPanelSlot"></div>
             </div>
-            <div id="moderatorFeatureLockSlot"></div>
-            <div id="moderatorFeatureLockPanelSlot" class="wide-panel"></div>
-            <div class="status-panel wide-panel">
-              <h3>Reports</h3>
+            <section class="status-panel moderator-reports-panel">
+              <div class="panel-title-row"><div><h3>Reports</h3><p class="panel-note">Review member reports and keep the queue moving.</p></div></div>
               <div id="moderatorReportList" class="account-list"></div>
-            </div>
+            </section>
           </div>
         </section>
 
@@ -1021,7 +1029,7 @@
     <script src="/session-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/status-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/ui-boot.js?v=connectifi-137-ui-polish" defer></script>
-    <script src="/app.js?v=connectifi-146-built-in-admin-ui" defer></script>
+    <script src="/app.js?v=connectifi-151-product-reset" defer></script>
     <script src="/force-logout.js?v=connectifi-137-ui-polish" defer></script>
   </body>
 </html>

@@ -499,6 +499,9 @@ function cacheElements() {
     "moderatorRoomList",
     "moderatorReportList",
     "moderatorScope",
+    "moderatorRoomCount",
+    "moderatorReportCount",
+    "moderatorLimitCount",
     "featureName",
     "featureMinutes",
     "featureStartAt",
@@ -4455,6 +4458,22 @@ function renderWithFocusPreserved(callback) {
 
 function setupAdminCollapsibles() {
   if (!els.adminView || !hasBuiltInControlAccess()) return;
+  const layoutPreferenceVersion = "v148";
+  let resetLayoutPreferences = false;
+  try {
+    resetLayoutPreferences = localStorage.getItem("innerAdminPanelLayoutVersion") !== layoutPreferenceVersion;
+  } catch (error) {}
+  const defaultExpandedPanels = new Set([
+    "Account passwords",
+    "Create account",
+    "Screen time",
+    "Side rooms",
+    "Active locks",
+    "Room manager",
+    "Backups",
+    "Accounts",
+    "Reports",
+  ]);
   els.adminView.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => {
     if (panel.dataset.collapsibleReady === "1") return;
     const title = panel.querySelector("h3");
@@ -4473,12 +4492,16 @@ function setupAdminCollapsibles() {
     });
     const saved = (() => {
       try {
-        return localStorage.getItem(`innerAdminPanelCollapsed:${index}:${title.textContent}`) === "1";
+        return localStorage.getItem(`innerAdminPanelCollapsed:${index}:${title.textContent}`);
       } catch (error) {
-        return false;
+        return null;
       }
     })();
-    if (saved) {
+    const storedPreference = resetLayoutPreferences ? null : saved;
+    const collapsed = storedPreference === null
+      ? !defaultExpandedPanels.has(title.textContent.trim())
+      : storedPreference === "1";
+    if (collapsed) {
       panel.classList.add("admin-collapsed");
       button.textContent = "Expand";
     }
@@ -4487,6 +4510,29 @@ function setupAdminCollapsibles() {
     else title.insertAdjacentElement("afterend", button);
     panel.dataset.collapsibleReady = "1";
   });
+  if (resetLayoutPreferences) {
+    try {
+      localStorage.setItem("innerAdminPanelLayoutVersion", layoutPreferenceVersion);
+    } catch (error) {}
+  }
+  const quickLinks = els.adminView.querySelector(".admin-quick-links");
+  if (quickLinks && quickLinks.dataset.ready !== "1") {
+    quickLinks.addEventListener("click", (event) => {
+      const link = event.target.closest("a[href^='#']");
+      if (!link) return;
+      const target = els.adminView.querySelector(link.getAttribute("href"));
+      if (!target) return;
+      event.preventDefault();
+      const panel = target.matches(".panel-form, .status-panel") ? target : target.querySelector(".panel-form, .status-panel");
+      if (panel && panel.classList.contains("admin-collapsed")) {
+        panel.classList.remove("admin-collapsed");
+        const button = panel.querySelector(".collapse-toggle");
+        if (button) button.textContent = "Collapse";
+      }
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    quickLinks.dataset.ready = "1";
+  }
 }
 
 function renderCornerAd() {
@@ -6771,10 +6817,18 @@ function renderModeratorPanel() {
   els.moderatorRoomList.replaceChildren();
   if (!moderator) return;
   const rooms = (state.rooms || []).slice().sort((left, right) => String(left.name || left.id).localeCompare(String(right.name || right.id)));
+  const openReports = (state.reports || []).filter((report) => !reportClosed(report)).length;
+  const activeLimits = Object.values(state.settings.featureLocks || {}).reduce((count, lock) => {
+    const roomLock = lock && lock.roomId ? 1 : 0;
+    const scheduled = normalizeFeatureSchedules(lock && lock.schedules || []).filter((schedule) => schedule.roomId).length;
+    return count + roomLock + scheduled;
+  }, 0);
   if (els.moderatorScope) {
-    const openReports = (state.reports || []).filter((report) => !reportClosed(report)).length;
     els.moderatorScope.textContent = `${rooms.length} room${rooms.length === 1 ? "" : "s"} · ${openReports} open report${openReports === 1 ? "" : "s"}`;
   }
+  if (els.moderatorRoomCount) els.moderatorRoomCount.textContent = String(rooms.length);
+  if (els.moderatorReportCount) els.moderatorReportCount.textContent = String(openReports);
+  if (els.moderatorLimitCount) els.moderatorLimitCount.textContent = String(activeLimits);
   if (!rooms.length) {
     els.moderatorRoomList.append(emptyBlock("No rooms available"));
     return;
@@ -6784,6 +6838,7 @@ function renderModeratorPanel() {
       room.category || "General",
       room.requiresPassword ? "Password protected" : "No password",
     ]);
+    card.classList.add("moderator-room-card");
     const actions = document.createElement("div");
     actions.className = "account-actions";
     actions.append(accountButton("Manage screen time", () => {

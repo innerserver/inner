@@ -137,6 +137,7 @@ const viewRoutes = {
   chess: "/chess",
   voice: "/voice",
   screen: "/screen",
+  moderator: "/moderation",
   domain: "/domain",
   admin: "/admin",
   hmd: "/hmd",
@@ -285,10 +286,12 @@ function cacheElements() {
     "shareChessButton",
     "voiceView",
     "screenView",
+    "moderatorView",
     "domainView",
     "adminView",
     "hmdView",
     "domainNavButton",
+    "moderatorNavButton",
     "adminNavButton",
     "hmdNavButton",
     "messageState",
@@ -488,6 +491,13 @@ function cacheElements() {
     "newAccountPersistent",
     "createAccountButton",
     "featureLockForm",
+    "adminFeatureLockSlot",
+    "moderatorFeatureLockSlot",
+    "featureLockPanel",
+    "adminFeatureLockPanelSlot",
+    "moderatorFeatureLockPanelSlot",
+    "moderatorRoomList",
+    "moderatorReportList",
     "featureName",
     "featureMinutes",
     "featureStartAt",
@@ -1344,6 +1354,7 @@ function showView(viewName, options = {}) {
   if (!viewRoutes[viewName]) viewName = "dashboard";
   if (viewName === "domain" && !isOwner()) viewName = "dashboard";
   if (viewName === "admin" && !isOwner()) viewName = "dashboard";
+  if (viewName === "moderator" && !isModerator()) viewName = "dashboard";
   if (viewName === "hmd" && !isDev()) viewName = "dashboard";
   if (viewName === "secret" && !secretMessagingEnabled()) viewName = "dashboard";
   const feature = viewFeature(viewName);
@@ -4351,6 +4362,7 @@ function renderAll() {
     renderEmailStatus();
     renderQuickEdit();
     renderUsers();
+    renderModeratorPanel();
     renderFeatureLocks();
     renderFeatureVisibility();
     renderSecretMessaging();
@@ -4488,10 +4500,14 @@ function renderShell() {
   document.querySelectorAll(".dev-only").forEach((element) => {
     element.classList.toggle("hidden", !isDev());
   });
+  document.querySelectorAll(".moderator-only").forEach((element) => {
+    element.classList.toggle("hidden", !isModerator());
+  });
   syncPrivilegedNav();
   syncHiddenNav();
   updateNotificationButton();
   if (!isOwner() && state.activeView === "admin") showView("dashboard");
+  if (!isModerator() && state.activeView === "moderator") showView("dashboard");
   if (!isOwner() && state.activeView === "domain") showView("dashboard");
   if (!isDev() && state.activeView === "hmd") showView("dashboard");
   if (state.activeView === "secret" && !secretMessagingEnabled()) showView("dashboard");
@@ -6705,6 +6721,41 @@ function renderFeatureLocks() {
   });
 }
 
+function renderModeratorPanel() {
+  const moderator = isModerator();
+  const formSlot = moderator ? els.moderatorFeatureLockSlot : els.adminFeatureLockSlot;
+  const lockPanelSlot = moderator ? els.moderatorFeatureLockPanelSlot : els.adminFeatureLockPanelSlot;
+  if (els.featureLockForm && formSlot && els.featureLockForm.parentElement !== formSlot) formSlot.append(els.featureLockForm);
+  if (els.featureLockPanel && lockPanelSlot && els.featureLockPanel.parentElement !== lockPanelSlot) lockPanelSlot.append(els.featureLockPanel);
+  if (els.featureLockPanel) els.featureLockPanel.classList.toggle("hidden", !moderator);
+
+  if (!els.moderatorRoomList) return;
+  els.moderatorRoomList.replaceChildren();
+  if (!moderator) return;
+  const rooms = (state.rooms || []).slice().sort((left, right) => String(left.name || left.id).localeCompare(String(right.name || right.id)));
+  if (!rooms.length) {
+    els.moderatorRoomList.append(emptyBlock("No rooms available"));
+    return;
+  }
+  rooms.forEach((room) => {
+    const card = adminCard(room.name || room.id, room.private || room.inviteOnly ? "Restricted room" : "Open room", [
+      room.category || "General",
+      room.requiresPassword ? "Password protected" : "No password",
+    ]);
+    const actions = document.createElement("div");
+    actions.className = "account-actions";
+    actions.append(accountButton("Open room", () => {
+      state.selectedRoomId = room.id || "main";
+      if (els.roomSelect) els.roomSelect.value = state.selectedRoomId;
+      showView("messages");
+      renderRooms();
+      renderMessages();
+    }));
+    card.append(actions);
+    els.moderatorRoomList.append(card);
+  });
+}
+
 function currentFeatureScheduleEditor() {
   return {
     id: els.featureScheduleId ? els.featureScheduleId.value : "",
@@ -7455,34 +7506,8 @@ function requestedRoleLabel(role) {
 }
 
 function renderReports() {
-  if (els.reportList && isOwner()) {
-    els.reportList.replaceChildren();
-    const reports = activeReports();
-    if (!reports.length) {
-      els.reportList.append(emptyBlock("No reports"));
-    } else {
-      reports.slice(0, 100).forEach((report) => {
-        const card = adminCard(`${report.targetType} ${report.targetId}`, report.status, [
-          `Reported by ${report.reporter}`,
-          contactLine("Reporter", report.reporterContact),
-          report.targetSender ? `Message from ${report.targetSender}` : "Message sender unknown",
-          contactLine("Sender", report.targetSenderContact),
-          report.targetText ? `Message: ${report.targetText}` : "Message text unavailable",
-          report.reason,
-          formatDate(report.createdAt),
-        ]);
-        card.classList.add("report-dashboard-alert");
-        const actions = document.createElement("div");
-        actions.className = "account-actions";
-        actions.append(
-          accountButton("Mark seen", () => updateReport(report.id, "reviewing")),
-          accountButton("Done", () => updateReport(report.id, "done"))
-        );
-        card.append(actions);
-        els.reportList.append(card);
-      });
-    }
-  }
+  if (els.reportList && isOwner()) renderReportList(els.reportList);
+  if (els.moderatorReportList && isModerator()) renderReportList(els.moderatorReportList);
 
   if (els.moderationLogList && isOwner()) {
     els.moderationLogList.replaceChildren();
@@ -7501,6 +7526,35 @@ function renderReports() {
       });
     }
   }
+}
+
+function renderReportList(container) {
+  container.replaceChildren();
+  const reports = activeReports();
+  if (!reports.length) {
+    container.append(emptyBlock("No reports"));
+    return;
+  }
+  reports.slice(0, 100).forEach((report) => {
+    const card = adminCard(`${report.targetType} ${report.targetId}`, report.status, [
+      `Reported by ${report.reporter}`,
+      contactLine("Reporter", report.reporterContact),
+      report.targetSender ? `Message from ${report.targetSender}` : "Message sender unknown",
+      contactLine("Sender", report.targetSenderContact),
+      report.targetText ? `Message: ${report.targetText}` : "Message text unavailable",
+      report.reason,
+      formatDate(report.createdAt),
+    ]);
+    card.classList.add("report-dashboard-alert");
+    const actions = document.createElement("div");
+    actions.className = "account-actions";
+    actions.append(
+      accountButton("Mark seen", () => updateReport(report.id, "reviewing")),
+      accountButton("Done", () => updateReport(report.id, "done"))
+    );
+    card.append(actions);
+    container.append(card);
+  });
 }
 
 function renderLiveIpTracking() {
@@ -8932,6 +8986,7 @@ function syncHiddenNav() {
 
 function syncPrivilegedNav() {
   setNavVisibility(els.domainNavButton, isOwner());
+  setNavVisibility(els.moderatorNavButton, isModerator());
   setNavVisibility(els.adminNavButton, isOwner());
   setNavVisibility(els.hmdNavButton, isDev());
 }

@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-141-moderator-room-controls" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-142-moderation-panel" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -126,6 +126,7 @@
           <button class="nav-button" type="button" data-view="chess">Games</button>
           <button class="nav-button" type="button" data-view="voice">Voice</button>
           <button class="nav-button" type="button" data-view="screen">Screen</button>
+          <button id="moderatorNavButton" class="nav-button hidden" type="button" data-view="moderator">Moderation</button>
           <button id="domainNavButton" class="nav-button owner-only hidden" type="button" data-view="domain">Domain</button>
           <button id="adminNavButton" class="nav-button owner-only hidden" type="button" data-view="admin">Admin</button>
           <button id="hmdNavButton" class="nav-button dev-only hidden" type="button" data-view="hmd">HMD</button>
@@ -609,6 +610,27 @@
           <div id="voicePeerList" class="account-list"></div>
         </section>
 
+        <section id="moderatorView" class="view moderator-only hidden">
+          <div class="section-header">
+            <div>
+              <h2>Moderation</h2>
+              <p>Room access, member screen-time controls, and report review.</p>
+            </div>
+          </div>
+          <div class="settings-grid moderator-grid">
+            <div class="status-panel">
+              <h3>All rooms</h3>
+              <div id="moderatorRoomList" class="account-list"></div>
+            </div>
+            <div id="moderatorFeatureLockSlot"></div>
+            <div id="moderatorFeatureLockPanelSlot" class="wide-panel"></div>
+            <div class="status-panel wide-panel">
+              <h3>Reports</h3>
+              <div id="moderatorReportList" class="account-list"></div>
+            </div>
+          </div>
+        </section>
+
         <section id="adminView" class="view owner-only hidden">
           <div class="section-header">
             <div>
@@ -713,6 +735,7 @@
               <button id="createAccountButton" class="primary-button" type="submit">Create account</button>
             </form>
 
+            <div id="adminFeatureLockSlot"></div>
             <form id="featureLockForm" class="panel-form hidden">
               <h3>Screen time / feature locks</h3>
               <label>Feature<select id="featureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="secret">Secret</option><option value="files">Files</option><option value="docs">Google Workspace</option><option value="browser">Browser</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option><option value="store">Store</option><option value="chess">Games</option><option value="domain">Domain</option><option value="admin">Admin</option><option value="hmd">HMD</option></select></label>
@@ -859,7 +882,8 @@
               <button id="saveAdminAutomodButton" class="primary-button" type="submit">Save AI moderator</button>
             </form>
 
-            <div class="status-panel owner-only hidden"><h3>Active locks</h3><div id="featureLockList" class="account-list"></div></div>
+            <div id="adminFeatureLockPanelSlot"></div>
+            <div id="featureLockPanel" class="status-panel hidden"><h3>Active locks</h3><div id="featureLockList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden"><h3>Hidden feature rules</h3><div id="featureVisibilityList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden"><h3>Paywall rules</h3><div id="paywallList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden"><h3>Room manager</h3><div id="roomManagerList" class="account-list"></div></div>
@@ -971,7 +995,7 @@
     <script src="/session-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/status-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/ui-boot.js?v=connectifi-137-ui-polish" defer></script>
-    <script src="/app.js?v=connectifi-141-moderator-room-controls" defer></script>
+    <script src="/app.js?v=connectifi-142-moderation-panel" defer></script>
     <script src="/force-logout.js?v=connectifi-137-ui-polish" defer></script>
   </body>
 </html>

@@ -273,6 +273,22 @@ select:disabled {
   }
 }
 
+/* v154: show the workspace immediately, then populate it without a blank pause. */
+#appView.app-loading > .workspace > .view.active,
+#appView.app-loading > .workspace > .site-notice {
+  visibility: hidden;
+}
+
+@media (min-width: 861px) {
+  /* The desktop connection bar should move with the workspace, not pin itself over every page. */
+  #appView .topbar {
+    position: relative !important;
+    top: auto !important;
+    z-index: 1 !important;
+    transition: background-color 160ms ease, box-shadow 160ms ease;
+  }
+}
+
 .login-shell {
   min-height: 100vh;
   display: grid;
@@ -4794,6 +4810,21 @@ body {
   #moderatorView #moderatorFeatureLockSlot > .panel-form,
   #moderatorView .moderator-room-card .account-actions {
     grid-template-columns: 1fr !important;
+  }
+}
+
+/* v154 final precedence: desktop header returns to the document flow. */
+#appView.app-loading > .workspace > .view.active,
+#appView.app-loading > .workspace > .site-notice {
+  visibility: hidden;
+}
+
+@media (min-width: 861px) {
+  #appView .topbar {
+    position: relative !important;
+    top: auto !important;
+    z-index: 1 !important;
+    transition: background-color 160ms ease, box-shadow 160ms ease;
   }
 }
 

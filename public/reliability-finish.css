@@ -1,0 +1,22 @@
+/* v154 final overrides: keep login responsive and let the desktop header scroll. */
+#appView.app-loading > .workspace > .view.active,
+#appView.app-loading > .workspace > .site-notice {
+  visibility: hidden;
+}
+
+@media (min-width: 861px) {
+  #appView .topbar {
+    position: relative !important;
+    top: auto !important;
+    z-index: 1 !important;
+    transition: background-color 160ms ease, box-shadow 160ms ease;
+  }
+}
+
+@media (max-width: 860px) {
+  #appView .topbar {
+    position: relative !important;
+    top: auto !important;
+    z-index: 1 !important;
+  }
+}

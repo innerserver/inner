@@ -10,7 +10,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-153-reliability" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-155-fast-login" />
+    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-155-fast-login" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -312,7 +313,7 @@
           <div class="section-header">
             <div>
               <h2>Secret</h2>
-              <p id="secretState">Private owner-enabled messages</p>
+              <p id="secretState">Messages for approved members</p>
             </div>
           </div>
           <div id="secretMessageList" class="message-list" aria-live="polite"></div>
@@ -821,7 +822,7 @@
 
             <form id="secretMessagingForm" class="panel-form owner-only hidden">
               <h3>Secret messaging</h3>
-              <p class="panel-note">Type usernames here. Those users get the Secret tab. Owner admins can monitor all secret messages.</p>
+              <p class="panel-note">Choose which usernames can use the Secret tab.</p>
               <label>Enabled users<textarea id="secretMessagingUsers" rows="3" maxlength="1200" placeholder="username1, username2"></textarea></label>
               <button id="saveSecretMessagingButton" class="primary-button" type="submit">Save secret access</button>
             </form>
@@ -1029,7 +1030,7 @@
     <script src="/session-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/status-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/ui-boot.js?v=connectifi-137-ui-polish" defer></script>
-    <script src="/app.js?v=connectifi-153-reliability" defer></script>
+    <script src="/app.js?v=connectifi-155-fast-login" defer></script>
     <script src="/force-logout.js?v=connectifi-137-ui-polish" defer></script>
   </body>
 </html>

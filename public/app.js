@@ -1035,7 +1035,11 @@ async function handleLogin(event) {
       },
     });
     els.loginPassword.value = "";
-    await loadState();
+    // Let the user enter the app as soon as authentication succeeds; the
+    // existing state request hydrates the workspace immediately afterwards.
+    showApp();
+    if (els.connectionStatus) els.connectionStatus.textContent = "Loading workspace";
+    void loadState().catch((error) => showLogin(error.message || "Could not load workspace"));
   } catch (error) {
     els.loginError.textContent = error.message;
   } finally {
@@ -1329,7 +1333,8 @@ async function loadState() {
 
   showApp();
   showView(state.activeView, { updateHistory: false });
-  renderAll();
+  renderShell();
+  window.requestAnimationFrame(() => renderAll());
   maybeAlertReportThreshold(0, activeReports().length);
   connectSocket();
   flushPendingSends();
@@ -1350,9 +1355,10 @@ function showLogin(message = "", options = {}) {
   if (!options.keepPasswordReset) setTimeout(() => els.loginPassword.focus(), 0);
 }
 
-function showApp() {
+function showApp(options = {}) {
   els.loginView.classList.add("hidden");
   els.appView.classList.remove("hidden");
+  els.appView.classList.toggle("app-loading", Boolean(options.loading));
 }
 
 function showView(viewName, options = {}) {
@@ -5087,9 +5093,7 @@ function renderSecretMessages() {
   els.secretView.classList.toggle("hidden", !enabled);
   if (els.secretNavButton) setNavVisibility(els.secretNavButton, enabled);
   if (!enabled) return;
-  els.secretState.textContent = isOwner()
-    ? "Owner monitor for all secret messages"
-    : "Private owner-enabled messages";
+  els.secretState.textContent = "Messages for approved members";
   const shouldStick =
     els.secretMessageList.scrollTop + els.secretMessageList.clientHeight >= els.secretMessageList.scrollHeight - 24;
   const scrollOffset = els.secretMessageList.scrollHeight - els.secretMessageList.scrollTop;

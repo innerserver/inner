@@ -863,13 +863,15 @@ async function routeApi(req, res, requestUrl) {
       return json(res, 403, { error: `Account is temporarily banned until ${new Date(user.bannedUntil).toLocaleString()}` });
     }
 
-    const settings = await readJson(FILES.settings, {});
+    const [settings, rooms] = await Promise.all([
+      readJson(FILES.settings, {}),
+      readJson(FILES.rooms, []),
+    ]);
     if (settings.serverEnabled === false && !canBypassShutdown(user)) {
       await addSystemLog("login.blocked", user.username, { reason: "Server shutdown mode" }, req);
       return json(res, 423, { error: "Server is shut down. Only admin, HMD, and dev access is open right now." });
     }
 
-    const rooms = await readJson(FILES.rooms, []);
     const persistent = effectivePersistentLogin(user, settings, rooms);
     const token = crypto.randomBytes(32).toString("hex");
     sessions.set(token, {
@@ -919,7 +921,11 @@ async function routeApi(req, res, requestUrl) {
         loginHistory,
         loginIpCounts,
       };
-      await writeJson(FILES.users, users);
+      // Keep the authenticated response independent from storage round trips.
+      // The login history still persists immediately after the response.
+      void writeJson(FILES.users, users).catch((error) => {
+        console.error("Login history persistence failed:", error.message || error);
+      });
       if (outsideRecentIps) {
         // Security notification delivery must not hold the sign-in response open.
         // The login history above is already persisted before this is scheduled.

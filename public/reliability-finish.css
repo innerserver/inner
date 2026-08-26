@@ -20,3 +20,24 @@
     z-index: 1 !important;
   }
 }
+
+/* v156: legacy grid selectors must not hide headings added by the collapse UI. */
+#adminView .admin-grid > .panel-form.admin-collapsed > .admin-collapse-heading,
+#adminView .admin-grid > .status-panel.admin-collapsed > .admin-collapse-heading {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  min-height: 38px !important;
+  overflow: visible !important;
+}
+
+#adminView .admin-grid > .admin-collapsed > .admin-collapse-heading h3 {
+  display: block !important;
+  visibility: visible !important;
+}
+
+#adminView .admin-grid > .admin-collapsed > .admin-collapse-heading .collapse-toggle {
+  display: inline-flex !important;
+  visibility: visible !important;
+}

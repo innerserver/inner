@@ -71,6 +71,8 @@ const state = {
   store: { items: [], orders: [] },
   aiRequests: [],
   aiConfigured: false,
+  adminStateLoaded: false,
+  adminStateHydrating: false,
   ws: null,
   reconnectTimer: null,
   wsPingTimer: null,
@@ -1283,7 +1285,7 @@ async function handleLogout() {
 }
 
 async function loadState() {
-  const data = await api("/api/state");
+  const data = await api("/api/state?fast=1");
   state.user = data.user;
   state.settings = data.settings;
   state.uploadConfig = data.uploadConfig || state.uploadConfig;
@@ -1342,6 +1344,30 @@ async function loadState() {
   shareLinkFromUrl();
 }
 
+async function hydrateAdminState() {
+  if (!hasBuiltInControlAccess() || state.adminStateLoaded || state.adminStateHydrating) return;
+  state.adminStateHydrating = true;
+  try {
+    const data = await api("/api/state");
+    state.accountRequests = data.accountRequests || [];
+    state.backups = data.backups || [];
+    state.reports = data.reports || [];
+    state.moderationLogs = data.moderationLogs || [];
+    state.logs = data.logs || [];
+    state.dev = data.dev || null;
+    state.bots = data.bots || [];
+    state.plugins = data.plugins || [];
+    state.automod = data.automod || {};
+    state.aiRequests = data.aiRequests || [];
+    state.aiConfigured = Boolean(data.aiConfigured);
+    state.emailStatus = data.emailStatus || null;
+    state.adminStateLoaded = true;
+    renderAll();
+  } finally {
+    state.adminStateHydrating = false;
+  }
+}
+
 function showLogin(message = "", options = {}) {
   state.loggedIn = false;
   stopSessionKeepAlive();
@@ -1379,6 +1405,7 @@ function showView(viewName, options = {}) {
   if (viewName === "moderator" && !isModerator()) viewName = "dashboard";
   if (viewName === "hmd" && !isDev()) viewName = "dashboard";
   if (viewName === "secret" && !secretMessagingEnabled()) viewName = "dashboard";
+  if (["admin", "hmd"].includes(viewName)) hydrateAdminState().catch(() => {});
   const feature = viewFeature(viewName);
   if (feature && viewName !== "profile" && !featureAvailable(feature)) {
     notify(lockMessage(feature) || `${featureLabel(feature)} is not available for this account`);

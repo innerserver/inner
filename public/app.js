@@ -104,6 +104,7 @@ const state = {
   remoteScreenRoomId: "",
   remoteScreenStream: null,
   screenShareWarningShown: false,
+  screenConnectionState: "",
   remoteFrom: "",
   activeView: "dashboard",
   loggedIn: false,
@@ -1022,8 +1023,10 @@ function restoreInputDraft(input, draft) {
 async function handleLogin(event) {
   event.preventDefault();
   els.loginError.textContent = "";
+  const submitButton = els.loginForm && els.loginForm.querySelector("button[type='submit']");
 
   try {
+    if (submitButton) submitButton.disabled = true;
     await api("/api/login", {
       method: "POST",
       json: {
@@ -1035,6 +1038,8 @@ async function handleLogin(event) {
     await loadState();
   } catch (error) {
     els.loginError.textContent = error.message;
+  } finally {
+    if (submitButton) submitButton.disabled = false;
   }
 }
 
@@ -3584,6 +3589,7 @@ async function startShare(options = {}) {
     state.screenRoomId = roomId;
     state.localStream = stream;
     state.screenShareWarningShown = false;
+    state.screenConnectionState = "Starting secure connection";
     els.localVideo.srcObject = stream;
     playMedia(els.localVideo);
     stream.getTracks().forEach((track) => {
@@ -3594,6 +3600,7 @@ async function startShare(options = {}) {
       return notify("Live connection is not ready");
     }
     const offered = await offerScreenToRoom(roomId);
+    state.screenConnectionState = offered ? "Connecting to viewer" : "Waiting for a viewer";
     setTimeout(() => offerScreenToRoom(roomId).catch(() => {}), 900);
     setTimeout(() => offerScreenToRoom(roomId).catch(() => {}), 2200);
     if (!offered) notify(isDmCallRoom(roomId) ? "No selected DM/group members are online yet. Keep sharing open; Connectifi will retry when they connect." : "No other users are online yet. Keep sharing open; Connectifi will retry when someone connects.");
@@ -3960,6 +3967,7 @@ function stopShare(options = {}) {
   const roomId = state.screenRoomId || "screen:global";
   state.localStream = null;
   state.screenRoomId = "";
+  state.screenConnectionState = "";
   if (stream) {
     stream.getTracks().forEach((track) => track.stop());
   }
@@ -4002,6 +4010,9 @@ function createPeer(peerId, roomId = "screen:global") {
     attachScreenStream(peerId, stream, roomId);
   };
   pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "connected") state.screenConnectionState = "Live";
+    else if (["connecting", "new"].includes(pc.connectionState)) state.screenConnectionState = "Connecting to viewer";
+    else if (["failed", "disconnected"].includes(pc.connectionState)) state.screenConnectionState = "Connection needs a relay";
     if (["failed", "disconnected"].includes(pc.connectionState) && typeof pc.restartIce === "function") {
       try {
         pc.restartIce();
@@ -4458,22 +4469,11 @@ function renderWithFocusPreserved(callback) {
 
 function setupAdminCollapsibles() {
   if (!els.adminView || !hasBuiltInControlAccess()) return;
-  const layoutPreferenceVersion = "v148";
+  const layoutPreferenceVersion = "v153";
   let resetLayoutPreferences = false;
   try {
     resetLayoutPreferences = localStorage.getItem("innerAdminPanelLayoutVersion") !== layoutPreferenceVersion;
   } catch (error) {}
-  const defaultExpandedPanels = new Set([
-    "Account passwords",
-    "Create account",
-    "Screen time",
-    "Side rooms",
-    "Active locks",
-    "Room manager",
-    "Backups",
-    "Accounts",
-    "Reports",
-  ]);
   els.adminView.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => {
     if (panel.dataset.collapsibleReady === "1") return;
     const title = panel.querySelector("h3");
@@ -4482,32 +4482,40 @@ function setupAdminCollapsibles() {
     button.className = "collapse-toggle";
     button.type = "button";
     button.textContent = "Collapse";
+    button.setAttribute("aria-expanded", "true");
+    const storageKey = `innerAdminPanelCollapsed:${index}:${title.textContent}`;
+    const setCollapsed = (collapsed, persist = true) => {
+      panel.classList.toggle("admin-collapsed", collapsed);
+      button.textContent = collapsed ? "Expand" : "Collapse";
+      button.setAttribute("aria-expanded", String(!collapsed));
+      if (!persist) return;
+      try {
+        localStorage.setItem(storageKey, collapsed ? "1" : "0");
+      } catch (error) {}
+    };
     button.addEventListener("click", () => {
       const collapsed = !panel.classList.contains("admin-collapsed");
-      panel.classList.toggle("admin-collapsed", collapsed);
-      if (button.textContent !== (collapsed ? "Expand" : "Collapse")) button.textContent = collapsed ? "Expand" : "Collapse";
-      try {
-        localStorage.setItem(`innerAdminPanelCollapsed:${index}:${title.textContent}`, collapsed ? "1" : "0");
-      } catch (error) {}
+      setCollapsed(collapsed);
     });
     const saved = (() => {
       try {
-        return localStorage.getItem(`innerAdminPanelCollapsed:${index}:${title.textContent}`);
+        return localStorage.getItem(storageKey);
       } catch (error) {
         return null;
       }
     })();
     const storedPreference = resetLayoutPreferences ? null : saved;
-    const collapsed = storedPreference === null
-      ? !defaultExpandedPanels.has(title.textContent.trim())
-      : storedPreference === "1";
-    if (collapsed) {
-      panel.classList.add("admin-collapsed");
-      button.textContent = "Expand";
-    }
+    setCollapsed(storedPreference === null ? true : storedPreference === "1", false);
     const row = title.closest(".panel-title-row");
-    if (row) row.append(button);
-    else title.insertAdjacentElement("afterend", button);
+    if (row) {
+      row.classList.add("admin-collapse-heading");
+      row.append(button);
+    } else {
+      const heading = document.createElement("div");
+      heading.className = "admin-collapse-heading";
+      title.before(heading);
+      heading.append(title, button);
+    }
     panel.dataset.collapsibleReady = "1";
   });
   if (resetLayoutPreferences) {
@@ -4527,7 +4535,10 @@ function setupAdminCollapsibles() {
       if (panel && panel.classList.contains("admin-collapsed")) {
         panel.classList.remove("admin-collapsed");
         const button = panel.querySelector(".collapse-toggle");
-        if (button) button.textContent = "Collapse";
+        if (button) {
+          button.textContent = "Collapse";
+          button.setAttribute("aria-expanded", "true");
+        }
       }
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     });
@@ -6414,7 +6425,7 @@ function renderScreen() {
   els.emptyScreen.classList.toggle("hidden", remoteActive);
 
   if (sharing) {
-    els.screenStatus.textContent = "Sharing your screen";
+    els.screenStatus.textContent = state.screenConnectionState ? `Sharing your screen - ${state.screenConnectionState}` : "Sharing your screen";
   } else if (remoteActive) {
     const peer = state.peers.get(state.remoteFrom);
     els.screenStatus.textContent = `${peer ? peer.username : "Peer"} is sharing`;

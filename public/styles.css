@@ -216,6 +216,63 @@ select:disabled {
   }
 }
 
+/* v153: compact admin controls with a dependable, visible expansion action. */
+#adminView .panel-form.admin-collapsed,
+#adminView .status-panel.admin-collapsed {
+  display: block !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  padding: 12px 14px !important;
+  overflow: visible !important;
+}
+
+#adminView .admin-collapse-heading {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  min-height: 38px;
+  width: 100%;
+}
+
+#adminView .admin-collapse-heading h3 {
+  min-width: 0;
+  margin: 0 !important;
+}
+
+#adminView .admin-collapse-heading .collapse-toggle {
+  display: inline-flex !important;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px !important;
+  margin: 0 !important;
+  padding: 5px 12px !important;
+  color: var(--ink) !important;
+  background: var(--surface-muted) !important;
+  border-color: var(--line-strong, var(--line)) !important;
+}
+
+#adminView .admin-collapsed > :not(.admin-collapse-heading):not(.panel-title-row) {
+  display: none !important;
+}
+
+#adminView .admin-collapsed > .panel-title-row.admin-collapse-heading > :not(:first-child):not(.collapse-toggle) {
+  display: none !important;
+}
+
+@media (max-width: 560px) {
+  #adminView .admin-collapse-heading {
+    gap: 8px !important;
+  }
+
+  #adminView .admin-collapse-heading h3 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 .login-shell {
   min-height: 100vh;
   display: grid;

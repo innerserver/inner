@@ -1,0 +1,122 @@
+[
+  {
+    "username": "admin",
+    "role": "admin",
+    "passwordHash": "ba84fed87bc75197c9a1945e7247158e:a490a75c25da0e3ec1000d3bad36a2634fffb8a5c0e9f2d1ef7ac2a75b732cd4b72426b8e8a8abab0c20f3dd2c199541969bd48a99f1c1f3d73f2cabc5908cba",
+    "passwordPreset": "admin-v1",
+    "allowPersistentLogin": false,
+    "locked": true,
+    "createdAt": "2026-08-26T11:43:53.904Z",
+    "lastLoginAt": "2026-08-26T11:44:24.870Z",
+    "lastLoginIp": "127.0.0.1",
+    "lastLoginDevice": "1063f772d4ba05384217053d",
+    "lastLoginApproximateLocation": {
+      "ip": "127.0.0.1",
+      "type": "private/local",
+      "note": "Approximate location unavailable for local/private IP"
+    },
+    "loginHistory": [
+      {
+        "ip": "127.0.0.1",
+        "device": "1063f772d4ba05384217053d",
+        "approximateLocation": {
+          "ip": "127.0.0.1",
+          "type": "private/local",
+          "note": "Approximate location unavailable for local/private IP"
+        },
+        "loggedInAt": "2026-08-26T11:44:24.870Z"
+      }
+    ],
+    "loginIpCounts": {
+      "127.0.0.1": 1
+    }
+  },
+  {
+    "username": "admin2",
+    "role": "admin",
+    "passwordHash": "76c4df10c604f27f8d27e14cb0fcb9a0:49297dfdb6acd557a2cf8ba3bf8170ff495d65329f4252188a6158842f28fc850a48f9dc9bcf19cab6bcb8bb38fc925f0144b2e6874e2110ec7be8d3fae2a03b",
+    "passwordPreset": "admin2-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-26T11:43:53.904Z"
+  },
+  {
+    "username": "hmd",
+    "role": "hmd",
+    "passwordHash": "f5fa234b1d6d70f09c6488078e2e289f:0e4a8ae8008aa48b8a4c0b491cb900c54cc6ea5c18ca9d977c25e97c8b56a8c17de0ce19cf7f14cc73ade90ace54b3511504028dddb7d6d85d4aaa4b4c0bdf00",
+    "passwordPreset": "hmd-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-26T11:43:53.904Z",
+    "createdBy": "system"
+  },
+  {
+    "username": "dev",
+    "role": "dev",
+    "passwordHash": "f7d52af4584248972bc3a9ed87c3ec8f:9b982786608f4a6ca79e5a626beb79da919d315f46f4d15f95823d397d407a9c5650facef14e7eba5dbdfc73e3a2f1cb6e3d67cacc32f7423bb430fd13a15ae0",
+    "passwordPreset": "dev-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-08-26T11:43:53.904Z",
+    "createdBy": "system"
+  },
+  {
+    "username": "roommod",
+    "role": "moderator",
+    "passwordHash": "5bb6650729b2279f3175be4063f702d1:06bbf97acc19503f51b67f8a61cea24be919f791bbe7d09289e817aa412c5c57e2405b396cc22c9ba5e61586a355a86be1cda7bddaaaeb7d5af83d6ca3fab9a2",
+    "email": "",
+    "phone": "",
+    "contact": "",
+    "grade": "",
+    "gradeUpdatedAt": "",
+    "contactUpdatedAt": "",
+    "createdAt": "2026-08-26T11:44:24.924Z",
+    "createdBy": "admin",
+    "allowPersistentLogin": true,
+    "bannedUntil": "",
+    "banReason": "",
+    "lastLoginAt": "2026-08-26T11:45:46.573Z",
+    "lastLoginIp": "127.0.0.1",
+    "lastLoginDevice": "1063f772d4ba05384217053d",
+    "lastLoginApproximateLocation": {
+      "ip": "127.0.0.1",
+      "type": "private/local",
+      "note": "Approximate location unavailable for local/private IP"
+    },
+    "loginHistory": [
+      {
+        "ip": "127.0.0.1",
+        "device": "1063f772d4ba05384217053d",
+        "approximateLocation": {
+          "ip": "127.0.0.1",
+          "type": "private/local",
+          "note": "Approximate location unavailable for local/private IP"
+        },
+        "loggedInAt": "2026-08-26T11:45:46.573Z"
+      },
+      {
+        "ip": "127.0.0.1",
+        "device": "1063f772d4ba05384217053d",
+        "approximateLocation": {
+          "ip": "127.0.0.1",
+          "type": "private/local",
+          "note": "Approximate location unavailable for local/private IP"
+        },
+        "loggedInAt": "2026-08-26T11:44:38.709Z"
+      },
+      {
+        "ip": "127.0.0.1",
+        "device": "1063f772d4ba05384217053d",
+        "approximateLocation": {
+          "ip": "127.0.0.1",
+          "type": "private/local",
+          "note": "Approximate location unavailable for local/private IP"
+        },
+        "loggedInAt": "2026-08-26T11:44:25.139Z"
+      }
+    ],
+    "loginIpCounts": {
+      "127.0.0.1": 3
+    }
+  }
+]

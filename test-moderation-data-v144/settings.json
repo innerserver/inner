@@ -1,0 +1,100 @@
+{
+  "serverEnabled": true,
+  "roomName": "Connectifi",
+  "signupMode": "open",
+  "requireContact": false,
+  "acceptedEmailDomains": [],
+  "adminContactEmail": "",
+  "passwordResetEnabled": true,
+  "reportEmails": [],
+  "emailRoutes": {},
+  "emailContacts": {
+    "noreply": "innerservers@gmail.com",
+    "reports": "report@connectifi.in",
+    "security": "security@connectifi.in",
+    "support": "support@connectifi.in",
+    "admin": "admin@connectifi.in"
+  },
+  "reportRetentionDays": 30,
+  "featureLocks": {
+    "screen": {
+      "disabledFrom": "2026-08-26T11:52:45.782Z",
+      "disabledUntil": "2026-08-26T12:52:45.782Z",
+      "disabledBy": "classmod",
+      "reason": "Quiet study",
+      "roomId": "b4ea763c-1f92-4a08-b0ac-47fbdb8c5add",
+      "roles": [
+        "member"
+      ],
+      "exemptions": [
+        {
+          "id": "b800c273-9cf4-4728-9eed-6c02882cb025",
+          "grade": "10A",
+          "roomId": "b4ea763c-1f92-4a08-b0ac-47fbdb8c5add",
+          "until": "2026-08-26T12:37:45.828Z",
+          "exemptedBy": "classmod",
+          "createdAt": "2026-08-26T11:52:45.828Z"
+        }
+      ]
+    }
+  },
+  "featureVisibility": {},
+  "secretMessaging": {
+    "allowedUsers": []
+  },
+  "paywalls": {},
+  "persistentLogin": {
+    "defaultEnabled": true,
+    "grades": [],
+    "roles": [],
+    "rooms": []
+  },
+  "shutdownAt": "",
+  "shutdownBy": "",
+  "updatedAt": "2026-08-26T11:52:45.829Z",
+  "moderationSettings": {
+    "emailReports": true,
+    "trackIp": true,
+    "trackDevice": true,
+    "updatedAt": "2026-08-26T11:52:23.305Z",
+    "updatedBy": "system"
+  },
+  "customizations": {
+    "appName": "Connectifi",
+    "connectedLabel": "",
+    "disconnectedLabel": "",
+    "serverOnLabel": "",
+    "serverOffLabel": "",
+    "versionLabel": "",
+    "updateTitle": "",
+    "updateNote": "",
+    "notice": "",
+    "globalTheme": "",
+    "globalVisualStyle": "",
+    "accent": "",
+    "density": "comfortable",
+    "rounded": true,
+    "customCss": "",
+    "updatedAt": "",
+    "updatedBy": ""
+  },
+  "serviceScale": {
+    "messages": 100,
+    "dms": 100,
+    "uploads": 100,
+    "voice": 100,
+    "screen": 100,
+    "notifications": 100,
+    "moderation": 100,
+    "realtime": 100,
+    "domain": 100
+  },
+  "chessUrl": "https://chessverse.co.in/",
+  "gameLinks": [
+    {
+      "name": "ChessVerse",
+      "url": "https://chessverse.co.in/"
+    }
+  ],
+  "updatedBy": "classmod"
+}

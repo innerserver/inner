@@ -921,18 +921,25 @@ async function routeApi(req, res, requestUrl) {
       };
       await writeJson(FILES.users, users);
       if (outsideRecentIps) {
-        await handleNewIpLoginAlert(users[userIndex], {
+        // Security notification delivery must not hold the sign-in response open.
+        // The login history above is already persisted before this is scheduled.
+        void handleNewIpLoginAlert(users[userIndex], {
           ip: currentLoginIp,
           device: currentLoginDevice,
           previousIps: recentIps,
           loginAt,
-        }, req, settings);
+        }, req, settings).catch((error) => {
+          console.error("New IP login alert failed:", error.message || error);
+        });
       }
     }
 
-    await addSystemLog("login.success", user.username, { role: normalizeRole(user.role), persistent, persistentReason: persistentLoginReason(user, settings, rooms) }, req);
     res.setHeader("Set-Cookie", sessionCookie(token, req, persistent ? Math.floor(SESSION_PERSISTENT_MS / 1000) : null));
-    return json(res, 200, { user: safeUser(user) });
+    json(res, 200, { user: safeUser(user) });
+    void addSystemLog("login.success", user.username, { role: normalizeRole(user.role), persistent, persistentReason: persistentLoginReason(user, settings, rooms) }, req).catch((error) => {
+      console.error("Login audit log failed:", error.message || error);
+    });
+    return;
   }
 
   if (req.method === "POST" && pathname === "/api/logout") {

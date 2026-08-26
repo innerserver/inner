@@ -4502,7 +4502,7 @@ function renderWithFocusPreserved(callback) {
 
 function setupAdminCollapsibles() {
   if (!els.adminView || !hasBuiltInControlAccess()) return;
-  const layoutPreferenceVersion = "v153";
+  const layoutPreferenceVersion = "v157";
   let resetLayoutPreferences = false;
   try {
     resetLayoutPreferences = localStorage.getItem("innerAdminPanelLayoutVersion") !== layoutPreferenceVersion;
@@ -4545,8 +4545,10 @@ function setupAdminCollapsibles() {
       row.append(button);
     } else {
       const heading = document.createElement("div");
-      heading.className = "admin-collapse-heading";
-      title.before(heading);
+      // Keep generated headings as direct panel children. Older admin styles
+      // intentionally hide arbitrary wrapper elements in collapsed panels.
+      heading.className = "panel-title-row admin-collapse-heading";
+      panel.prepend(heading);
       heading.append(title, button);
     }
     panel.dataset.collapsibleReady = "1";

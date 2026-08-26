@@ -4964,7 +4964,7 @@ function renderRooms() {
 
 function canAccessVisibleRoom(room) {
   if (!room || !state.user) return false;
-  if (room.id === "main" || isOwner()) return true;
+  if (room.id === "main" || isModerator()) return true;
   if (!room.private && !room.inviteOnly && !room.requiresPassword) return true;
   return Array.isArray(room.allowedUsers) && room.allowedUsers.includes(state.user.username);
 }
@@ -5132,7 +5132,7 @@ function renderMessagesInner() {
 
 async function unlockRoomIfNeeded(roomId) {
   const room = state.rooms.find((entry) => entry.id === roomId);
-  if (!room || !room.requiresPassword || isOwner()) return true;
+  if (!room || !room.requiresPassword || isModerator()) return true;
   const password = window.prompt(`Password for ${room.name}`);
   if (!password) {
     state.selectedRoomId = "main";
@@ -6691,14 +6691,15 @@ function renderFeatureLocks() {
 
     const actions = document.createElement("div");
     actions.className = "account-actions";
-    if (lock.disabledUntil) actions.append(accountButton("Unlock", () => quickFeatureUnlock(feature)));
+    if (lock.disabledUntil && (isDev() || lock.roomId)) actions.append(accountButton("Unlock", () => quickFeatureUnlock(feature)));
     schedules.forEach((schedule) => {
+      if (!isDev() && !schedule.roomId) return;
       actions.append(
         accountButton("Edit", () => editFeatureSchedule(feature, schedule)),
         accountButton("Remove", () => removeFeatureSchedule(feature, schedule.id))
       );
     });
-    if (!actions.children.length) actions.append(accountButton("Unlock", () => quickFeatureUnlock(feature)));
+    if (!actions.children.length && isDev()) actions.append(accountButton("Unlock", () => quickFeatureUnlock(feature)));
     item.append(head, meta, actions);
     els.featureLockList.append(item);
   });
@@ -6777,15 +6778,20 @@ async function removeFeatureSchedule(feature, scheduleId) {
 function renderFeatureLockControls() {
   if (!els.featureLockRoom) return;
   const current = els.featureLockRoom.value || "";
-  const options = [new Option("All rooms / global", "")];
+  const moderatorOnly = isModerator() && !isDev();
+  const options = moderatorOnly ? [] : [new Option("All rooms / global", "")];
   (state.rooms || []).forEach((room) => {
     const option = new Option(room.name || room.id, room.id);
     options.push(option);
   });
   els.featureLockRoom.replaceChildren(...options);
   els.featureLockRoom.value = options.some((option) => option.value === current) ? current : "";
-  if (els.featureLockRoles && !els.featureLockRoles.value) els.featureLockRoles.value = "member";
-  if (!isOwner() && els.featureLockRoom && !els.featureLockRoom.value && state.rooms[0]) {
+  if (els.featureLockRoles) {
+    if (moderatorOnly) els.featureLockRoles.value = "member";
+    else if (!els.featureLockRoles.value) els.featureLockRoles.value = "member";
+    els.featureLockRoles.disabled = moderatorOnly;
+  }
+  if (moderatorOnly && els.featureLockRoom && !els.featureLockRoom.value && state.rooms[0]) {
     els.featureLockRoom.value = state.rooms[0].id || "";
   }
 }
@@ -8594,7 +8600,7 @@ function shareTargetPeople() {
 
 function canAccessRoomForShare(room) {
   if (!room || !state.user) return false;
-  if (isOwner()) return true;
+  if (isModerator()) return true;
   if (!room.private && !room.inviteOnly && !room.requiresPassword) return true;
   return Array.isArray(room.allowedUsers) && room.allowedUsers.includes(state.user.username);
 }

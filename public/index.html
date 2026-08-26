@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-140-media-theme-polish" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-141-moderator-room-controls" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -746,11 +746,11 @@
                   <button id="cancelFeatureScheduleEditButton" class="ghost-light-button compact-button hidden" type="button">Cancel edit</button>
                 </div>
               </div>
-              <label>Room optional<select id="featureLockRoom"><option value="">All rooms / global</option></select></label>
+              <label>Room<select id="featureLockRoom"><option value="">All rooms / global</option></select></label>
               <label>Roles affected<input id="featureLockRoles" maxlength="120" placeholder="member" /></label>
               <label>Reason<input id="featureReason" maxlength="160" placeholder="optional" /></label>
               <button id="saveFeatureLockButton" class="primary-button" type="submit">Save screen-time lock</button>
-              <p class="panel-note">Use this like screen time: choose a feature, time window, room, and roles. Use 0 minutes with no recurring days to turn a feature back on. Moderators can schedule room-only locks for members.</p>
+              <p class="panel-note">Use this like screen time: choose a feature, time window, room, and roles. Use 0 minutes with no recurring days to turn a feature back on. Moderator locks always apply to every member in the selected room.</p>
             </form>
 
             <form id="featureVisibilityForm" class="panel-form owner-only hidden">
@@ -971,7 +971,7 @@
     <script src="/session-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/status-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/ui-boot.js?v=connectifi-137-ui-polish" defer></script>
-    <script src="/app.js?v=connectifi-140-media-theme-polish" defer></script>
+    <script src="/app.js?v=connectifi-141-moderator-room-controls" defer></script>
     <script src="/force-logout.js?v=connectifi-137-ui-polish" defer></script>
   </body>
 </html>

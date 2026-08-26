@@ -2588,6 +2588,12 @@ async function routeApi(req, res, requestUrl) {
     const isManager = canManage(user);
     const roomId = String(body.roomId || "").trim().slice(0, 80);
     if (!isManager && !roomId) return json(res, 400, { error: "Moderators must choose a room for feature locks" });
+    if (!isManager) {
+      const rooms = await readJson(FILES.rooms, []);
+      if (!rooms.some((room) => String(room && room.id || "") === roomId)) {
+        return json(res, 404, { error: "Room not found" });
+      }
+    }
     if (!isManager && ["admin", "hmd", "domain", "vpn", "bots", "plugins"].includes(feature)) {
       return json(res, 403, { error: "Moderators can lock room/member features only" });
     }
@@ -2613,6 +2619,11 @@ async function routeApi(req, res, requestUrl) {
     const scheduleEndTime = normalizeScheduleTime(body.endTime);
 
     if (removeScheduleId) {
+      const existingSchedule = existingSchedules.find((schedule) => schedule.id === removeScheduleId);
+      if (!existingSchedule) return json(res, 404, { error: "Screen-time schedule not found" });
+      if (!isManager && !existingSchedule.roomId) {
+        return json(res, 403, { error: "Moderators can only change room screen-time schedules" });
+      }
       const schedules = existingSchedules.filter((schedule) => schedule.id !== removeScheduleId);
       const nextLock = { ...previousLock, schedules };
       if (!nextLock.disabledUntil && !schedules.length) delete featureLocks[feature];
@@ -2622,6 +2633,10 @@ async function routeApi(req, res, requestUrl) {
       if (!scheduleDays.length) return json(res, 400, { error: "Choose at least one schedule day" });
       if (scheduleStartTime === scheduleEndTime) return json(res, 400, { error: "Schedule start and end cannot match" });
       const scheduleId = String(body.scheduleId || crypto.randomUUID()).trim().slice(0, 80) || crypto.randomUUID();
+      const existingSchedule = existingSchedules.find((schedule) => schedule.id === scheduleId);
+      if (!isManager && existingSchedule && !existingSchedule.roomId) {
+        return json(res, 403, { error: "Moderators can only change room screen-time schedules" });
+      }
       const nextSchedule = {
         id: scheduleId,
         startTime: scheduleStartTime,
@@ -2642,6 +2657,9 @@ async function routeApi(req, res, requestUrl) {
         schedules: schedules.slice(0, 48),
       };
     } else if (disabledUntil > 0) {
+      if (!isManager && previousLock.disabledUntil && !previousLock.roomId) {
+        return json(res, 403, { error: "Moderators can only change room screen-time limits" });
+      }
       featureLocks[feature] = {
         ...previousLock,
         disabledFrom: new Date(disabledFrom).toISOString(),
@@ -5486,7 +5504,7 @@ function persistentLoginReason(user, settings, rooms = []) {
 
 function canAccessRoom(room, user) {
   if (!room || !user) return false;
-  if (room.id === "main" || canManage(user)) return true;
+  if (room.id === "main" || canManage(user) || canModerate(user)) return true;
   if (room.passwordHash && !normalizeUsernameList(room.allowedUsers).includes(user.username)) return false;
   if (!room.private && !room.inviteOnly) return true;
   const allowed = new Set([...(room.allowedUsers || []), ...(room.moderators || []), room.createdBy].filter(Boolean));

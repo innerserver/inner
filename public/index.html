@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-145-admin-mod-workspace" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-146-built-in-admin-ui" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -128,7 +128,7 @@
           <button class="nav-button" type="button" data-view="screen">Screen</button>
           <button id="moderatorNavButton" class="nav-button hidden" type="button" data-view="moderator">Moderation</button>
           <button id="domainNavButton" class="nav-button owner-only hidden" type="button" data-view="domain">Domain</button>
-          <button id="adminNavButton" class="nav-button manager-only hidden" type="button" data-view="admin">Admin</button>
+          <button id="adminNavButton" class="nav-button built-in-control-only hidden" type="button" data-view="admin">Admin</button>
           <button id="hmdNavButton" class="nav-button dev-only hidden" type="button" data-view="hmd">HMD</button>
         </nav>
 
@@ -622,7 +622,7 @@
               <span class="eyebrow">Room controls</span>
               <strong>Choose a room, then manage the limits that apply to its members.</strong>
             </div>
-            <span class="moderator-scope">Member access only</span>
+            <span id="moderatorScope" class="moderator-scope">Member access only</span>
           </div>
           <div class="settings-grid moderator-grid">
             <div class="status-panel moderator-rooms-panel">
@@ -638,7 +638,7 @@
           </div>
         </section>
 
-        <section id="adminView" class="view manager-only hidden">
+        <section id="adminView" class="view built-in-control-only hidden">
           <div class="section-header">
             <div>
               <h2>Admin</h2>
@@ -1021,7 +1021,7 @@
     <script src="/session-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/status-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/ui-boot.js?v=connectifi-137-ui-polish" defer></script>
-    <script src="/app.js?v=connectifi-145-admin-mod-workspace" defer></script>
+    <script src="/app.js?v=connectifi-146-built-in-admin-ui" defer></script>
     <script src="/force-logout.js?v=connectifi-137-ui-polish" defer></script>
   </body>
 </html>

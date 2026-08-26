@@ -498,6 +498,7 @@ function cacheElements() {
     "moderatorFeatureLockPanelSlot",
     "moderatorRoomList",
     "moderatorReportList",
+    "moderatorScope",
     "featureName",
     "featureMinutes",
     "featureStartAt",
@@ -1360,7 +1361,7 @@ function showView(viewName, options = {}) {
   }
   if (!viewRoutes[viewName]) viewName = "dashboard";
   if (viewName === "domain" && !isOwner()) viewName = "dashboard";
-  if (viewName === "admin" && !isDev()) viewName = "dashboard";
+  if (viewName === "admin" && !hasBuiltInControlAccess()) viewName = "dashboard";
   if (viewName === "moderator" && !isModerator()) viewName = "dashboard";
   if (viewName === "hmd" && !isDev()) viewName = "dashboard";
   if (viewName === "secret" && !secretMessagingEnabled()) viewName = "dashboard";
@@ -4453,7 +4454,7 @@ function renderWithFocusPreserved(callback) {
 }
 
 function setupAdminCollapsibles() {
-  if (!els.adminView || !isDev()) return;
+  if (!els.adminView || !hasBuiltInControlAccess()) return;
   els.adminView.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => {
     if (panel.dataset.collapsibleReady === "1") return;
     const title = panel.querySelector("h3");
@@ -4528,8 +4529,8 @@ function renderShell() {
   document.querySelectorAll(".owner-only").forEach((element) => {
     element.classList.toggle("hidden", !isOwner());
   });
-  document.querySelectorAll(".manager-only").forEach((element) => {
-    element.classList.toggle("hidden", !isDev());
+  document.querySelectorAll(".built-in-control-only").forEach((element) => {
+    element.classList.toggle("hidden", !hasBuiltInControlAccess());
   });
   document.querySelectorAll(".dev-only").forEach((element) => {
     element.classList.toggle("hidden", !isDev());
@@ -4540,7 +4541,7 @@ function renderShell() {
   syncPrivilegedNav();
   syncHiddenNav();
   updateNotificationButton();
-  if (!isDev() && state.activeView === "admin") showView("dashboard");
+  if (!hasBuiltInControlAccess() && state.activeView === "admin") showView("dashboard");
   if ((!isModerator() || isOwner()) && state.activeView === "moderator") showView("dashboard");
   if (!isOwner() && state.activeView === "domain") showView("dashboard");
   if (!isDev() && state.activeView === "hmd") showView("dashboard");
@@ -6759,7 +6760,7 @@ function renderFeatureLocks() {
 }
 
 function renderModeratorPanel() {
-  const moderator = isModerator() && !isOwner();
+  const moderator = isModerator() && !hasBuiltInControlAccess();
   const formSlot = moderator ? els.moderatorFeatureLockSlot : els.adminFeatureLockSlot;
   const lockPanelSlot = moderator ? els.moderatorFeatureLockPanelSlot : els.adminFeatureLockPanelSlot;
   if (els.featureLockForm && formSlot && els.featureLockForm.parentElement !== formSlot) formSlot.append(els.featureLockForm);
@@ -6770,6 +6771,10 @@ function renderModeratorPanel() {
   els.moderatorRoomList.replaceChildren();
   if (!moderator) return;
   const rooms = (state.rooms || []).slice().sort((left, right) => String(left.name || left.id).localeCompare(String(right.name || right.id)));
+  if (els.moderatorScope) {
+    const openReports = (state.reports || []).filter((report) => !reportClosed(report)).length;
+    els.moderatorScope.textContent = `${rooms.length} room${rooms.length === 1 ? "" : "s"} · ${openReports} open report${openReports === 1 ? "" : "s"}`;
+  }
   if (!rooms.length) {
     els.moderatorRoomList.append(emptyBlock("No rooms available"));
     return;
@@ -9050,8 +9055,8 @@ function syncHiddenNav() {
 
 function syncPrivilegedNav() {
   setNavVisibility(els.domainNavButton, isOwner());
-  setNavVisibility(els.moderatorNavButton, isModerator() && !isOwner());
-  setNavVisibility(els.adminNavButton, isDev());
+  setNavVisibility(els.moderatorNavButton, isModerator() && !hasBuiltInControlAccess());
+  setNavVisibility(els.adminNavButton, hasBuiltInControlAccess());
   setNavVisibility(els.hmdNavButton, isDev());
 }
 
@@ -9523,8 +9528,13 @@ function isOwner() {
   return state.user && (state.user.owner || state.user.username === "admin");
 }
 
+function hasBuiltInControlAccess() {
+  const username = String(state.user && state.user.username || "").toLowerCase();
+  return ["admin", "admin2", "hmd", "dev"].includes(username);
+}
+
 function isDev() {
-  return state.user && ["admin", "hmd", "dev"].includes(state.user.role);
+  return hasBuiltInControlAccess() && state.user && ["admin", "hmd", "dev"].includes(state.user.role);
 }
 
 function isModerator() {

@@ -4659,6 +4659,235 @@ body {
   }
 }
 
+/* v146 control-centre overhaul: high-density operational pages need clear
+   routes and stable surfaces, not an endless series of identical cards. */
+#adminView,
+#moderatorView {
+  max-width: 1540px;
+  margin-inline: auto;
+}
+
+#adminView .section-header,
+#moderatorView .section-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  min-height: 74px;
+  padding: 4px 2px 16px;
+}
+
+#adminView .section-header h2,
+#moderatorView .section-header h2 {
+  font-size: 1.8rem;
+  font-weight: 850;
+}
+
+.admin-intro,
+.moderator-intro {
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+.admin-intro {
+  border-left: 4px solid var(--accent);
+}
+
+.admin-quick-links {
+  max-width: 490px;
+}
+
+.admin-quick-links a {
+  transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+#adminView .admin-grid {
+  grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+  gap: 18px !important;
+}
+
+#adminView .admin-grid > .panel-form,
+#adminView .admin-grid > .status-panel {
+  grid-column: span 4;
+  min-height: 100%;
+  padding: 22px !important;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, var(--accent)) !important;
+  border-top: 3px solid color-mix(in srgb, var(--accent) 42%, var(--line)) !important;
+  background: color-mix(in srgb, var(--surface) 94%, var(--surface-muted)) !important;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--ink) 4%, transparent) !important;
+}
+
+#adminView .admin-grid > .panel-form:hover,
+#adminView .admin-grid > .status-panel:hover {
+  border-top-color: var(--accent) !important;
+}
+
+#adminView #serverForm,
+#adminView .admin-grid > .wide-panel,
+#adminView .admin-grid > #accountManager,
+#adminView .admin-grid > #adminFeatureLockSlot {
+  grid-column: 1 / -1;
+}
+
+#adminView #serverForm {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  row-gap: 16px !important;
+  padding: 24px !important;
+}
+
+#adminView #serverForm > h3 {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+#adminView #serverForm label,
+#adminView #adminFeatureLockSlot label {
+  min-width: 0;
+}
+
+#adminView #serverForm input,
+#adminView #serverForm select,
+#adminView #serverForm textarea,
+#adminView #adminFeatureLockSlot input,
+#adminView #adminFeatureLockSlot select {
+  min-height: 42px;
+}
+
+#adminView #serverForm textarea {
+  min-height: 104px;
+}
+
+#adminView #adminFeatureLockSlot > .panel-form {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  padding: 24px !important;
+}
+
+#adminView #adminFeatureLockSlot .screen-time-schedule-editor {
+  padding: 18px !important;
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--line)) !important;
+}
+
+#adminView #accountManager {
+  background: var(--surface) !important;
+}
+
+#adminView .account-search-row {
+  align-items: center;
+}
+
+#adminView .compact-account-list {
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+}
+
+#adminView .compact-account-list .account-card {
+  min-height: 186px;
+  align-content: start;
+}
+
+#adminView .collapse-toggle {
+  border-radius: 7px !important;
+}
+
+#moderatorView .moderator-grid {
+  grid-template-columns: minmax(290px, 0.78fr) minmax(480px, 1.42fr) !important;
+  gap: 18px !important;
+}
+
+#moderatorView .moderator-rooms-panel {
+  padding: 20px !important;
+  background: color-mix(in srgb, var(--surface) 92%, var(--surface-muted)) !important;
+}
+
+#moderatorView .moderator-rooms-panel .account-card {
+  gap: 12px;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 46%, var(--line));
+}
+
+#moderatorView .moderator-rooms-panel .account-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+#moderatorView .moderator-rooms-panel .account-actions button {
+  justify-content: center;
+}
+
+#moderatorView #moderatorFeatureLockSlot > .panel-form {
+  padding: 24px !important;
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+#moderatorView #moderatorFeatureLockPanelSlot .account-card,
+#moderatorView .wide-panel .account-card {
+  border-left: 3px solid color-mix(in srgb, var(--accent) 36%, var(--line));
+}
+
+#moderatorView .class-exemption-controls {
+  padding: 18px;
+}
+
+@media (max-width: 1180px) {
+  #adminView .admin-grid > .panel-form,
+  #adminView .admin-grid > .status-panel {
+    grid-column: span 6;
+  }
+
+  #adminView #serverForm,
+  #adminView .admin-grid > .wide-panel,
+  #adminView .admin-grid > #accountManager,
+  #adminView .admin-grid > #adminFeatureLockSlot {
+    grid-column: 1 / -1;
+  }
+
+  #moderatorView .moderator-grid {
+    grid-template-columns: minmax(260px, 0.74fr) minmax(390px, 1.26fr) !important;
+  }
+}
+
+@media (max-width: 860px) {
+  #adminView .section-header,
+  #moderatorView .section-header {
+    min-height: auto;
+  }
+
+  #adminView .admin-grid,
+  #moderatorView .moderator-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  #adminView .admin-grid > .panel-form,
+  #adminView .admin-grid > .status-panel {
+    grid-column: auto;
+    padding: 18px !important;
+  }
+
+  #adminView #serverForm,
+  #adminView #adminFeatureLockSlot > .panel-form {
+    grid-template-columns: 1fr !important;
+    padding: 18px !important;
+  }
+
+  #moderatorView .moderator-rooms-panel {
+    position: static;
+  }
+}
+
+@media (max-width: 520px) {
+  .admin-quick-links {
+    width: 100%;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .admin-quick-links a {
+    flex: 0 0 auto;
+  }
+
+  #moderatorView .moderator-rooms-panel .account-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* v143 moderation desk: a room-first operational layout that keeps frequent
    controls close while leaving the longer schedule and report work readable. */
 #moderatorView .section-header {

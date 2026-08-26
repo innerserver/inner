@@ -151,6 +151,7 @@ const managerRoles = new Set(["admin", "hmd", "dev"]);
 const developerRoles = new Set(["admin", "hmd", "dev"]);
 const moderatorRoles = new Set(["moderator", "admin", "hmd", "dev"]);
 const shutdownExemptUsernames = new Set(["admin", "admin2", "hmd", "dev"]);
+const builtInManagerUsernames = new Set(["admin", "admin2", "hmd", "dev"]);
 const ownerUsernames = new Set(["admin"]);
 
 const mimeTypes = {
@@ -6783,7 +6784,7 @@ function normalizeSoundboardSound(sound) {
 }
 
 function canManage(user) {
-  return managerRoles.has(effectiveRole(user));
+  return builtInManagerUsernames.has(String(user && user.username || "").toLowerCase()) && managerRoles.has(effectiveRole(user));
 }
 
 function canOwn(user) {
@@ -6791,7 +6792,7 @@ function canOwn(user) {
 }
 
 function canDev(user) {
-  return developerRoles.has(effectiveRole(user));
+  return builtInManagerUsernames.has(String(user && user.username || "").toLowerCase()) && developerRoles.has(effectiveRole(user));
 }
 
 function canBypassShutdown(user) {

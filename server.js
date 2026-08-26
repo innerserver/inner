@@ -2587,8 +2587,9 @@ async function routeApi(req, res, requestUrl) {
 
     const isManager = canManage(user);
     const roomId = String(body.roomId || "").trim().slice(0, 80);
-    if (!isManager && !roomId) return json(res, 400, { error: "Moderators must choose a room for feature locks" });
-    if (!isManager) {
+    const removeScheduleId = String(body.removeScheduleId || "").trim();
+    if (!isManager && !roomId && !removeScheduleId) return json(res, 400, { error: "Moderators must choose a room for feature locks" });
+    if (!isManager && roomId) {
       const rooms = await readJson(FILES.rooms, []);
       if (!rooms.some((room) => String(room && room.id || "") === roomId)) {
         return json(res, 404, { error: "Room not found" });
@@ -2613,7 +2614,6 @@ async function routeApi(req, res, requestUrl) {
     const featureLocks = { ...(settings.featureLocks || {}) };
     const previousLock = featureLocks[feature] && typeof featureLocks[feature] === "object" ? featureLocks[feature] : {};
     const existingSchedules = sanitizeFeatureLockSchedules(previousLock.schedules || []);
-    const removeScheduleId = String(body.removeScheduleId || "").trim();
     const scheduleDays = normalizeScheduleDays(body.days);
     const scheduleStartTime = normalizeScheduleTime(body.startTime);
     const scheduleEndTime = normalizeScheduleTime(body.endTime);
@@ -2670,7 +2670,18 @@ async function routeApi(req, res, requestUrl) {
         roles: isManager ? normalizeLockRoles(body.roles) : ["member"],
       };
     } else {
-      delete featureLocks[feature];
+      if (!isManager && previousLock.roomId !== roomId) {
+        return json(res, 403, { error: "Moderators can only change room screen-time limits" });
+      }
+      const nextLock = { ...previousLock };
+      delete nextLock.disabledFrom;
+      delete nextLock.disabledUntil;
+      delete nextLock.disabledBy;
+      delete nextLock.reason;
+      delete nextLock.roomId;
+      delete nextLock.roles;
+      if (!nextLock.schedules || !nextLock.schedules.length) delete featureLocks[feature];
+      else featureLocks[feature] = nextLock;
     }
 
     const next = {

@@ -504,6 +504,8 @@ function cacheElements() {
     "featureEndAt",
     "featureLockRoom",
     "featureLockRoles",
+    "featureLockRolesLabel",
+    "featureLockScopeNote",
     "featureReason",
     "featureScheduleId",
     "featureScheduleStartTime",
@@ -6707,7 +6709,7 @@ function renderFeatureLocks() {
 
     const actions = document.createElement("div");
     actions.className = "account-actions";
-    if (lock.disabledUntil && (isDev() || lock.roomId)) actions.append(accountButton("Unlock", () => quickFeatureUnlock(feature)));
+    if (lock.disabledUntil && (isDev() || lock.roomId)) actions.append(accountButton("Unlock", () => quickFeatureUnlock(feature, lock.roomId)));
     schedules.forEach((schedule) => {
       if (!isDev() && !schedule.roomId) return;
       actions.append(
@@ -6744,6 +6746,11 @@ function renderModeratorPanel() {
     ]);
     const actions = document.createElement("div");
     actions.className = "account-actions";
+    actions.append(accountButton("Manage screen time", () => {
+      if (els.featureLockRoom) els.featureLockRoom.value = room.id || "";
+      if (els.featureLockForm) els.featureLockForm.scrollIntoView({ behavior: "smooth", block: "start" });
+      setTimeout(() => els.featureName && els.featureName.focus(), 250);
+    }));
     actions.append(accountButton("Open room", () => {
       state.selectedRoomId = room.id || "main";
       if (els.roomSelect) els.roomSelect.value = state.selectedRoomId;
@@ -6830,6 +6837,16 @@ function renderFeatureLockControls() {
   if (!els.featureLockRoom) return;
   const current = els.featureLockRoom.value || "";
   const moderatorOnly = isModerator() && !isDev();
+  const permittedModeratorFeatures = new Set(["messages", "dms", "secret", "files", "docs", "browser", "screen", "rooms", "friends", "profiles", "voice", "invites", "moderation", "store", "chess"]);
+  if (els.featureName) {
+    Array.from(els.featureName.options).forEach((option) => {
+      option.hidden = moderatorOnly && !permittedModeratorFeatures.has(option.value);
+      option.disabled = moderatorOnly && !permittedModeratorFeatures.has(option.value);
+    });
+    if (moderatorOnly && els.featureName.selectedOptions[0] && els.featureName.selectedOptions[0].disabled) {
+      els.featureName.value = "messages";
+    }
+  }
   const options = moderatorOnly ? [] : [new Option("All rooms / global", "")];
   (state.rooms || []).forEach((room) => {
     const option = new Option(room.name || room.id, room.id);
@@ -6841,6 +6858,12 @@ function renderFeatureLockControls() {
     if (moderatorOnly) els.featureLockRoles.value = "member";
     else if (!els.featureLockRoles.value) els.featureLockRoles.value = "member";
     els.featureLockRoles.disabled = moderatorOnly;
+  }
+  if (els.featureLockRolesLabel) els.featureLockRolesLabel.classList.toggle("hidden", moderatorOnly);
+  if (els.featureLockScopeNote) {
+    els.featureLockScopeNote.textContent = moderatorOnly
+      ? "This rule applies to every member in the selected room."
+      : "Set feature access rules and recurring screen-time windows.";
   }
   if (moderatorOnly && els.featureLockRoom && !els.featureLockRoom.value && state.rooms[0]) {
     els.featureLockRoom.value = state.rooms[0].id || "";
@@ -8275,12 +8298,12 @@ async function editRoom(room) {
   }
 }
 
-async function quickFeatureUnlock(feature) {
-  if (!isOwner()) return notify("Admin access required");
+async function quickFeatureUnlock(feature, roomId = "") {
+  if (!isModerator()) return notify("Moderator access required");
   try {
     const data = await api("/api/features/lock", {
       method: "POST",
-      json: { feature, minutes: 0 },
+      json: { feature, minutes: 0, roomId },
     });
     state.settings = data.settings || state.settings;
     renderAll();

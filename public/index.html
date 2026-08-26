@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-142-moderation-panel" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-143-moderation-desk" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -614,12 +614,19 @@
           <div class="section-header">
             <div>
               <h2>Moderation</h2>
-              <p>Room access, member screen-time controls, and report review.</p>
+              <p>Open any room, set member screen-time rules, and resolve reports.</p>
             </div>
           </div>
+          <div class="moderator-intro">
+            <div>
+              <span class="eyebrow">Room controls</span>
+              <strong>Choose a room, then manage the limits that apply to its members.</strong>
+            </div>
+            <span class="moderator-scope">Member access only</span>
+          </div>
           <div class="settings-grid moderator-grid">
-            <div class="status-panel">
-              <h3>All rooms</h3>
+            <div class="status-panel moderator-rooms-panel">
+              <div class="panel-title-row"><div><h3>Rooms</h3><p class="panel-note">Moderators can enter every room, including restricted rooms.</p></div></div>
               <div id="moderatorRoomList" class="account-list"></div>
             </div>
             <div id="moderatorFeatureLockSlot"></div>
@@ -737,7 +744,7 @@
 
             <div id="adminFeatureLockSlot"></div>
             <form id="featureLockForm" class="panel-form hidden">
-              <h3>Screen time / feature locks</h3>
+              <div class="panel-title-row"><div><h3>Screen time</h3><p id="featureLockScopeNote" class="panel-note">Set feature access rules and recurring screen-time windows.</p></div></div>
               <label>Feature<select id="featureName"><option value="messages">Messages</option><option value="dms">DMs</option><option value="secret">Secret</option><option value="files">Files</option><option value="docs">Google Workspace</option><option value="browser">Browser</option><option value="screen">Screen</option><option value="rooms">Side rooms</option><option value="friends">Friends</option><option value="profiles">Profiles</option><option value="voice">Voice</option><option value="invites">Invites</option><option value="moderation">Moderation</option><option value="bots">Bots</option><option value="plugins">Plugins</option><option value="vpn">VPN</option><option value="store">Store</option><option value="chess">Games</option><option value="domain">Domain</option><option value="admin">Admin</option><option value="hmd">HMD</option></select></label>
               <label>Minutes<input id="featureMinutes" type="number" min="0" max="525600" value="60" /></label>
               <label>Starts optional<input id="featureStartAt" type="datetime-local" /></label>
@@ -770,10 +777,10 @@
                 </div>
               </div>
               <label>Room<select id="featureLockRoom"><option value="">All rooms / global</option></select></label>
-              <label>Roles affected<input id="featureLockRoles" maxlength="120" placeholder="member" /></label>
+              <label id="featureLockRolesLabel">Roles affected<input id="featureLockRoles" maxlength="120" placeholder="member" /></label>
               <label>Reason<input id="featureReason" maxlength="160" placeholder="optional" /></label>
               <button id="saveFeatureLockButton" class="primary-button" type="submit">Save screen-time lock</button>
-              <p class="panel-note">Use this like screen time: choose a feature, time window, room, and roles. Use 0 minutes with no recurring days to turn a feature back on. Moderator locks always apply to every member in the selected room.</p>
+              <p class="panel-note">Use 0 minutes with no recurring days to turn a feature back on. Moderator limits always apply to every member in the selected room.</p>
             </form>
 
             <form id="featureVisibilityForm" class="panel-form owner-only hidden">
@@ -995,7 +1002,7 @@
     <script src="/session-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/status-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/ui-boot.js?v=connectifi-137-ui-polish" defer></script>
-    <script src="/app.js?v=connectifi-142-moderation-panel" defer></script>
+    <script src="/app.js?v=connectifi-143-moderation-desk" defer></script>
     <script src="/force-logout.js?v=connectifi-137-ui-polish" defer></script>
   </body>
 </html>

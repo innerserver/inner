@@ -4502,83 +4502,16 @@ function renderWithFocusPreserved(callback) {
 
 function setupAdminCollapsibles() {
   if (!els.adminView || !hasBuiltInControlAccess()) return;
-  const layoutPreferenceVersion = "v157";
-  let resetLayoutPreferences = false;
-  try {
-    resetLayoutPreferences = localStorage.getItem("innerAdminPanelLayoutVersion") !== layoutPreferenceVersion;
-  } catch (error) {}
-  els.adminView.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => {
-    if (panel.dataset.collapsibleReady === "1") return;
-    const title = panel.querySelector("h3");
-    if (!title) return;
-    const button = document.createElement("button");
-    button.className = "collapse-toggle";
-    button.type = "button";
-    button.textContent = "Collapse";
-    button.setAttribute("aria-expanded", "true");
-    const storageKey = `innerAdminPanelCollapsed:${index}:${title.textContent}`;
-    const setCollapsed = (collapsed, persist = true) => {
-      panel.classList.toggle("admin-collapsed", collapsed);
-      button.textContent = collapsed ? "Expand" : "Collapse";
-      button.setAttribute("aria-expanded", String(!collapsed));
-      if (!persist) return;
-      try {
-        localStorage.setItem(storageKey, collapsed ? "1" : "0");
-      } catch (error) {}
-    };
-    button.addEventListener("click", () => {
-      const collapsed = !panel.classList.contains("admin-collapsed");
-      setCollapsed(collapsed);
+  // The collapse experiment conflicted with older Admin layout rules. Restore
+  // the stable, fully visible control panel instead of leaving empty sections.
+  els.adminView.querySelectorAll(".panel-form, .status-panel").forEach((panel) => {
+    panel.classList.remove("admin-collapsed");
+    panel.querySelectorAll(".collapse-toggle").forEach((button) => button.remove());
+    panel.querySelectorAll(".admin-collapse-heading").forEach((heading) => {
+      heading.classList.remove("admin-collapse-heading");
     });
-    const saved = (() => {
-      try {
-        return localStorage.getItem(storageKey);
-      } catch (error) {
-        return null;
-      }
-    })();
-    const storedPreference = resetLayoutPreferences ? null : saved;
-    setCollapsed(storedPreference === null ? true : storedPreference === "1", false);
-    const row = title.closest(".panel-title-row");
-    if (row) {
-      row.classList.add("admin-collapse-heading");
-      row.append(button);
-    } else {
-      const heading = document.createElement("div");
-      // Keep generated headings as direct panel children. Older admin styles
-      // intentionally hide arbitrary wrapper elements in collapsed panels.
-      heading.className = "panel-title-row admin-collapse-heading";
-      panel.prepend(heading);
-      heading.append(title, button);
-    }
-    panel.dataset.collapsibleReady = "1";
+    delete panel.dataset.collapsibleReady;
   });
-  if (resetLayoutPreferences) {
-    try {
-      localStorage.setItem("innerAdminPanelLayoutVersion", layoutPreferenceVersion);
-    } catch (error) {}
-  }
-  const quickLinks = els.adminView.querySelector(".admin-quick-links");
-  if (quickLinks && quickLinks.dataset.ready !== "1") {
-    quickLinks.addEventListener("click", (event) => {
-      const link = event.target.closest("a[href^='#']");
-      if (!link) return;
-      const target = els.adminView.querySelector(link.getAttribute("href"));
-      if (!target) return;
-      event.preventDefault();
-      const panel = target.matches(".panel-form, .status-panel") ? target : target.querySelector(".panel-form, .status-panel");
-      if (panel && panel.classList.contains("admin-collapsed")) {
-        panel.classList.remove("admin-collapsed");
-        const button = panel.querySelector(".collapse-toggle");
-        if (button) {
-          button.textContent = "Collapse";
-          button.setAttribute("aria-expanded", "true");
-        }
-      }
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-    quickLinks.dataset.ready = "1";
-  }
 }
 
 function renderCornerAd() {

@@ -32,3 +32,20 @@
 #adminView .admin-grid > .admin-collapsed > .collapse-toggle {
   grid-column: auto !important;
 }
+
+/* Every admin panel uses the same pinned collapse action. It remains visible
+   regardless of the panel's expanded grid, including Server and Screen time. */
+#adminView .panel-form.admin-collapsed,
+#adminView .status-panel.admin-collapsed {
+  position: relative !important;
+  padding-right: 136px !important;
+}
+
+#adminView .panel-form.admin-collapsed > .collapse-toggle,
+#adminView .status-panel.admin-collapsed > .collapse-toggle {
+  position: absolute !important;
+  top: 9px !important;
+  right: 14px !important;
+  z-index: 2;
+  margin: 0 !important;
+}

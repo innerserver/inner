@@ -4529,9 +4529,9 @@ function setupAdminCollapsibles() {
       }
     })();
     setCollapsed(saved, false);
-    const row = title.closest(".panel-title-row");
-    if (row) row.append(button);
-    else title.insertAdjacentElement("afterend", button);
+    // Keep the control out of each panel's custom grid. Some expanded panels
+    // span headings across columns, which otherwise pushes the action away.
+    panel.append(button);
     panel.dataset.collapsibleReady = "1";
   });
 

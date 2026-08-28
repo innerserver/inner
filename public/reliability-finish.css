@@ -145,3 +145,46 @@
   min-height: 160px !important;
   height: 100% !important;
 }
+
+/* Use normal vertical flow for DMs. The previous fixed grid accumulated six
+   independently sized regions and could reduce the conversation to a sliver. */
+#dmsView.view.active {
+  display: flex !important;
+  flex-direction: column;
+  height: calc(100dvh - 92px) !important;
+  min-height: 0 !important;
+  gap: 12px !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+
+#dmsView .section-header,
+#dmsView .dm-tools-panel,
+#dmsView .dm-call-panel,
+#dmsView .composer,
+#dmsView .jump-bottom-button {
+  flex: 0 0 auto;
+}
+
+#dmsView .dm-tools-panel {
+  max-height: none;
+  overflow: visible;
+}
+
+#dmsView .dm-tool-card[open] {
+  max-height: min(52dvh, 520px);
+  overflow-y: auto;
+}
+
+#dmsView #dmList {
+  flex: 1 0 320px;
+  min-height: 320px !important;
+  height: auto !important;
+}
+
+#dmsView .composer {
+  position: sticky !important;
+  bottom: 0;
+  z-index: 6;
+  margin-bottom: 0;
+}

@@ -4463,7 +4463,6 @@ function renderAll() {
     renderHmd();
     renderCornerAd();
     updateControls();
-    setupAdminCollapsibles();
   });
 }
 

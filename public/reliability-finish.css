@@ -49,3 +49,11 @@
   z-index: 2;
   margin: 0 !important;
 }
+
+/* The admin workspace is intentionally always open: each operational section
+   gets the full available width rather than being collapsed into a tile. */
+#adminView .admin-grid > .panel-form,
+#adminView .admin-grid > .status-panel {
+  grid-column: 1 / -1 !important;
+  min-height: 0 !important;
+}

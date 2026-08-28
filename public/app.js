@@ -723,6 +723,14 @@ function bindEvents() {
   els.dmGroupForm.addEventListener("submit", createDmGroup);
   els.deleteDmGroupButton.addEventListener("click", deleteCurrentDmGroup);
   if (els.shareLinkForm) els.shareLinkForm.addEventListener("submit", shareLinkToFriends);
+  document.querySelectorAll("#dmsView .dm-tool-card").forEach((card) => {
+    card.addEventListener("toggle", () => {
+      if (!card.open) return;
+      document.querySelectorAll("#dmsView .dm-tool-card").forEach((otherCard) => {
+        if (otherCard !== card) otherCard.open = false;
+      });
+    });
+  });
   if (els.shareChessButton) els.shareChessButton.addEventListener("click", () => {
     const game = selectedGameLink();
     fillShareLink(game.url, game.name || "Game", "app");
@@ -5581,20 +5589,25 @@ function renderFriends() {
   els.friendRequestList.replaceChildren();
   const incoming = state.friends.incoming || [];
   const outgoing = state.friends.outgoing || [];
-  if (!incoming.length && !outgoing.length) {
+  const pending = [
+    ...incoming.map((request) => ({ ...request, direction: "incoming", name: request.from })),
+    ...outgoing.map((request) => ({ ...request, direction: "outgoing", name: request.to })),
+  ].sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), undefined, { sensitivity: "base" }));
+  if (!pending.length) {
     els.friendRequestList.append(emptyBlock("No pending requests"));
   }
-  incoming.forEach((request) => {
-    const card = adminCard(request.from, "Incoming", [formatDate(request.createdAt)]);
+  pending.forEach((request) => {
+    if (request.direction === "outgoing") {
+      els.friendRequestList.append(adminCard(request.name, "Outgoing", [formatDate(request.createdAt)]));
+      return;
+    }
+    const card = adminCard(request.name, "Incoming", [formatDate(request.createdAt)]);
     const actions = document.createElement("div");
     actions.className = "account-actions";
     actions.append(accountButton("Accept", () => respondFriendRequest(request.id, "accept")));
     actions.append(accountButton("Decline", () => respondFriendRequest(request.id, "decline")));
     card.append(actions);
     els.friendRequestList.append(card);
-  });
-  outgoing.forEach((request) => {
-    els.friendRequestList.append(adminCard(request.to, "Outgoing", [formatDate(request.createdAt)]));
   });
 }
 
@@ -5635,7 +5648,7 @@ function filteredFriendsForList() {
         .some((value) => String(value || "").toLowerCase().includes(search));
     });
   }
-  if (!letter) return friends;
+  if (!letter) return [];
   return friends.filter((friend) => {
     const profile = state.profiles[friend.username] || {};
     const label = String(profile.displayName || friend.username || "").trim();

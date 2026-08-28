@@ -109,3 +109,14 @@
   transform: translateY(-50%);
   min-width: 116px;
 }
+
+/* The DM drawers are intentionally mutually exclusive. Keep the open drawer
+   within the page's available vertical space instead of clipping its controls. */
+#dmsView .dm-tools-panel {
+  align-items: start;
+}
+
+#dmsView .dm-tool-card[open] {
+  max-height: min(44dvh, 420px);
+  overflow-y: auto;
+}

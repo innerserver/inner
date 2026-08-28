@@ -20,3 +20,15 @@
     z-index: 1 !important;
   }
 }
+
+/* Collapsed admin panels need a single header row, even when their expanded
+   layout uses a specialized multi-column grid. */
+#adminView #serverForm.admin-collapsed,
+#adminView .status-panel.admin-collapsed:has(#vpnLocationStatus) {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+}
+
+#adminView .admin-grid > .admin-collapsed > h3,
+#adminView .admin-grid > .admin-collapsed > .collapse-toggle {
+  grid-column: auto !important;
+}

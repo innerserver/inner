@@ -4463,6 +4463,7 @@ function renderAll() {
     renderHmd();
     renderCornerAd();
     updateControls();
+    setupAdminCollapsibles();
   });
 }
 
@@ -4508,7 +4509,7 @@ function setupAdminCollapsibles() {
     const button = document.createElement("button");
     button.className = "collapse-toggle";
     button.type = "button";
-    const storageKey = `innerAdminPanelCollapsed:${index}:${title.textContent}`;
+    const storageKey = `connectifiAdminPanelCollapsedV164:${index}:${title.textContent}`;
     const setCollapsed = (collapsed, persist = true) => {
       panel.classList.toggle("admin-collapsed", collapsed);
       button.textContent = collapsed ? "Expand" : "Collapse";
@@ -4522,9 +4523,10 @@ function setupAdminCollapsibles() {
     panel.expandAdminPanel = () => setCollapsed(false);
     const saved = (() => {
       try {
-        return localStorage.getItem(storageKey) === "1";
+        const value = localStorage.getItem(storageKey);
+        return value === null ? true : value === "1";
       } catch (error) {
-        return false;
+        return true;
       }
     })();
     setCollapsed(saved, false);

@@ -50,10 +50,31 @@
   margin: 0 !important;
 }
 
-/* The admin workspace is intentionally always open: each operational section
-   gets the full available width rather than being collapsed into a tile. */
+/* Admin sections use the full available width in both compact and expanded
+   states, so a single expanded tool never competes with adjacent cards. */
 #adminView .admin-grid > .panel-form,
 #adminView .admin-grid > .status-panel {
   grid-column: 1 / -1 !important;
   min-height: 0 !important;
+}
+
+#adminView .panel-form,
+#adminView .status-panel {
+  position: relative;
+}
+
+#adminView .panel-form > .collapse-toggle,
+#adminView .status-panel > .collapse-toggle {
+  position: absolute !important;
+  top: 18px !important;
+  right: 20px !important;
+  z-index: 2;
+  margin: 0 !important;
+}
+
+#adminView .panel-form > h3,
+#adminView .status-panel > h3,
+#adminView .panel-form > .panel-title-row,
+#adminView .status-panel > .panel-title-row {
+  padding-right: 142px;
 }

@@ -4502,16 +4502,86 @@ function renderWithFocusPreserved(callback) {
 
 function setupAdminCollapsibles() {
   if (!els.adminView || !hasBuiltInControlAccess()) return;
-  // The collapse experiment conflicted with older Admin layout rules. Restore
-  // the stable, fully visible control panel instead of leaving empty sections.
-  els.adminView.querySelectorAll(".panel-form, .status-panel").forEach((panel) => {
-    panel.classList.remove("admin-collapsed");
-    panel.querySelectorAll(".collapse-toggle").forEach((button) => button.remove());
-    panel.querySelectorAll(".admin-collapse-heading").forEach((heading) => {
-      heading.classList.remove("admin-collapse-heading");
+  const layoutVersion = "v159";
+  let resetPreferences = false;
+  try {
+    resetPreferences = localStorage.getItem("connectifiAdminPanelLayout") !== layoutVersion;
+  } catch (error) {}
+
+  els.adminView.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => {
+    if (panel.dataset.adminCollapseReady === "1") return;
+    const heading = Array.from(panel.children).find((child) =>
+      child.matches("h3") || (child.classList.contains("panel-title-row") && child.querySelector("h3"))
+    );
+    if (!heading) return;
+
+    const title = heading.querySelector ? heading.querySelector("h3") : heading;
+    const titleText = String(title && title.textContent || `Panel ${index}`).trim();
+    const storageKey = `connectifiAdminCollapsed:${index}:${titleText}`;
+    const button = document.createElement("button");
+    button.className = "collapse-toggle admin-panel-toggle";
+    button.type = "button";
+
+    let header = heading;
+    if (heading.matches("h3")) {
+      header = document.createElement("div");
+      header.className = "panel-title-row admin-panel-heading";
+      heading.before(header);
+      header.append(heading);
+    } else {
+      header.classList.add("admin-panel-heading");
+    }
+    header.append(button);
+
+    const content = document.createElement("div");
+    content.className = "admin-panel-content";
+    Array.from(panel.children).forEach((child) => {
+      if (child !== header) content.append(child);
     });
-    delete panel.dataset.collapsibleReady;
+    panel.append(content);
+
+    const setCollapsed = (collapsed, persist = true) => {
+      content.hidden = collapsed;
+      button.textContent = collapsed ? "Expand" : "Collapse";
+      button.setAttribute("aria-expanded", String(!collapsed));
+      if (!persist) return;
+      try {
+        localStorage.setItem(storageKey, collapsed ? "1" : "0");
+      } catch (error) {}
+    };
+    button.addEventListener("click", () => setCollapsed(!content.hidden));
+    panel.expandAdminPanel = () => setCollapsed(false);
+    const saved = (() => {
+      try {
+        return resetPreferences ? null : localStorage.getItem(storageKey);
+      } catch (error) {
+        return null;
+      }
+    })();
+    setCollapsed(saved === null ? true : saved === "1", false);
+    panel.dataset.adminCollapseReady = "1";
   });
+
+  if (resetPreferences) {
+    try {
+      localStorage.setItem("connectifiAdminPanelLayout", layoutVersion);
+    } catch (error) {}
+  }
+
+  const quickLinks = els.adminView.querySelector(".admin-quick-links");
+  if (quickLinks && quickLinks.dataset.adminCollapseReady !== "1") {
+    quickLinks.addEventListener("click", (event) => {
+      const link = event.target.closest("a[href^='#']");
+      if (!link) return;
+      const target = els.adminView.querySelector(link.getAttribute("href"));
+      if (!target) return;
+      event.preventDefault();
+      const panel = target.matches(".panel-form, .status-panel") ? target : target.querySelector(".panel-form, .status-panel");
+      if (panel && typeof panel.expandAdminPanel === "function") panel.expandAdminPanel();
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    quickLinks.dataset.adminCollapseReady = "1";
+  }
 }
 
 function renderCornerAd() {

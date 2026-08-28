@@ -41,3 +41,24 @@
   display: inline-flex !important;
   visibility: visible !important;
 }
+
+/* v159: collapse only the explicit content wrapper, never the panel itself. */
+#adminView .admin-panel-heading {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+}
+
+#adminView .admin-panel-content {
+  display: contents;
+}
+
+#adminView .admin-panel-content[hidden] {
+  display: none !important;
+}
+
+#adminView .admin-panel-toggle {
+  flex: 0 0 auto;
+  margin-left: auto !important;
+}

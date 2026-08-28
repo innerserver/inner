@@ -78,3 +78,34 @@
 #adminView .status-panel > .panel-title-row {
   padding-right: 142px;
 }
+
+/* One compact-card contract for every Admin section. Expanded layouts may use
+   their own fields; the collapsed state never does. */
+#adminView .panel-form.admin-collapsed,
+#adminView .status-panel.admin-collapsed {
+  display: block !important;
+  width: 100% !important;
+  min-height: 82px !important;
+  max-height: none !important;
+  padding: 18px 148px 18px 20px !important;
+  overflow: hidden !important;
+}
+
+#adminView .panel-form.admin-collapsed > h3,
+#adminView .status-panel.admin-collapsed > h3,
+#adminView .panel-form.admin-collapsed > .panel-title-row,
+#adminView .status-panel.admin-collapsed > .panel-title-row {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 46px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#adminView .panel-form.admin-collapsed > .collapse-toggle,
+#adminView .status-panel.admin-collapsed > .collapse-toggle {
+  top: 50% !important;
+  right: 20px !important;
+  transform: translateY(-50%);
+  min-width: 116px;
+}

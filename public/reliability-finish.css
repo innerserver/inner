@@ -120,3 +120,28 @@
   max-height: min(44dvh, 420px);
   overflow-y: auto;
 }
+
+/* DMs has six direct regions: header, tools, call controls, conversation,
+   jump action, and composer. Keep the conversation as the sole flexible row. */
+#dmsView.view.active {
+  display: grid !important;
+  grid-template-rows: auto auto auto minmax(160px, 1fr) auto auto !important;
+  min-height: calc(100dvh - 92px) !important;
+  overflow: hidden !important;
+}
+
+#dmsView .dm-tools-panel {
+  max-height: min(44dvh, 420px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+#dmsView .dm-tool-card[open] {
+  max-height: none;
+  overflow: visible;
+}
+
+#dmsView #dmList {
+  min-height: 160px !important;
+  height: 100% !important;
+}

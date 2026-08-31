@@ -10,9 +10,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-170-ui-polish" />
-    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-170-ui-polish" />
-    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-170-ui-polish" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-171-moderation-fix" />
+    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-171-moderation-fix" />
+    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-171-moderation-fix" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -645,6 +645,10 @@
               <div class="panel-title-row"><div><h3>Reports</h3><p class="panel-note">Review member reports and keep the queue moving.</p></div></div>
               <div id="moderatorReportList" class="account-list"></div>
             </section>
+            <section id="moderatorAuditPanel" class="status-panel moderator-audit-panel hidden">
+              <div class="panel-title-row"><div><h3>Audit logs</h3><p class="panel-note">Recent system and moderation activity for selected moderators.</p></div><button id="moderatorExportLogsButton" class="secondary-button compact-button" type="button">Export</button></div>
+              <div id="moderatorAuditList" class="account-list compact-list"></div>
+            </section>
           </div>
         </section>
 
@@ -688,6 +692,7 @@
               <label>Account request/signup emails<input id="emailAccounts" maxlength="500" placeholder="accounts@school.com, admissions@school.com" /></label>
               <label>Announcement emails<input id="emailAnnouncements" maxlength="500" placeholder="announcements@school.com" /></label>
               <label>Security/admin fallback emails<input id="emailLoginFailures" maxlength="500" placeholder="security@school.com" /></label>
+              <label>Selected moderator log access<input id="moderatorLogAccessUsers" maxlength="500" placeholder="moderator usernames, comma separated" /></label>
               <label>Admin test/general emails<input id="emailGeneral" maxlength="500" placeholder="admin@school.com" /></label>
               <div class="email-contact-grid">
                 <label>Noreply sender<input id="emailContactNoreply" type="email" maxlength="160" placeholder="noreply@connectifi.in" /></label>
@@ -768,6 +773,15 @@
                 <label>Recovery code<input id="ownerFailsafeUnlockCode" type="password" maxlength="128" autocomplete="one-time-code" /></label>
                 <button id="unlockOwnerFailsafeButton" class="primary-button" type="submit">Unlock server</button>
               </form>
+              <div class="owner-checkin-card">
+                <h4>Owner operational check-in</h4>
+                <p id="ownerCheckinStatus" class="panel-note">Weekly owner check-ins are scheduled for Sunday at 12:00 PM IST.</p>
+                <p class="panel-note">100: normal operations. 101: restrict Browser, Store, and Games. 102: activate the recovery lock. 103: use a monthly Sunday check-in.</p>
+                <form id="ownerCheckinForm" class="stack-form">
+                  <label>Check-in code<input id="ownerCheckinCode" inputmode="numeric" pattern="10[0-3]" maxlength="3" autocomplete="one-time-code" /></label>
+                  <button id="submitOwnerCheckinButton" class="secondary-button" type="submit">Submit check-in</button>
+                </form>
+              </div>
             </section>
 
             <form id="createAccountForm" class="panel-form owner-only hidden">
@@ -1045,7 +1059,7 @@
     <script src="/session-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/status-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/ui-boot.js?v=connectifi-137-ui-polish" defer></script>
-    <script src="/app.js?v=connectifi-170-ui-polish" defer></script>
+    <script src="/app.js?v=connectifi-171-moderation-fix" defer></script>
     <script src="/force-logout.js?v=connectifi-137-ui-polish" defer></script>
   </body>
 </html>

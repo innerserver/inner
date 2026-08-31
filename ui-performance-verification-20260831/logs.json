@@ -1,0 +1,140 @@
+[
+  {
+    "id": "0c8c21d7-baea-4ee7-9a2b-cb125614f18d",
+    "action": "client.network",
+    "actor": "admin",
+    "details": {
+      "network": {
+        "effectiveType": "3g",
+        "type": "",
+        "downlink": 1.5,
+        "rtt": 500,
+        "saveData": false,
+        "platform": "Win32",
+        "language": "en-US",
+        "screen": "1280x800"
+      }
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-31T14:17:26.171Z"
+  },
+  {
+    "id": "235f2d4e-64ae-43e6-9fc6-b5ff1612fb36",
+    "action": "client.network",
+    "actor": "admin",
+    "details": {
+      "network": {
+        "effectiveType": "3g",
+        "type": "",
+        "downlink": 1.5,
+        "rtt": 500,
+        "saveData": false,
+        "platform": "Win32",
+        "language": "en-US",
+        "screen": "1280x800"
+      }
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-31T14:15:53.656Z"
+  },
+  {
+    "id": "d96a0d69-5e09-4b85-90f7-42a1ceac62d5",
+    "action": "client.network",
+    "actor": "admin",
+    "details": {
+      "network": {
+        "effectiveType": "3g",
+        "type": "",
+        "downlink": 1.4,
+        "rtt": 500,
+        "saveData": false,
+        "platform": "Win32",
+        "language": "en-US",
+        "screen": "1280x800"
+      }
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-31T14:14:56.505Z"
+  },
+  {
+    "id": "d0bac315-80d3-4615-964e-339c64d5530f",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4204",
+    "createdAt": "2026-08-31T14:14:56.304Z"
+  },
+  {
+    "id": "e15436d4-53ba-4d9f-a599-c6041f62a73e",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4204",
+    "createdAt": "2026-08-31T14:14:18.869Z"
+  },
+  {
+    "id": "7029abc5-109b-4908-a7cb-d954af043b6d",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4204",
+    "createdAt": "2026-08-31T14:14:18.820Z"
+  },
+  {
+    "id": "0a37c243-519b-46ff-b232-9f93d5592d03",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4204",
+    "createdAt": "2026-08-31T14:14:18.770Z"
+  },
+  {
+    "id": "91948a0f-7e7b-444e-9dc0-f00685ded4ad",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4204",
+    "createdAt": "2026-08-31T14:14:18.714Z"
+  },
+  {
+    "id": "d6c766bc-a845-42ae-a579-1cd6980dbb52",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4204",
+    "createdAt": "2026-08-31T14:14:18.625Z"
+  }
+]

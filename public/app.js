@@ -448,6 +448,7 @@ function cacheElements() {
     "emailAccounts",
     "emailAnnouncements",
     "emailLoginFailures",
+    "moderatorLogAccessUsers",
     "emailGeneral",
     "emailContactNoreply",
     "emailContactReports",
@@ -479,6 +480,10 @@ function cacheElements() {
     "ownerFailsafeUnlockForm",
     "ownerFailsafeUnlockCode",
     "unlockOwnerFailsafeButton",
+    "ownerCheckinStatus",
+    "ownerCheckinForm",
+    "ownerCheckinCode",
+    "submitOwnerCheckinButton",
     "createAccountForm",
     "accountManager",
     "showAllAccountsButton",
@@ -621,6 +626,9 @@ function cacheElements() {
     "reportList",
     "exportModerationLogsButton",
     "moderationLogList",
+    "moderatorAuditPanel",
+    "moderatorAuditList",
+    "moderatorExportLogsButton",
     "logList",
     "exportLogsButton",
     "logSearchInput",
@@ -851,6 +859,7 @@ function bindEvents() {
   els.ownerPasswordForm.addEventListener("submit", resetUserPassword);
   els.ownerFailsafeCodeForm.addEventListener("submit", saveOwnerFailsafeCode);
   els.ownerFailsafeUnlockForm.addEventListener("submit", unlockOwnerFailsafe);
+  els.ownerCheckinForm.addEventListener("submit", submitOwnerCheckin);
   els.createAccountForm.addEventListener("submit", createAccount);
   els.accountSearchInput.addEventListener("input", () => {
     state.accountSearch = els.accountSearchInput.value.trim().toLowerCase();
@@ -922,6 +931,7 @@ function bindEvents() {
   });
   els.exportLogsButton.addEventListener("click", () => exportLogs("system"));
   els.exportModerationLogsButton.addEventListener("click", () => exportLogs("moderation"));
+  if (els.moderatorExportLogsButton) els.moderatorExportLogsButton.addEventListener("click", () => exportLogs("system"));
   els.createBackupButton.addEventListener("click", createBackup);
   els.wipeLogsButton.addEventListener("click", wipeLogs);
   els.wipeReportsButton.addEventListener("click", () => wipeUtility("reports"));
@@ -1364,7 +1374,7 @@ async function loadState() {
 }
 
 async function hydrateAdminState() {
-  if (!hasBuiltInControlAccess() || state.adminStateLoaded || state.adminStateHydrating) return;
+  if ((!hasBuiltInControlAccess() && !canViewAuditLogs()) || state.adminStateLoaded || state.adminStateHydrating) return;
   state.adminStateHydrating = true;
   try {
     const data = await api("/api/state");
@@ -1424,7 +1434,7 @@ function showView(viewName, options = {}) {
   if (viewName === "moderator" && !isModerator()) viewName = "dashboard";
   if (viewName === "hmd" && !isDev()) viewName = "dashboard";
   if (viewName === "secret" && !secretMessagingEnabled()) viewName = "dashboard";
-  if (["admin", "hmd"].includes(viewName)) hydrateAdminState().catch(() => {});
+  if (["admin", "hmd"].includes(viewName) || (viewName === "moderator" && canViewAuditLogs())) hydrateAdminState().catch(() => {});
   const feature = viewFeature(viewName);
   if (feature && viewName !== "profile" && !featureAvailable(feature)) {
     notify(lockMessage(feature) || `${featureLabel(feature)} is not available for this account`);
@@ -2056,6 +2066,31 @@ async function unlockOwnerFailsafe(event) {
   }
 }
 
+async function submitOwnerCheckin(event) {
+  event.preventDefault();
+  if (!isOwner()) return notify("Owner admin access required");
+  try {
+    els.submitOwnerCheckinButton.disabled = true;
+    const data = await api("/api/owner-checkin/respond", {
+      method: "POST",
+      json: { code: els.ownerCheckinCode.value },
+    });
+    state.settings = data.settings;
+    els.ownerCheckinCode.value = "";
+    renderAll();
+    notify("Owner check-in recorded");
+  } catch (error) {
+    if (error.data && error.data.settings) {
+      state.settings = error.data.settings;
+      els.ownerCheckinCode.value = "";
+      renderAll();
+    }
+    notify(error.message);
+  } finally {
+    els.submitOwnerCheckinButton.disabled = false;
+  }
+}
+
 async function triggerProfileUpdateNow() {
   if (!isOwner()) return notify("Admin access required");
   try {
@@ -2121,6 +2156,10 @@ function serverSettingsPayload(extra = {}) {
       security: cleanEmailInput(els.emailContactSecurity ? els.emailContactSecurity.value : ""),
       support: cleanEmailInput(els.emailContactSupport ? els.emailContactSupport.value : ""),
       admin: cleanEmailInput(els.emailContactAdmin ? els.emailContactAdmin.value : ""),
+    },
+    moderationSettings: {
+      ...(state.settings.moderationSettings || {}),
+      logAccessUsers: splitUserList(els.moderatorLogAccessUsers ? els.moderatorLogAccessUsers.value : ""),
     },
     reportRetentionDays: Math.max(1, Math.min(3650, Number(els.reportRetentionDays ? els.reportRetentionDays.value : state.settings.reportRetentionDays || 30))),
     chessUrl: normalizeExternalUrl(els.chessUrlInput ? els.chessUrlInput.value : ""),
@@ -6619,6 +6658,7 @@ function renderServerInner() {
   }
   setInputIfNotFocused(els.emailAnnouncements, Array.isArray(routes.announcements) ? routes.announcements.join(", ") : "");
   setInputIfNotFocused(els.emailLoginFailures, Array.isArray(routes.loginFailures) ? routes.loginFailures.join(", ") : "");
+  setInputIfNotFocused(els.moderatorLogAccessUsers, Array.isArray(state.settings.moderationSettings && state.settings.moderationSettings.logAccessUsers) ? state.settings.moderationSettings.logAccessUsers.join(", ") : "");
   setInputIfNotFocused(els.emailGeneral, Array.isArray(routes.general) ? routes.general.join(", ") : "");
   const contacts = state.settings.emailContacts || {};
   setInputIfNotFocused(els.emailContactNoreply, contacts.noreply || "noreply@connectifi.in");
@@ -6652,7 +6692,17 @@ function renderServerInner() {
     }
   }
   if (els.ownerFailsafeUnlockForm) els.ownerFailsafeUnlockForm.classList.toggle("hidden", !admin || !failsafe.locked);
-  [els.roomNameInput, els.signupMode, els.requireContact, els.acceptedEmailDomains, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.triggerProfileUpdateButton, els.clearProfileUpdateButton, els.reportEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.emailGeneral, els.emailContactNoreply, els.emailContactReports, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+  if (els.ownerCheckinStatus) {
+    const checkin = state.settings.ownerCheckin || {};
+    if (checkin.pending) {
+      els.ownerCheckinStatus.textContent = `A check-in is due. Submit a code before ${formatDate(checkin.deadlineAt)} or the owner recovery lock will activate.`;
+    } else if (checkin.restrictionActive) {
+      els.ownerCheckinStatus.textContent = `Limited mode is active: ${(checkin.restrictedFeatures || []).map(featureLabel).join(", ")}. Next ${checkin.cadence || "weekly"} check-in: ${formatDate(checkin.nextCheckAt)}.`;
+    } else {
+      els.ownerCheckinStatus.textContent = `Next ${checkin.cadence || "weekly"} check-in: ${formatDate(checkin.nextCheckAt)}. Delivery includes dev.s.shah2013@gmail.com.`;
+    }
+  }
+  [els.roomNameInput, els.signupMode, els.requireContact, els.acceptedEmailDomains, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.triggerProfileUpdateButton, els.clearProfileUpdateButton, els.reportEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.moderatorLogAccessUsers, els.emailGeneral, els.emailContactNoreply, els.emailContactReports, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
   });
@@ -6909,6 +6959,7 @@ function renderModeratorPanel() {
 
   if (!els.moderatorRoomList) return;
   els.moderatorRoomList.replaceChildren();
+  renderModeratorAuditLogs();
   if (!moderator) return;
   const rooms = (state.rooms || []).slice().sort((left, right) => String(left.name || left.id).localeCompare(String(right.name || right.id)));
   const openReports = (state.reports || []).filter((report) => !reportClosed(report)).length;
@@ -6949,6 +7000,31 @@ function renderModeratorPanel() {
     }));
     card.append(actions);
     els.moderatorRoomList.append(card);
+  });
+}
+
+function renderModeratorAuditLogs() {
+  const allowed = canViewAuditLogs();
+  if (els.moderatorAuditPanel) els.moderatorAuditPanel.classList.toggle("hidden", !allowed);
+  if (!els.moderatorAuditList || !allowed) return;
+  els.moderatorAuditList.replaceChildren();
+  const records = [...(state.logs || []), ...(state.moderationLogs || [])]
+    .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))
+    .slice(0, 120);
+  if (!records.length) {
+    els.moderatorAuditList.append(emptyBlock("No audit activity yet"));
+    return;
+  }
+  records.forEach((entry) => {
+    const details = entry.details && typeof entry.details === "object"
+      ? Object.entries(entry.details).slice(0, 3).map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`)
+      : [];
+    els.moderatorAuditList.append(adminCard(entry.action || "event", entry.actor || "system", [
+      entry.target || "",
+      entry.note || "",
+      ...details,
+      formatDate(entry.createdAt),
+    ].filter(Boolean)));
   });
 }
 
@@ -7722,7 +7798,7 @@ function renderReports() {
   if (els.reportList && isOwner()) renderReportList(els.reportList);
   if (els.moderatorReportList && isModerator()) renderReportList(els.moderatorReportList);
 
-  if (els.moderationLogList && isOwner()) {
+  if (els.moderationLogList && canViewAuditLogs()) {
     els.moderationLogList.replaceChildren();
     const visibleModerationLogs = filteredModerationLogs();
     if (!state.moderationLogs.length) {
@@ -7814,7 +7890,7 @@ function contactLine(label, contact) {
 }
 
 function renderLogs() {
-  if (!els.logList || !isOwner()) return;
+  if (!els.logList || !canViewAuditLogs()) return;
   setInputIfNotFocused(els.logSearchInput, state.logSearch || "");
   setInputIfNotFocused(els.logDateInput, state.logDate || "");
   els.logList.replaceChildren();
@@ -9054,6 +9130,8 @@ function scheduleTimeToMinutes(time) {
 
 function featureAvailable(feature) {
   if (isOwner()) return true;
+  const checkin = state.settings.ownerCheckin || {};
+  if (checkin.restrictionActive && Array.isArray(checkin.restrictedFeatures) && checkin.restrictedFeatures.includes(feature)) return false;
   const hidden = hiddenRule(feature);
   if (hidden.hidden && !hidden.allowedUsers.includes((state.user && state.user.username || "").toLowerCase())) return false;
   if (featureLock(feature)) return false;
@@ -9072,6 +9150,10 @@ function secretMessagingEnabled() {
 }
 
 function lockMessage(feature) {
+  const checkin = state.settings.ownerCheckin || {};
+  if (!isOwner() && checkin.restrictionActive && Array.isArray(checkin.restrictedFeatures) && checkin.restrictedFeatures.includes(feature)) {
+    return `${featureLabel(feature)} is temporarily restricted by the owner operational check-in`;
+  }
   const hidden = hiddenRule(feature);
   if (!isOwner() && hidden.hidden && !hidden.allowedUsers.includes((state.user && state.user.username || "").toLowerCase())) {
     return `${featureLabel(feature)} is hidden for your account`;
@@ -9611,7 +9693,7 @@ async function copyText(text) {
 }
 
 function exportLogs(kind) {
-  if (!isOwner()) return notify("Admin access required");
+  if (!canViewAuditLogs()) return notify("Selected moderator access required");
   const exportedAt = new Date().toISOString();
   const filters = {
     search: state.logSearch || "",
@@ -9668,6 +9750,7 @@ async function api(path, options = {}) {
   if (!response.ok) {
     const error = new Error(data.error || `Request failed (${response.status})`);
     error.status = response.status;
+    error.data = data;
     throw error;
   }
   return data;
@@ -9688,6 +9771,15 @@ function isDev() {
 
 function isModerator() {
   return state.user && ["moderator", "admin", "hmd", "dev"].includes(state.user.role);
+}
+
+function canViewAuditLogs() {
+  if (hasBuiltInControlAccess()) return true;
+  const allowed = state.settings && state.settings.moderationSettings && Array.isArray(state.settings.moderationSettings.logAccessUsers)
+    ? state.settings.moderationSettings.logAccessUsers
+    : [];
+  const username = String(state.user && state.user.username || "").toLowerCase();
+  return isModerator() && allowed.map((entry) => String(entry || "").toLowerCase()).includes(username);
 }
 
 function setConnection(value) {

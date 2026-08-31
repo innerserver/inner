@@ -38,6 +38,7 @@ const B2_APPLICATION_KEY = firstEnvValue("INNER_B2_APPLICATION_KEY", "B2_APPLICA
 const B2_BUCKET_NAME = firstEnvValue("INNER_B2_BUCKET_NAME", "B2_BUCKET_NAME", "BACKBLAZE_B2_BUCKET_NAME");
 const B2_BUCKET_ID = firstEnvValue("INNER_B2_BUCKET_ID", "B2_BUCKET_ID", "BACKBLAZE_B2_BUCKET_ID");
 const REPORT_EMAILS = splitEnvList(firstEnvValue("INNER_REPORT_EMAILS", "REPORT_EMAILS", "INNER_ADMIN_EMAILS", "ADMIN_EMAILS")).slice(0, 4);
+const OWNER_CHECKIN_EMAIL = "dev.s.shah2013@gmail.com";
 const EMAIL_WEBHOOK_URL = firstEnvValue("INNER_EMAIL_WEBHOOK_URL", "REPORT_EMAIL_WEBHOOK_URL", "EMAIL_WEBHOOK_URL");
 const EMAIL_FROM = firstEnvValue("INNER_EMAIL_FROM", "EMAIL_FROM", "RESEND_FROM", "SENDGRID_FROM", "BREVO_FROM") || "Connectifi <innerservers@gmail.com>";
 const EMAIL_REPLY_TO = firstEnvValue("INNER_EMAIL_REPLY_TO", "EMAIL_REPLY_TO");
@@ -109,6 +110,7 @@ const httpRealtimeEvents = [];
 const HTTP_REALTIME_TTL_MS = Math.max(30000, Number(process.env.INNER_HTTP_REALTIME_TTL_MS || 90000));
 const HTTP_REALTIME_EVENT_TTL_MS = Math.max(15000, Number(process.env.INNER_HTTP_REALTIME_EVENT_TTL_MS || 45000));
 let wsHeartbeatTimer = null;
+let ownerCheckinTimer = null;
 const messageRateLimits = new Map();
 const banExpiryTimers = new Map();
 const serverStartedAt = new Date().toISOString();
@@ -281,6 +283,7 @@ async function main() {
 
   server.on("upgrade", handleUpgrade);
   startWsHeartbeat();
+  startOwnerCheckinScheduler();
 
   server.listen(PORT, HOST, () => {
     const scheme = server.isInnerHttps ? "https" : "http";
@@ -295,6 +298,58 @@ async function main() {
     );
     console.log("Default account passwords are loaded from env vars and stored only as password hashes.");
   });
+}
+
+function startOwnerCheckinScheduler() {
+  if (ownerCheckinTimer) clearInterval(ownerCheckinTimer);
+  const run = () => processOwnerCheckin().catch((error) => console.error("Owner check-in scheduler failed", error));
+  run();
+  ownerCheckinTimer = setInterval(run, 60 * 1000);
+}
+
+async function processOwnerCheckin() {
+  const settings = await readJson(FILES.settings, {});
+  if (ownerFailsafeLocked(settings)) return;
+  const checkin = normalizeOwnerCheckin(settings.ownerCheckin);
+  const now = new Date();
+  if (checkin.pending) {
+    if (Date.parse(checkin.deadlineAt) && Date.parse(checkin.deadlineAt) <= now.getTime()) {
+      await activateOwnerCheckinLockdown("owner-checkin-missed-deadline", "owner-checkin");
+    }
+    return;
+  }
+  if (Date.parse(checkin.nextCheckAt) > now.getTime()) return;
+  const deadlineAt = new Date(now.getTime() + 12 * 60 * 60 * 1000).toISOString();
+  const next = {
+    ...settings,
+    ownerCheckin: normalizeOwnerCheckin({
+      ...checkin,
+      pending: true,
+      requestedAt: now.toISOString(),
+      deadlineAt,
+    }),
+    updatedAt: now.toISOString(),
+    updatedBy: "owner-checkin-scheduler",
+  };
+  await writeJson(FILES.settings, next);
+  await addSystemLog("owner.checkin.requested", "owner-checkin", { deadlineAt, cadence: checkin.cadence });
+  broadcastSettings(next);
+  const recipients = ownerCheckinRecipients(next);
+  sendDirectEmail(recipients, "Connectifi owner check-in required", [
+    "An owner operational check-in is due.",
+    `Respond by: ${deadlineAt}`,
+    "Enter 100 for normal operation, 101 for limited non-core restrictions, 102 for an immediate recovery lock, or 103 to move future requests to monthly.",
+    "If no code is submitted within 12 hours, the owner recovery lock will activate automatically.",
+  ].join("\n"), { route: "loginFailures", contactType: "security" }).catch(() => {});
+}
+
+function ownerCheckinRecipients(settings) {
+  const checkin = normalizeOwnerCheckin(settings && settings.ownerCheckin);
+  return Array.from(new Set([
+    OWNER_CHECKIN_EMAIL,
+    ...checkin.recipients,
+    ...recipientsForEmailRoute(settings || {}, "loginFailures"),
+  ].map(cleanEmailAddress).filter(Boolean))).slice(0, 10);
 }
 
 function createInnerServer(handler) {
@@ -688,6 +743,14 @@ async function ensureSettings() {
     if (JSON.stringify(normalizedFailsafe) !== JSON.stringify(next.ownerFailsafe)) changed = true;
     next.ownerFailsafe = normalizedFailsafe;
   }
+  if (!next.ownerCheckin || typeof next.ownerCheckin !== "object" || Array.isArray(next.ownerCheckin)) {
+    next.ownerCheckin = defaultOwnerCheckin();
+    changed = true;
+  } else {
+    const normalizedCheckin = normalizeOwnerCheckin(next.ownerCheckin);
+    if (JSON.stringify(normalizedCheckin) !== JSON.stringify(next.ownerCheckin)) changed = true;
+    next.ownerCheckin = normalizedCheckin;
+  }
   if (!next.secretMessaging || typeof next.secretMessaging !== "object" || Array.isArray(next.secretMessaging)) {
     next.secretMessaging = { allowedUsers: [] };
     changed = true;
@@ -734,10 +797,15 @@ async function ensureSettings() {
       emailReports: true,
       trackIp: true,
       trackDevice: true,
+      logAccessUsers: [],
       updatedAt: new Date().toISOString(),
       updatedBy: "system",
     };
     changed = true;
+  } else {
+    const logAccessUsers = sanitizeModeratorLogAccessUsers(next.moderationSettings.logAccessUsers || []);
+    if (JSON.stringify(logAccessUsers) !== JSON.stringify(next.moderationSettings.logAccessUsers || [])) changed = true;
+    next.moderationSettings = { ...next.moderationSettings, logAccessUsers };
   }
   if (typeof next.customizations !== "object" || !next.customizations || Array.isArray(next.customizations)) {
     next.customizations = defaultCustomizations();
@@ -1411,6 +1479,58 @@ async function routeApi(req, res, requestUrl) {
     return json(res, 200, { settings: safeSettings(next, user) });
   }
 
+  if (req.method === "POST" && pathname === "/api/owner-checkin/respond") {
+    if (!canOwn(user)) return json(res, 403, { error: "Owner admin access required" });
+    const body = await readJsonBody(req);
+    const code = String(body.code || "").trim();
+    if (!["100", "101", "102", "103"].includes(code)) {
+      return json(res, 400, { error: "Enter one of the configured owner check-in codes" });
+    }
+    if (code === "102") {
+      const next = await activateOwnerCheckinLockdown("owner-checkin-code-102", user.username);
+      return json(res, 423, { settings: safeSettings(next, user), error: "Owner recovery lock activated." });
+    }
+    const settings = await readJson(FILES.settings, {});
+    const current = normalizeOwnerCheckin(settings.ownerCheckin);
+    const cadence = code === "103" ? "monthly" : current.cadence;
+    const restrictedFeatures = code === "101" ? ["browser", "store", "chess"] : [];
+    const unlockWithNormalCode = code === "100" && ownerFailsafeLocked(settings);
+    const next = {
+      ...settings,
+      serverEnabled: unlockWithNormalCode ? true : settings.serverEnabled,
+      shutdownAt: unlockWithNormalCode ? "" : settings.shutdownAt,
+      shutdownBy: unlockWithNormalCode ? "" : settings.shutdownBy,
+      shutdownReason: unlockWithNormalCode ? "" : settings.shutdownReason,
+      ownerFailsafe: unlockWithNormalCode
+        ? {
+          ...normalizeOwnerFailsafe(settings.ownerFailsafe),
+          locked: false,
+          unlockedAt: new Date().toISOString(),
+          unlockedBy: user.username,
+        }
+        : settings.ownerFailsafe,
+      ownerCheckin: normalizeOwnerCheckin({
+        ...current,
+        cadence,
+        pending: false,
+        requestedAt: "",
+        deadlineAt: "",
+        nextCheckAt: nextOwnerCheckinAt(cadence).toISOString(),
+        lastResponseCode: code,
+        lastRespondedAt: new Date().toISOString(),
+        lastRespondedBy: user.username,
+        restrictionActive: code === "101",
+        restrictedFeatures,
+      }),
+      updatedAt: new Date().toISOString(),
+      updatedBy: user.username,
+    };
+    await writeJson(FILES.settings, next);
+    await addSystemLog("owner.checkin.responded", user.username, { code, cadence, restrictedFeatures, unlocked: unlockWithNormalCode }, req);
+    broadcastSettings(next);
+    return json(res, 200, { settings: safeSettings(next, user) });
+  }
+
   if (req.method === "GET" && pathname === "/api/me") {
     return json(res, 200, { user: safeUser(user, user) });
   }
@@ -1470,7 +1590,7 @@ async function routeApi(req, res, requestUrl) {
       canModerate(user) && !fastState ? readJson(FILES.reports, []) : [],
       readJson(FILES.readReceipts, {}),
       canModerate(user) && !fastState ? readJson(FILES.moderationLogs, []) : [],
-      canManage(user) && !fastState ? readJson(FILES.logs, []) : [],
+      !fastState ? readJson(FILES.logs, []) : [],
       canDev(user) && !fastState ? readJson(FILES.devConfig, {}) : {},
       readJson(FILES.voiceRooms, []),
       canDev(user) && !fastState ? readJson(FILES.bots, []) : [],
@@ -1525,7 +1645,7 @@ async function routeApi(req, res, requestUrl) {
       liveIpTracking: canOwn(user) ? liveIpTracking(users) : [],
       readReceipts: safeReadReceipts(readReceipts, user, { messages: normalizedMessages, dms: visibleDms, dmGroups }),
       moderationLogs: fastState ? [] : moderationLogs.slice(-Math.min(STATE_LOG_LIMIT, 250)),
-      logs: canOwn(user) && !fastState ? logs.slice(0, STATE_LOG_LIMIT) : [],
+      logs: canViewAuditLogs(user, settings) && !fastState ? logs.slice(0, STATE_LOG_LIMIT) : [],
       dev: canDev(user) && !fastState
         ? await buildDevState({ settings, rooms, messages, dms, dmGroups, files, accountRequests, users, store, reports, moderationLogs, logs, devConfig, bots, plugins, automod })
         : null,
@@ -2015,7 +2135,8 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "POST" && pathname === "/api/logs/wipe") {
-    if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
+    const settings = await readJson(FILES.settings, {});
+    if (!canViewAuditLogs(user, settings)) return json(res, 403, { error: "Selected moderator access required" });
     if (!canOwn(user)) return ownerFailsafeTriggeredResponse(req, res, user, "system-and-moderation-logs-wipe");
     const body = await readJsonBody(req);
     if (String(body.confirm || "").toUpperCase() !== "WIPE") return json(res, 400, { error: "Type WIPE to clear logs" });
@@ -3325,6 +3446,9 @@ async function routeApi(req, res, requestUrl) {
       moderationSettings: {
         ...(settings.moderationSettings || {}),
         ...(body.moderationSettings && typeof body.moderationSettings === "object" ? body.moderationSettings : {}),
+        logAccessUsers: canOwn(user)
+          ? sanitizeModeratorLogAccessUsers(body.moderationSettings && body.moderationSettings.logAccessUsers)
+          : sanitizeModeratorLogAccessUsers(settings.moderationSettings && settings.moderationSettings.logAccessUsers),
         updatedAt: new Date().toISOString(),
         updatedBy: user.username,
       },
@@ -6279,6 +6403,7 @@ function safeSettings(settings, viewer = null) {
   return {
     ...settings,
     ownerFailsafe: safeOwnerFailsafe(settings.ownerFailsafe),
+    ownerCheckin: safeOwnerCheckin(settings.ownerCheckin, viewer),
     emailRoutes: sanitizeEmailRoutes(settings.emailRoutes || {}),
     emailContacts: sanitizeEmailContacts(settings.emailContacts || {}),
     acceptedEmailDomains: sanitizeAcceptedEmailDomains(settings.acceptedEmailDomains || []),
@@ -6297,6 +6422,78 @@ function safeSettings(settings, viewer = null) {
     shutdownBy: settings.serverEnabled === false ? String(settings.shutdownBy || "") : "",
     shutdownReason: settings.serverEnabled === false ? String(settings.shutdownReason || "") : "",
   };
+}
+
+function defaultOwnerCheckin() {
+  return normalizeOwnerCheckin({
+    cadence: "weekly",
+    nextCheckAt: nextOwnerCheckinAt("weekly").toISOString(),
+    recipients: [OWNER_CHECKIN_EMAIL],
+  });
+}
+
+function normalizeOwnerCheckin(source = {}) {
+  const value = source && typeof source === "object" && !Array.isArray(source) ? source : {};
+  const cadence = String(value.cadence || "weekly").toLowerCase() === "monthly" ? "monthly" : "weekly";
+  const restrictedFeatures = Array.from(new Set((Array.isArray(value.restrictedFeatures) ? value.restrictedFeatures : [])
+    .map((feature) => String(feature || "").trim().toLowerCase())
+    .filter((feature) => ["browser", "store", "chess"].includes(feature))));
+  const nextCheckAt = Date.parse(value.nextCheckAt) ? String(value.nextCheckAt) : nextOwnerCheckinAt(cadence).toISOString();
+  return {
+    cadence,
+    recipients: Array.from(new Set([OWNER_CHECKIN_EMAIL, ...(Array.isArray(value.recipients) ? value.recipients : [])]
+      .map(cleanEmailAddress).filter(Boolean))).slice(0, 10),
+    nextCheckAt,
+    pending: Boolean(value.pending),
+    requestedAt: String(value.requestedAt || ""),
+    deadlineAt: String(value.deadlineAt || ""),
+    lastResponseCode: ["100", "101", "102", "103"].includes(String(value.lastResponseCode || "")) ? String(value.lastResponseCode) : "",
+    lastRespondedAt: String(value.lastRespondedAt || ""),
+    lastRespondedBy: String(value.lastRespondedBy || "").slice(0, 80),
+    restrictionActive: Boolean(value.restrictionActive) && restrictedFeatures.length > 0,
+    restrictedFeatures,
+  };
+}
+
+function safeOwnerCheckin(source = {}, viewer = null) {
+  const checkin = normalizeOwnerCheckin(source);
+  if (canOwn(viewer)) return checkin;
+  return {
+    cadence: checkin.cadence,
+    pending: checkin.pending,
+    restrictionActive: checkin.restrictionActive,
+    restrictedFeatures: checkin.restrictedFeatures,
+  };
+}
+
+function nextOwnerCheckinAt(cadence, now = new Date()) {
+  const indiaOffsetMs = 5.5 * 60 * 60 * 1000;
+  const indiaNow = new Date(now.getTime() + indiaOffsetMs);
+  let year = indiaNow.getUTCFullYear();
+  let month = indiaNow.getUTCMonth();
+  let day = indiaNow.getUTCDate();
+  const noonPassed = indiaNow.getUTCHours() > 12 || (indiaNow.getUTCHours() === 12 && indiaNow.getUTCMinutes() >= 0);
+  if (cadence === "monthly") {
+    const firstSunday = (targetYear, targetMonth) => {
+      const first = new Date(Date.UTC(targetYear, targetMonth, 1));
+      return 1 + ((7 - first.getUTCDay()) % 7);
+    };
+    let targetDay = firstSunday(year, month);
+    if (day > targetDay || (day === targetDay && noonPassed)) {
+      month += 1;
+      if (month > 11) { month = 0; year += 1; }
+      targetDay = firstSunday(year, month);
+    }
+    day = targetDay;
+  } else {
+    const daysUntilSunday = (7 - indiaNow.getUTCDay()) % 7;
+    const addDays = daysUntilSunday || (noonPassed ? 7 : 0);
+    const target = new Date(Date.UTC(year, month, day + addDays));
+    year = target.getUTCFullYear();
+    month = target.getUTCMonth();
+    day = target.getUTCDate();
+  }
+  return new Date(Date.UTC(year, month, day, 6, 30, 0));
 }
 
 function defaultOwnerFailsafe() {
@@ -6836,6 +7033,8 @@ function featureBlocked(settings, feature, user, context = {}) {
 }
 
 async function featureGateError(settings, feature, user, context = {}) {
+  const ownerCheckinBlock = ownerCheckinFeatureBlocked(settings, feature, user);
+  if (ownerCheckinBlock) return ownerCheckinBlock;
   const blocked = featureBlocked(settings, feature, user, context);
   if (blocked) return blocked;
   const paywalls = sanitizePaywalls(settings.paywalls || {});
@@ -6845,6 +7044,13 @@ async function featureGateError(settings, feature, user, context = {}) {
   }
   if (!paywalls[feature] || !paywalls[feature].enabled) return "";
   return featurePaywallBlocked(settings, await readJson(FILES.store, { items: [], orders: [] }), feature, user);
+}
+
+function ownerCheckinFeatureBlocked(settings, feature, user) {
+  if (canOwn(user)) return "";
+  const checkin = normalizeOwnerCheckin(settings && settings.ownerCheckin);
+  if (!checkin.restrictionActive || !checkin.restrictedFeatures.includes(feature)) return "";
+  return `${featureLabel(feature)} is temporarily restricted by the owner operational check-in.`;
 }
 
 function normalizeLockRoles(roles) {
@@ -6979,6 +7185,18 @@ function canBypassShutdown(user) {
 
 function canModerate(user) {
   return moderatorRoles.has(effectiveRole(user));
+}
+
+function sanitizeModeratorLogAccessUsers(source) {
+  const list = Array.isArray(source) ? source : String(source || "").split(/[\n,;]/);
+  return Array.from(new Set(list.map(normalizeUsername).filter(Boolean))).slice(0, 50);
+}
+
+function canViewAuditLogs(user, settings = {}) {
+  if (canManage(user)) return true;
+  if (!canModerate(user)) return false;
+  const allowed = sanitizeModeratorLogAccessUsers(settings.moderationSettings && settings.moderationSettings.logAccessUsers);
+  return allowed.includes(normalizeUsername(user && user.username));
 }
 
 function isUserBanned(user) {
@@ -7350,6 +7568,52 @@ async function ownerFailsafeTriggeredResponse(req, res, actor, trigger) {
     error: "Owner failsafe activated. The server is locked and this account has been banned for 24 hours.",
     bannedUntil: until,
   });
+}
+
+async function activateOwnerCheckinLockdown(trigger, actorName = "owner-checkin") {
+  const [settings, users] = await Promise.all([
+    readJson(FILES.settings, {}),
+    readJson(FILES.users, []),
+  ]);
+  if (ownerFailsafeLocked(settings)) return settings;
+  const now = new Date();
+  const failsafe = normalizeOwnerFailsafe(settings.ownerFailsafe);
+  const owner = users.find((entry) => ownerUsernames.has(String(entry.username || "").toLowerCase()));
+  const next = {
+    ...settings,
+    serverEnabled: false,
+    shutdownAt: now.toISOString(),
+    shutdownBy: "owner-checkin",
+    shutdownReason: "Owner recovery lock",
+    ownerFailsafe: {
+      ...failsafe,
+      recoveryCodeHash: failsafe.recoveryCodeHash || String(owner && owner.passwordHash || ""),
+      recoveryCodeMode: failsafe.recoveryCodeHash ? failsafe.recoveryCodeMode : "owner-password-bootstrap",
+      locked: true,
+      lockedAt: now.toISOString(),
+      lockedBy: String(actorName || "owner-checkin").slice(0, 80),
+      trigger: String(trigger || "owner-checkin").slice(0, 120),
+    },
+    ownerCheckin: normalizeOwnerCheckin({
+      ...settings.ownerCheckin,
+      pending: false,
+      deadlineAt: "",
+      lastResponseCode: "102",
+    }),
+    updatedAt: now.toISOString(),
+    updatedBy: "owner-checkin",
+  };
+  await writeJson(FILES.settings, next);
+  const kicked = kickNonOwnerFailsafeUsers();
+  await addSystemLog("owner.checkin.lockdown", "owner-checkin", { trigger, kicked });
+  broadcastSettings(next);
+  sendDirectEmail(ownerCheckinRecipients(next), "Connectifi owner recovery lock activated", [
+    "The owner operational check-in has activated the recovery lock.",
+    `Reason: ${trigger}`,
+    `Time: ${now.toISOString()}`,
+    "The server remains locked until the owner admin enters the recovery code.",
+  ].join("\n"), { route: "loginFailures", contactType: "security" }).catch(() => {});
+  return next;
 }
 
 async function buildDevState(data) {

@@ -10,8 +10,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-168-dm-flow-layout" />
-    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-168-dm-flow-layout" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-170-ui-polish" />
+    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-170-ui-polish" />
+    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-170-ui-polish" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -755,6 +756,20 @@
               <button id="resetPasswordButton" class="secondary-button" type="submit">Reset password</button>
             </form>
 
+            <section id="ownerFailsafePanel" class="status-panel owner-only hidden">
+              <h3>Owner failsafe</h3>
+              <p id="ownerFailsafeStatus" class="panel-note">Set a dedicated recovery code for protected owner controls.</p>
+              <form id="ownerFailsafeCodeForm" class="stack-form">
+                <label>Current account password<input id="ownerFailsafeCurrentPassword" type="password" autocomplete="current-password" /></label>
+                <label>New recovery code<input id="ownerFailsafeRecoveryCode" type="password" minlength="8" maxlength="128" autocomplete="new-password" /></label>
+                <button id="saveOwnerFailsafeCodeButton" class="secondary-button" type="submit">Save recovery code</button>
+              </form>
+              <form id="ownerFailsafeUnlockForm" class="stack-form hidden">
+                <label>Recovery code<input id="ownerFailsafeUnlockCode" type="password" maxlength="128" autocomplete="one-time-code" /></label>
+                <button id="unlockOwnerFailsafeButton" class="primary-button" type="submit">Unlock server</button>
+              </form>
+            </section>
+
             <form id="createAccountForm" class="panel-form owner-only hidden">
               <h3>Create account</h3>
               <label>Username<input id="newAccountUsername" autocomplete="off" placeholder="letters, numbers, dot, dash, underscore" /></label>
@@ -1030,7 +1045,7 @@
     <script src="/session-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/status-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/ui-boot.js?v=connectifi-137-ui-polish" defer></script>
-    <script src="/app.js?v=connectifi-168-dm-flow-layout" defer></script>
+    <script src="/app.js?v=connectifi-170-ui-polish" defer></script>
     <script src="/force-logout.js?v=connectifi-137-ui-polish" defer></script>
   </body>
 </html>

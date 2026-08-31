@@ -50,6 +50,17 @@
   margin: 0 !important;
 }
 
+#ownerFailsafePanel .stack-form {
+  display: grid;
+  gap: 10px;
+}
+
+#ownerFailsafePanel .stack-form + .stack-form {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
 /* Admin sections use the full available width in both compact and expanded
    states, so a single expanded tool never competes with adjacent cards. */
 #adminView .admin-grid > .panel-form,

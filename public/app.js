@@ -470,6 +470,15 @@ function cacheElements() {
     "restartServerButton",
     "passwordForm",
     "ownerPasswordForm",
+    "ownerFailsafePanel",
+    "ownerFailsafeStatus",
+    "ownerFailsafeCodeForm",
+    "ownerFailsafeCurrentPassword",
+    "ownerFailsafeRecoveryCode",
+    "saveOwnerFailsafeCodeButton",
+    "ownerFailsafeUnlockForm",
+    "ownerFailsafeUnlockCode",
+    "unlockOwnerFailsafeButton",
     "createAccountForm",
     "accountManager",
     "showAllAccountsButton",
@@ -840,6 +849,8 @@ function bindEvents() {
   els.restartServerButton.addEventListener("click", () => setServerPower(true));
   els.passwordForm.addEventListener("submit", changePassword);
   els.ownerPasswordForm.addEventListener("submit", resetUserPassword);
+  els.ownerFailsafeCodeForm.addEventListener("submit", saveOwnerFailsafeCode);
+  els.ownerFailsafeUnlockForm.addEventListener("submit", unlockOwnerFailsafe);
   els.createAccountForm.addEventListener("submit", createAccount);
   els.accountSearchInput.addEventListener("input", () => {
     state.accountSearch = els.accountSearchInput.value.trim().toLowerCase();
@@ -1999,6 +2010,49 @@ async function saveServer(event) {
     notify(error.message);
   } finally {
     els.saveServerButton.disabled = false;
+  }
+}
+
+async function saveOwnerFailsafeCode(event) {
+  event.preventDefault();
+  if (!isOwner()) return notify("Owner admin access required");
+  const currentPassword = els.ownerFailsafeCurrentPassword.value;
+  const recoveryCode = els.ownerFailsafeRecoveryCode.value;
+  try {
+    els.saveOwnerFailsafeCodeButton.disabled = true;
+    const data = await api("/api/owner-failsafe/recovery-code", {
+      method: "POST",
+      json: { currentPassword, recoveryCode },
+    });
+    state.settings.ownerFailsafe = data.ownerFailsafe;
+    els.ownerFailsafeCurrentPassword.value = "";
+    els.ownerFailsafeRecoveryCode.value = "";
+    renderServer();
+    notify("Owner recovery code saved");
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    els.saveOwnerFailsafeCodeButton.disabled = false;
+  }
+}
+
+async function unlockOwnerFailsafe(event) {
+  event.preventDefault();
+  if (!isOwner()) return notify("Owner admin access required");
+  try {
+    els.unlockOwnerFailsafeButton.disabled = true;
+    const data = await api("/api/owner-failsafe/unlock", {
+      method: "POST",
+      json: { recoveryCode: els.ownerFailsafeUnlockCode.value },
+    });
+    state.settings = data.settings;
+    els.ownerFailsafeUnlockCode.value = "";
+    renderAll();
+    notify("Owner recovery lock cleared. Server is active.");
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    els.unlockOwnerFailsafeButton.disabled = false;
   }
 }
 
@@ -6586,6 +6640,18 @@ function renderServerInner() {
   if (els.newAccountPersistent) els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
 
   const admin = isOwner();
+  const failsafe = state.settings.ownerFailsafe || {};
+  if (els.ownerFailsafePanel) els.ownerFailsafePanel.classList.toggle("hidden", !admin);
+  if (els.ownerFailsafeStatus) {
+    if (failsafe.locked) {
+      els.ownerFailsafeStatus.textContent = "Recovery lock active. Only the owner admin can unlock the server with the recovery code.";
+    } else if (failsafe.dedicatedRecoveryCode) {
+      els.ownerFailsafeStatus.textContent = "Dedicated recovery code is set. Protected owner actions will lock the server and notify the registered security/admin emails.";
+    } else {
+      els.ownerFailsafeStatus.textContent = "Set a dedicated recovery code. Until then, the owner account password is used only as a recovery fallback.";
+    }
+  }
+  if (els.ownerFailsafeUnlockForm) els.ownerFailsafeUnlockForm.classList.toggle("hidden", !admin || !failsafe.locked);
   [els.roomNameInput, els.signupMode, els.requireContact, els.acceptedEmailDomains, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.triggerProfileUpdateButton, els.clearProfileUpdateButton, els.reportEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.emailGeneral, els.emailContactNoreply, els.emailContactReports, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;

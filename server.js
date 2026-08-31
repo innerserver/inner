@@ -680,6 +680,14 @@ async function ensureSettings() {
     next.featureLocks = {};
     changed = true;
   }
+  if (!next.ownerFailsafe || typeof next.ownerFailsafe !== "object" || Array.isArray(next.ownerFailsafe)) {
+    next.ownerFailsafe = defaultOwnerFailsafe();
+    changed = true;
+  } else {
+    const normalizedFailsafe = normalizeOwnerFailsafe(next.ownerFailsafe);
+    if (JSON.stringify(normalizedFailsafe) !== JSON.stringify(next.ownerFailsafe)) changed = true;
+    next.ownerFailsafe = normalizedFailsafe;
+  }
   if (!next.secretMessaging || typeof next.secretMessaging !== "object" || Array.isArray(next.secretMessaging)) {
     next.secretMessaging = { allowedUsers: [] };
     changed = true;
@@ -858,7 +866,7 @@ async function routeApi(req, res, requestUrl) {
       return json(res, 403, { error: requestBlock.message, requestStatus: requestBlock.status });
     }
 
-    if (!canManage(user) && isUserBanned(user)) {
+    if ((!canManage(user) || String(user.banReason || "").startsWith("Owner failsafe:")) && isUserBanned(user)) {
       await addSystemLog("login.blocked", user.username, { reason: "Banned account", bannedUntil: user.bannedUntil }, req);
       return json(res, 403, { error: `Account is temporarily banned until ${new Date(user.bannedUntil).toLocaleString()}` });
     }
@@ -867,9 +875,9 @@ async function routeApi(req, res, requestUrl) {
       readJson(FILES.settings, {}),
       readJson(FILES.rooms, []),
     ]);
-    if (settings.serverEnabled === false && !canBypassShutdown(user)) {
+    if (settings.serverEnabled === false && !canAccessWhileServerLocked(user, settings)) {
       await addSystemLog("login.blocked", user.username, { reason: "Server shutdown mode" }, req);
-      return json(res, 423, { error: "Server is shut down. Only admin, HMD, and dev access is open right now." });
+      return json(res, 423, { error: serverLockedMessage(settings) });
     }
 
     const persistent = effectivePersistentLogin(user, settings, rooms);
@@ -1336,9 +1344,71 @@ async function routeApi(req, res, requestUrl) {
   }
 
   const shutdownSettings = await readJson(FILES.settings, {});
-  if (shutdownSettings.serverEnabled === false && !canBypassShutdown(user)) {
+  if (shutdownSettings.serverEnabled === false && !canAccessWhileServerLocked(user, shutdownSettings)) {
     clearSessionForRequest(req, res);
-    return json(res, 423, { error: "Server is shut down. Only admin, HMD, and dev access is open right now." });
+    return json(res, 423, { error: serverLockedMessage(shutdownSettings) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/owner-failsafe/recovery-code") {
+    if (!canOwn(user)) return json(res, 403, { error: "Owner admin access required" });
+    const body = await readJsonBody(req);
+    const recoveryCode = String(body.recoveryCode || "");
+    if (recoveryCode.length < 8 || recoveryCode.length > 128) {
+      return json(res, 400, { error: "Use a recovery code between 8 and 128 characters" });
+    }
+    const users = await readJson(FILES.users, []);
+    const owner = users.find((entry) => String(entry.username || "").toLowerCase() === String(user.username || "").toLowerCase());
+    if (!owner || !(await verifyPasswordAsync(String(body.currentPassword || ""), owner.passwordHash))) {
+      return json(res, 403, { error: "Your current account password is required" });
+    }
+    const settings = await readJson(FILES.settings, {});
+    const next = {
+      ...settings,
+      ownerFailsafe: {
+        ...normalizeOwnerFailsafe(settings.ownerFailsafe),
+        recoveryCodeHash: hashPassword(recoveryCode),
+        recoveryCodeMode: "dedicated",
+        recoveryCodeUpdatedAt: new Date().toISOString(),
+        recoveryCodeUpdatedBy: user.username,
+      },
+      updatedAt: new Date().toISOString(),
+      updatedBy: user.username,
+    };
+    await writeJson(FILES.settings, next);
+    await addSystemLog("owner.failsafe.code.updated", user.username, {}, req);
+    broadcastSettings(next);
+    return json(res, 200, { ownerFailsafe: safeOwnerFailsafe(next.ownerFailsafe) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/owner-failsafe/unlock") {
+    if (!canOwn(user)) return json(res, 403, { error: "Owner admin access required" });
+    const body = await readJsonBody(req);
+    const settings = await readJson(FILES.settings, {});
+    const failsafe = normalizeOwnerFailsafe(settings.ownerFailsafe);
+    if (!failsafe.locked) return json(res, 400, { error: "The owner failsafe lock is not active" });
+    if (!failsafe.recoveryCodeHash || !(await verifyPasswordAsync(String(body.recoveryCode || ""), failsafe.recoveryCodeHash))) {
+      await addSystemLog("owner.failsafe.unlock.failed", user.username, {}, req);
+      return json(res, 403, { error: "Recovery code did not match" });
+    }
+    const next = {
+      ...settings,
+      serverEnabled: true,
+      shutdownAt: "",
+      shutdownBy: "",
+      shutdownReason: "",
+      ownerFailsafe: {
+        ...failsafe,
+        locked: false,
+        unlockedAt: new Date().toISOString(),
+        unlockedBy: user.username,
+      },
+      updatedAt: new Date().toISOString(),
+      updatedBy: user.username,
+    };
+    await writeJson(FILES.settings, next);
+    await addSystemLog("owner.failsafe.unlocked", user.username, { trigger: failsafe.trigger || "" }, req);
+    broadcastSettings(next);
+    return json(res, 200, { settings: safeSettings(next, user) });
   }
 
   if (req.method === "GET" && pathname === "/api/me") {
@@ -1946,6 +2016,7 @@ async function routeApi(req, res, requestUrl) {
 
   if (req.method === "POST" && pathname === "/api/logs/wipe") {
     if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
+    if (!canOwn(user)) return ownerFailsafeTriggeredResponse(req, res, user, "system-and-moderation-logs-wipe");
     const body = await readJsonBody(req);
     if (String(body.confirm || "").toUpperCase() !== "WIPE") return json(res, 400, { error: "Type WIPE to clear logs" });
     await Promise.all([writeJson(FILES.logs, []), writeJson(FILES.moderationLogs, [])]);
@@ -1958,6 +2029,7 @@ async function routeApi(req, res, requestUrl) {
 
   if (req.method === "POST" && pathname === "/api/browser/history/wipe") {
     if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
+    if (!canOwn(user)) return ownerFailsafeTriggeredResponse(req, res, user, "browser-history-log-wipe");
     const body = await readJsonBody(req);
     if (String(body.confirm || "").toUpperCase() !== "WIPE") return json(res, 400, { error: "Type WIPE to clear browser history" });
     const targetUsername = String(body.username || "").trim().toLowerCase();
@@ -3059,7 +3131,10 @@ async function routeApi(req, res, requestUrl) {
   if (req.method === "DELETE" && pathname.startsWith("/api/users/")) {
     if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
     const username = decodeURIComponent(pathname.split("/").pop() || "");
-    if (username.toLowerCase() === "admin") return json(res, 400, { error: "The admin account cannot be deleted" });
+    if (username.toLowerCase() === "admin") {
+      if (!canOwn(user)) return ownerFailsafeTriggeredResponse(req, res, user, "owner-account-deletion-attempt");
+      return json(res, 400, { error: "The owner admin account cannot be deleted" });
+    }
     const users = await readJson(FILES.users, []);
     const next = users.filter((entry) => entry.username.toLowerCase() !== username.toLowerCase());
     if (next.length === users.length) return json(res, 404, { error: "User not found" });
@@ -3209,6 +3284,9 @@ async function routeApi(req, res, requestUrl) {
     if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
     const body = await readJsonBody(req);
     const settings = await readJson(FILES.settings, {});
+    if (ownerFailsafeLocked(settings) && body.serverEnabled === true) {
+      return json(res, 423, { error: "Use the owner recovery code to unlock the server" });
+    }
     const nextServerEnabled =
       typeof body.serverEnabled === "boolean" ? body.serverEnabled : Boolean(settings.serverEnabled);
     const clearProfileUpdate = body.clearProfileUpdate === true;
@@ -4173,7 +4251,7 @@ async function handleUpgrade(req, socket) {
   }
 
   const settings = await readJson(FILES.settings, {});
-  if (settings.serverEnabled === false && !canBypassShutdown(user)) {
+  if (settings.serverEnabled === false && !canAccessWhileServerLocked(user, settings)) {
     socket.write("HTTP/1.1 423 Locked\r\n\r\n");
     socket.destroy();
     return;
@@ -4366,7 +4444,7 @@ async function handleWsMessage(client, message) {
   const settings = await readJson(FILES.settings, {});
   if (
     settings.serverEnabled === false &&
-    !canBypassShutdown(client) &&
+    !canAccessWhileServerLocked(client, settings) &&
     (message.type === "signal" ||
       message.type === "screen:status" ||
       message.type === "screen:request" ||
@@ -4574,7 +4652,7 @@ async function handleHttpRealtimeMessage(client, message) {
   const settings = await readJson(FILES.settings, {});
   if (
     settings.serverEnabled === false &&
-    !canBypassShutdown(client) &&
+    !canAccessWhileServerLocked(client, settings) &&
     (message.type === "signal" ||
       message.type === "screen:status" ||
       message.type === "screen:request" ||
@@ -5131,6 +5209,31 @@ function kickNonShutdownUsers() {
       sendWs(client, {
         type: "server:shutdown",
         error: "Server shutdown is on. Admin, HMD, and dev accounts can stay connected.",
+      });
+      closeWs(client);
+      clientsKicked += 1;
+    }
+  }
+
+  return { sessions: sessionsKicked, clients: clientsKicked };
+}
+
+function kickNonOwnerFailsafeUsers() {
+  let sessionsKicked = 0;
+  let clientsKicked = 0;
+
+  for (const [token, session] of sessions) {
+    if (!canOwn(session)) {
+      sessions.delete(token);
+      sessionsKicked += 1;
+    }
+  }
+
+  for (const client of Array.from(wsClients.values())) {
+    if (!canOwn(client)) {
+      sendWs(client, {
+        type: "server:shutdown",
+        error: "The owner recovery lock is active.",
       });
       closeWs(client);
       clientsKicked += 1;
@@ -6175,6 +6278,7 @@ function normalizeAccountRequestStatus(status) {
 function safeSettings(settings, viewer = null) {
   return {
     ...settings,
+    ownerFailsafe: safeOwnerFailsafe(settings.ownerFailsafe),
     emailRoutes: sanitizeEmailRoutes(settings.emailRoutes || {}),
     emailContacts: sanitizeEmailContacts(settings.emailContacts || {}),
     acceptedEmailDomains: sanitizeAcceptedEmailDomains(settings.acceptedEmailDomains || []),
@@ -6193,6 +6297,63 @@ function safeSettings(settings, viewer = null) {
     shutdownBy: settings.serverEnabled === false ? String(settings.shutdownBy || "") : "",
     shutdownReason: settings.serverEnabled === false ? String(settings.shutdownReason || "") : "",
   };
+}
+
+function defaultOwnerFailsafe() {
+  const configuredCode = firstEnvValue("INNER_OWNER_FAILSAFE_CODE", "OWNER_FAILSAFE_CODE");
+  return normalizeOwnerFailsafe({
+    recoveryCodeHash: configuredCode ? hashPassword(String(configuredCode)) : "",
+    recoveryCodeMode: configuredCode ? "dedicated" : "",
+    recoveryCodeUpdatedAt: configuredCode ? new Date().toISOString() : "",
+    recoveryCodeUpdatedBy: configuredCode ? "environment" : "",
+  });
+}
+
+function normalizeOwnerFailsafe(source = {}) {
+  const value = source && typeof source === "object" && !Array.isArray(source) ? source : {};
+  const codeHash = String(value.recoveryCodeHash || "");
+  return {
+    recoveryCodeHash: codeHash.includes(":") ? codeHash : "",
+    recoveryCodeMode: ["dedicated", "owner-password-bootstrap"].includes(String(value.recoveryCodeMode || ""))
+      ? String(value.recoveryCodeMode)
+      : "",
+    recoveryCodeUpdatedAt: String(value.recoveryCodeUpdatedAt || ""),
+    recoveryCodeUpdatedBy: String(value.recoveryCodeUpdatedBy || "").slice(0, 80),
+    locked: Boolean(value.locked),
+    lockedAt: String(value.lockedAt || ""),
+    lockedBy: String(value.lockedBy || "").slice(0, 80),
+    trigger: String(value.trigger || "").slice(0, 120),
+    unlockedAt: String(value.unlockedAt || ""),
+    unlockedBy: String(value.unlockedBy || "").slice(0, 80),
+  };
+}
+
+function safeOwnerFailsafe(source = {}) {
+  const failsafe = normalizeOwnerFailsafe(source);
+  return {
+    recoveryCodeConfigured: Boolean(failsafe.recoveryCodeHash),
+    dedicatedRecoveryCode: failsafe.recoveryCodeMode === "dedicated",
+    locked: failsafe.locked,
+    lockedAt: failsafe.lockedAt,
+    lockedBy: failsafe.lockedBy,
+    trigger: failsafe.trigger,
+    unlockedAt: failsafe.unlockedAt,
+    unlockedBy: failsafe.unlockedBy,
+  };
+}
+
+function ownerFailsafeLocked(settings = {}) {
+  return Boolean(normalizeOwnerFailsafe(settings.ownerFailsafe).locked);
+}
+
+function canAccessWhileServerLocked(user, settings = {}) {
+  return ownerFailsafeLocked(settings) ? canOwn(user) : canBypassShutdown(user);
+}
+
+function serverLockedMessage(settings = {}) {
+  return ownerFailsafeLocked(settings)
+    ? "The owner recovery lock is active. Only the owner admin can unlock the server with the recovery code."
+    : "Server is shut down. Only admin, HMD, and dev access is open right now.";
 }
 
 function safeSecretMessagingSettings(source = {}, viewer = null) {
@@ -7119,6 +7280,76 @@ async function addSystemLog(action, actor, details = {}, req = null) {
   const next = logs.slice(0, 3000);
   await writeJson(FILES.logs, next);
   broadcastManagers({ type: "logs:update", logs: next.slice(0, 300) });
+}
+
+async function ownerFailsafeTriggeredResponse(req, res, actor, trigger) {
+  const [settings, users] = await Promise.all([
+    readJson(FILES.settings, {}),
+    readJson(FILES.users, []),
+  ]);
+  const now = new Date();
+  const until = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+  const actorName = String(actor && actor.username || "unknown").toLowerCase();
+  const owner = users.find((entry) => ownerUsernames.has(String(entry.username || "").toLowerCase()));
+  const failsafe = normalizeOwnerFailsafe(settings.ownerFailsafe);
+  const recoveryCodeHash = failsafe.recoveryCodeHash || String(owner && owner.passwordHash || "");
+  const recoveryCodeMode = failsafe.recoveryCodeHash ? failsafe.recoveryCodeMode : "owner-password-bootstrap";
+  const actorIndex = users.findIndex((entry) => String(entry.username || "").toLowerCase() === actorName);
+
+  if (actorIndex !== -1 && !ownerUsernames.has(actorName)) {
+    users[actorIndex] = {
+      ...users[actorIndex],
+      bannedUntil: until,
+      banReason: `Owner failsafe: ${trigger}`.slice(0, 160),
+      updatedAt: now.toISOString(),
+      updatedBy: "owner-failsafe",
+    };
+  }
+
+  const next = {
+    ...settings,
+    serverEnabled: false,
+    shutdownAt: now.toISOString(),
+    shutdownBy: "owner-failsafe",
+    shutdownReason: "Owner recovery lock",
+    ownerFailsafe: {
+      ...failsafe,
+      recoveryCodeHash,
+      recoveryCodeMode,
+      locked: true,
+      lockedAt: now.toISOString(),
+      lockedBy: actorName,
+      trigger: String(trigger || "protected-action").slice(0, 120),
+    },
+    updatedAt: now.toISOString(),
+    updatedBy: "owner-failsafe",
+  };
+
+  await Promise.all([writeJson(FILES.users, users), writeJson(FILES.settings, next)]);
+  if (actorIndex !== -1 && !ownerUsernames.has(actorName)) {
+    expireUserSessions(actorName);
+    scheduleBanExpiry(actorName, until);
+  }
+  const kicked = kickNonOwnerFailsafeUsers();
+  await addSystemLog("owner.failsafe.triggered", actorName, { trigger, bannedUntil: until, kicked }, req);
+  await addModerationLog("owner-failsafe", "user:ban", actorName, `24 hours: ${trigger}`);
+  broadcastSettings(next);
+  notifyAdminEmails(
+    "Connectifi owner recovery lock activated",
+    [
+      "A protected owner action was attempted.",
+      `Account: ${actorName}`,
+      `Action: ${trigger}`,
+      `Blocked at: ${now.toISOString()}`,
+      `Account ban ends: ${until}`,
+      "The server is locked until the owner admin enters the recovery code.",
+    ].join("\n"),
+    { route: "loginFailures", contactType: "security" },
+  ).catch(() => {});
+  return json(res, 423, {
+    error: "Owner failsafe activated. The server is locked and this account has been banned for 24 hours.",
+    bannedUntil: until,
+  });
 }
 
 async function buildDevState(data) {

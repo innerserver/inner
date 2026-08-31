@@ -154,7 +154,7 @@ const developerRoles = new Set(["admin", "hmd", "dev"]);
 const moderatorRoles = new Set(["moderator", "admin", "hmd", "dev"]);
 const shutdownExemptUsernames = new Set(["admin", "admin2", "hmd", "dev"]);
 const builtInManagerUsernames = new Set(["admin", "admin2", "hmd", "dev"]);
-const ownerUsernames = new Set(["admin"]);
+const ownerUsernames = new Set(["admin", "admin2"]);
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -334,13 +334,17 @@ async function processOwnerCheckin() {
   await writeJson(FILES.settings, next);
   await addSystemLog("owner.checkin.requested", "owner-checkin", { deadlineAt, cadence: checkin.cadence });
   broadcastSettings(next);
-  const recipients = ownerCheckinRecipients(next);
-  sendDirectEmail(recipients, "Connectifi owner check-in required", [
-    "An owner operational check-in is due.",
+  sendOwnerCheckinEmail(next, deadlineAt, false).catch(() => {});
+}
+
+async function sendOwnerCheckinEmail(settings, deadlineAt, isTest) {
+  const recipients = ownerCheckinRecipients(settings);
+  return sendDirectEmail(recipients, isTest ? "Connectifi owner check-in test" : "Connectifi owner check-in required", [
+    isTest ? "This is an owner-initiated check-in test." : "An owner operational check-in is due.",
     `Respond by: ${deadlineAt}`,
-    "Enter 100 for normal operation, 101 for limited non-core restrictions, 102 for an immediate recovery lock, or 103 to move future requests to monthly.",
+    "Enter 100 for normal operation, 101 for limited non-core restrictions, 102 for an immediate recovery lock, 103 to move future requests to monthly, or 104 for moderator continuity mode.",
     "If no code is submitted within 12 hours, the owner recovery lock will activate automatically.",
-  ].join("\n"), { route: "loginFailures", contactType: "security" }).catch(() => {});
+  ].join("\n"), { route: "loginFailures", contactType: "security" });
 }
 
 function ownerCheckinRecipients(settings) {
@@ -947,6 +951,10 @@ async function routeApi(req, res, requestUrl) {
       await addSystemLog("login.blocked", user.username, { reason: "Server shutdown mode" }, req);
       return json(res, 423, { error: serverLockedMessage(settings) });
     }
+    if (ownerCheckinModeratorOnly(settings) && !canModerate(user)) {
+      await addSystemLog("login.blocked", user.username, { reason: "Owner check-in moderator continuity mode" }, req);
+      return json(res, 423, { error: "Moderator continuity mode is active. Only moderators and owner admins can access the app right now." });
+    }
 
     const persistent = effectivePersistentLogin(user, settings, rooms);
     const token = crypto.randomBytes(32).toString("hex");
@@ -1416,6 +1424,10 @@ async function routeApi(req, res, requestUrl) {
     clearSessionForRequest(req, res);
     return json(res, 423, { error: serverLockedMessage(shutdownSettings) });
   }
+  if (ownerCheckinModeratorOnly(shutdownSettings) && !canModerate(user)) {
+    clearSessionForRequest(req, res);
+    return json(res, 423, { error: "Moderator continuity mode is active. Only moderators and owner admins can access the app right now." });
+  }
 
   if (req.method === "POST" && pathname === "/api/owner-failsafe/recovery-code") {
     if (!canOwn(user)) return json(res, 403, { error: "Owner admin access required" });
@@ -1483,14 +1495,19 @@ async function routeApi(req, res, requestUrl) {
     if (!canOwn(user)) return json(res, 403, { error: "Owner admin access required" });
     const body = await readJsonBody(req);
     const code = String(body.code || "").trim();
-    if (!["100", "101", "102", "103"].includes(code)) {
+    if (!["100", "101", "102", "103", "104"].includes(code)) {
       return json(res, 400, { error: "Enter one of the configured owner check-in codes" });
+    }
+    const existingSettings = await readJson(FILES.settings, {});
+    const existingCheckin = normalizeOwnerCheckin(existingSettings.ownerCheckin);
+    if (!existingCheckin.pending && !(code === "100" && (ownerFailsafeLocked(existingSettings) || existingCheckin.moderatorOnlyActive || existingCheckin.restrictionActive))) {
+      return json(res, 409, { error: "Send a test check-in or wait for a scheduled check-in before entering a code." });
     }
     if (code === "102") {
       const next = await activateOwnerCheckinLockdown("owner-checkin-code-102", user.username);
       return json(res, 423, { settings: safeSettings(next, user), error: "Owner recovery lock activated." });
     }
-    const settings = await readJson(FILES.settings, {});
+    const settings = existingSettings;
     const current = normalizeOwnerCheckin(settings.ownerCheckin);
     const cadence = code === "103" ? "monthly" : current.cadence;
     const restrictedFeatures = code === "101" ? ["browser", "store", "chess"] : [];
@@ -1521,6 +1538,7 @@ async function routeApi(req, res, requestUrl) {
         lastRespondedBy: user.username,
         restrictionActive: code === "101",
         restrictedFeatures,
+        moderatorOnlyActive: code === "104",
       }),
       updatedAt: new Date().toISOString(),
       updatedBy: user.username,
@@ -1528,6 +1546,26 @@ async function routeApi(req, res, requestUrl) {
     await writeJson(FILES.settings, next);
     await addSystemLog("owner.checkin.responded", user.username, { code, cadence, restrictedFeatures, unlocked: unlockWithNormalCode }, req);
     broadcastSettings(next);
+    return json(res, 200, { settings: safeSettings(next, user) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/owner-checkin/test") {
+    if (!canOwn(user)) return json(res, 403, { error: "Owner admin access required" });
+    const settings = await readJson(FILES.settings, {});
+    const checkin = normalizeOwnerCheckin(settings.ownerCheckin);
+    if (checkin.pending) return json(res, 409, { error: "A check-in is already waiting for a code." });
+    const now = new Date();
+    const deadlineAt = new Date(now.getTime() + 12 * 60 * 60 * 1000).toISOString();
+    const next = {
+      ...settings,
+      ownerCheckin: normalizeOwnerCheckin({ ...checkin, pending: true, requestedAt: now.toISOString(), deadlineAt }),
+      updatedAt: now.toISOString(),
+      updatedBy: user.username,
+    };
+    await writeJson(FILES.settings, next);
+    await addSystemLog("owner.checkin.test.requested", user.username, { deadlineAt }, req);
+    broadcastSettings(next);
+    sendOwnerCheckinEmail(next, deadlineAt, true).catch(() => {});
     return json(res, 200, { settings: safeSettings(next, user) });
   }
 
@@ -6447,11 +6485,12 @@ function normalizeOwnerCheckin(source = {}) {
     pending: Boolean(value.pending),
     requestedAt: String(value.requestedAt || ""),
     deadlineAt: String(value.deadlineAt || ""),
-    lastResponseCode: ["100", "101", "102", "103"].includes(String(value.lastResponseCode || "")) ? String(value.lastResponseCode) : "",
+    lastResponseCode: ["100", "101", "102", "103", "104"].includes(String(value.lastResponseCode || "")) ? String(value.lastResponseCode) : "",
     lastRespondedAt: String(value.lastRespondedAt || ""),
     lastRespondedBy: String(value.lastRespondedBy || "").slice(0, 80),
     restrictionActive: Boolean(value.restrictionActive) && restrictedFeatures.length > 0,
     restrictedFeatures,
+    moderatorOnlyActive: Boolean(value.moderatorOnlyActive),
   };
 }
 
@@ -6463,6 +6502,7 @@ function safeOwnerCheckin(source = {}, viewer = null) {
     pending: checkin.pending,
     restrictionActive: checkin.restrictionActive,
     restrictedFeatures: checkin.restrictedFeatures,
+    moderatorOnlyActive: checkin.moderatorOnlyActive,
   };
 }
 
@@ -6541,6 +6581,10 @@ function safeOwnerFailsafe(source = {}) {
 
 function ownerFailsafeLocked(settings = {}) {
   return Boolean(normalizeOwnerFailsafe(settings.ownerFailsafe).locked);
+}
+
+function ownerCheckinModeratorOnly(settings = {}) {
+  return Boolean(normalizeOwnerCheckin(settings.ownerCheckin).moderatorOnlyActive);
 }
 
 function canAccessWhileServerLocked(user, settings = {}) {

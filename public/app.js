@@ -484,6 +484,7 @@ function cacheElements() {
     "ownerCheckinForm",
     "ownerCheckinCode",
     "submitOwnerCheckinButton",
+    "testOwnerCheckinButton",
     "createAccountForm",
     "accountManager",
     "showAllAccountsButton",
@@ -860,6 +861,7 @@ function bindEvents() {
   els.ownerFailsafeCodeForm.addEventListener("submit", saveOwnerFailsafeCode);
   els.ownerFailsafeUnlockForm.addEventListener("submit", unlockOwnerFailsafe);
   els.ownerCheckinForm.addEventListener("submit", submitOwnerCheckin);
+  els.testOwnerCheckinButton.addEventListener("click", sendTestOwnerCheckin);
   els.createAccountForm.addEventListener("submit", createAccount);
   els.accountSearchInput.addEventListener("input", () => {
     state.accountSearch = els.accountSearchInput.value.trim().toLowerCase();
@@ -1430,7 +1432,7 @@ function showView(viewName, options = {}) {
   }
   if (!viewRoutes[viewName]) viewName = "dashboard";
   if (viewName === "domain" && !isOwner()) viewName = "dashboard";
-  if (viewName === "admin" && !hasBuiltInControlAccess()) viewName = "dashboard";
+  if (viewName === "admin" && !hasAdminPanelAccess()) viewName = "dashboard";
   if (viewName === "moderator" && !isModerator()) viewName = "dashboard";
   if (viewName === "hmd" && !isDev()) viewName = "dashboard";
   if (viewName === "secret" && !secretMessagingEnabled()) viewName = "dashboard";
@@ -2088,6 +2090,21 @@ async function submitOwnerCheckin(event) {
     notify(error.message);
   } finally {
     els.submitOwnerCheckinButton.disabled = false;
+  }
+}
+
+async function sendTestOwnerCheckin() {
+  if (!isOwner()) return notify("Owner admin access required");
+  try {
+    els.testOwnerCheckinButton.disabled = true;
+    const data = await api("/api/owner-checkin/test", { method: "POST", json: {} });
+    state.settings = data.settings;
+    renderAll();
+    notify("Test check-in sent. A code can now be entered.");
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    els.testOwnerCheckinButton.disabled = false;
   }
 }
 
@@ -4602,7 +4619,7 @@ function renderWithFocusPreserved(callback) {
 }
 
 function setupAdminCollapsibles() {
-  if (!els.adminView || !hasBuiltInControlAccess()) return;
+  if (!els.adminView || !hasAdminPanelAccess()) return;
   els.adminView.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => {
     if (panel.dataset.collapsibleReady === "1") return;
     const title = panel.querySelector("h3");
@@ -4694,7 +4711,7 @@ function renderShell() {
     element.classList.toggle("hidden", !isOwner());
   });
   document.querySelectorAll(".built-in-control-only").forEach((element) => {
-    element.classList.toggle("hidden", !hasBuiltInControlAccess());
+    element.classList.toggle("hidden", !hasAdminPanelAccess());
   });
   document.querySelectorAll(".dev-only").forEach((element) => {
     element.classList.toggle("hidden", !isDev());
@@ -4705,7 +4722,7 @@ function renderShell() {
   syncPrivilegedNav();
   syncHiddenNav();
   updateNotificationButton();
-  if (!hasBuiltInControlAccess() && state.activeView === "admin") showView("dashboard");
+  if (!hasAdminPanelAccess() && state.activeView === "admin") showView("dashboard");
   if ((!isModerator() || isOwner()) && state.activeView === "moderator") showView("dashboard");
   if (!isOwner() && state.activeView === "domain") showView("dashboard");
   if (!isDev() && state.activeView === "hmd") showView("dashboard");
@@ -6696,12 +6713,19 @@ function renderServerInner() {
     const checkin = state.settings.ownerCheckin || {};
     if (checkin.pending) {
       els.ownerCheckinStatus.textContent = `A check-in is due. Submit a code before ${formatDate(checkin.deadlineAt)} or the owner recovery lock will activate.`;
+    } else if (checkin.moderatorOnlyActive) {
+      els.ownerCheckinStatus.textContent = `Moderator continuity mode is active. Only moderators and owner admins can use the app. Next ${checkin.cadence || "weekly"} check-in: ${formatDate(checkin.nextCheckAt)}.`;
     } else if (checkin.restrictionActive) {
       els.ownerCheckinStatus.textContent = `Limited mode is active: ${(checkin.restrictedFeatures || []).map(featureLabel).join(", ")}. Next ${checkin.cadence || "weekly"} check-in: ${formatDate(checkin.nextCheckAt)}.`;
     } else {
       els.ownerCheckinStatus.textContent = `Next ${checkin.cadence || "weekly"} check-in: ${formatDate(checkin.nextCheckAt)}. Delivery includes dev.s.shah2013@gmail.com.`;
     }
   }
+  const checkinAccessState = state.settings.ownerCheckin || {};
+  const canSubmitOwnerCheckin = Boolean(checkinAccessState.pending || checkinAccessState.moderatorOnlyActive || checkinAccessState.restrictionActive || failsafe.locked);
+  if (els.ownerCheckinCode) els.ownerCheckinCode.disabled = !admin || !canSubmitOwnerCheckin;
+  if (els.submitOwnerCheckinButton) els.submitOwnerCheckinButton.disabled = !admin || !canSubmitOwnerCheckin;
+  if (els.testOwnerCheckinButton) els.testOwnerCheckinButton.disabled = !admin || Boolean((state.settings.ownerCheckin || {}).pending);
   [els.roomNameInput, els.signupMode, els.requireContact, els.acceptedEmailDomains, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.triggerProfileUpdateButton, els.clearProfileUpdateButton, els.reportEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.moderatorLogAccessUsers, els.emailGeneral, els.emailContactNoreply, els.emailContactReports, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
@@ -9287,7 +9311,7 @@ function syncHiddenNav() {
 function syncPrivilegedNav() {
   setNavVisibility(els.domainNavButton, isOwner());
   setNavVisibility(els.moderatorNavButton, isModerator() && !hasBuiltInControlAccess());
-  setNavVisibility(els.adminNavButton, hasBuiltInControlAccess());
+  setNavVisibility(els.adminNavButton, hasAdminPanelAccess());
   setNavVisibility(els.hmdNavButton, isDev());
 }
 
@@ -9757,7 +9781,11 @@ async function api(path, options = {}) {
 }
 
 function isOwner() {
-  return state.user && (state.user.owner || state.user.username === "admin");
+  return state.user && (state.user.owner || ["admin", "admin2"].includes(String(state.user.username || "").toLowerCase()));
+}
+
+function hasAdminPanelAccess() {
+  return Boolean(state.user && ["admin", "admin2"].includes(String(state.user.username || "").toLowerCase()));
 }
 
 function hasBuiltInControlAccess() {

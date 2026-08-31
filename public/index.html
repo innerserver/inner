@@ -776,11 +776,12 @@
               <div class="owner-checkin-card">
                 <h4>Owner operational check-in</h4>
                 <p id="ownerCheckinStatus" class="panel-note">Weekly owner check-ins are scheduled for Sunday at 12:00 PM IST.</p>
-                <p class="panel-note">100: normal operations. 101: restrict Browser, Store, and Games. 102: activate the recovery lock. 103: use a monthly Sunday check-in.</p>
+                <p class="panel-note">100: normal operations. 101: restrict Browser, Store, and Games. 102: activate the recovery lock. 103: use a monthly Sunday check-in. 104: moderator continuity mode.</p>
                 <form id="ownerCheckinForm" class="stack-form">
-                  <label>Check-in code<input id="ownerCheckinCode" inputmode="numeric" pattern="10[0-3]" maxlength="3" autocomplete="one-time-code" /></label>
+                  <label>Check-in code<input id="ownerCheckinCode" inputmode="numeric" pattern="10[0-4]" maxlength="3" autocomplete="one-time-code" /></label>
                   <button id="submitOwnerCheckinButton" class="secondary-button" type="submit">Submit check-in</button>
                 </form>
+                <button id="testOwnerCheckinButton" class="secondary-button compact-button" type="button">Send test check-in</button>
               </div>
             </section>
 

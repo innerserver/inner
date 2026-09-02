@@ -6,6 +6,7 @@ const state = {
   selectedRoomId: "main",
   messages: [],
   secretMessages: [],
+  secretDms: [],
   pendingSends: [],
   replyToMessage: null,
   dms: [],
@@ -343,6 +344,7 @@ function cacheElements() {
     "dmAttachment",
     "dmSelfieInput",
     "dmSelfieButton",
+    "dmSecret",
     "sendDmButton",
     "secretNavButton",
     "secretState",
@@ -1326,6 +1328,7 @@ async function loadState() {
   state.rooms = data.rooms || [];
   state.messages = data.messages || [];
   state.secretMessages = data.secretMessages || [];
+  state.secretDms = data.secretDms || [];
   state.dms = data.dms || [];
   state.dmGroups = data.dmGroups || [];
   state.files = data.files || [];
@@ -1531,9 +1534,11 @@ async function sendDm(event) {
       groupId,
       text,
       attachment,
+      secret: Boolean(els.dmSecret && els.dmSecret.checked),
     });
     els.dmInput.value = "";
     els.dmAttachment.value = "";
+    if (els.dmSecret) els.dmSecret.checked = false;
     state.replyToDm = null;
     focusWithoutJump(els.dmInput);
   } catch (error) {
@@ -3425,8 +3430,11 @@ function handleSocketMessage(message) {
   if (message.type === "dm:update") {
     const index = state.dms.findIndex((entry) => entry.id === message.dm.id);
     if (index !== -1) state.dms[index] = message.dm;
+    const secretIndex = state.secretDms.findIndex((entry) => entry.id === message.dm.id);
+    if (secretIndex !== -1) state.secretDms[secretIndex] = message.dm;
     renderDms();
     renderAdminDms();
+    renderSecretMessages();
     return;
   }
 
@@ -5216,15 +5224,20 @@ function renderSecretMessages() {
     els.secretMessageList.scrollTop + els.secretMessageList.clientHeight >= els.secretMessageList.scrollHeight - 24;
   const scrollOffset = els.secretMessageList.scrollHeight - els.secretMessageList.scrollTop;
   els.secretMessageList.replaceChildren();
-  if (!state.secretMessages.length) {
+  const secretFeed = [
+    ...state.secretMessages.map((message) => ({ ...message, secretKind: "message" })),
+    ...state.secretDms.map((message) => ({ ...message, secretKind: "dm" })),
+  ].sort((left, right) => Date.parse(left.createdAt || 0) - Date.parse(right.createdAt || 0));
+  if (!secretFeed.length) {
     els.secretMessageList.append(emptyBlock("No secret messages yet"));
   } else {
-    state.secretMessages.forEach((message) => {
+    secretFeed.forEach((message) => {
       const item = document.createElement("article");
       item.className = `message ${message.user === state.user.username ? "mine" : ""}`;
       const meta = document.createElement("div");
       meta.className = "message-meta";
-      meta.append(textNode(message.user), textNode(formatDate(message.createdAt)));
+      meta.append(textNode(message.secretKind === "dm" ? `Secret DM: ${message.from} to ${message.to}` : message.user), textNode(formatDate(message.createdAt)));
+      if (message.pinned) meta.append(textNode("Pinned"));
       if (isOwner() && message.sourceIp) meta.append(textNode(`From ${message.sourceIp}`));
       const body = document.createElement("div");
       body.className = "message-text";
@@ -5266,6 +5279,7 @@ function renderMessagesInner() {
       meta.append(textNode(message.user), textNode(formatDate(message.createdAt)));
       if (message.editedAt) meta.append(textNode("edited"));
       if (message.status) meta.append(textNode(message.status));
+      if (message.pinned) meta.append(textNode("Pinned"));
       if (isOwner()) {
         meta.append(textNode(`From ${message.sourceIp || "unknown"}`));
       }
@@ -5296,6 +5310,15 @@ function renderMessagesInner() {
         reactionButton.addEventListener("click", () => reactMessage(message.id, emoji));
         actions.append(reactionButton);
       });
+      if (!message.local) {
+        const pinButton = document.createElement("button");
+        pinButton.className = "ghost-light-button compact-button";
+        pinButton.type = "button";
+        pinButton.textContent = message.pinned ? "Unpin" : "Pin";
+        pinButton.disabled = Boolean(message.pinned) && !isModerator();
+        pinButton.addEventListener("click", () => setMessagePin(message.id, !message.pinned));
+        actions.append(pinButton);
+      }
       const replyButton = document.createElement("button");
       replyButton.className = "ghost-light-button compact-button";
       replyButton.type = "button";
@@ -5475,11 +5498,22 @@ function renderDmsInner() {
       status.textContent = [dm.editedAt ? "edited" : "", dm.status || ""].filter(Boolean).join(" / ");
       bubble.append(status);
     }
-    if (dm.from === state.user.username || dm.status === "failed") {
+    if (dm.pinned) {
+      const pinned = document.createElement("small");
+      pinned.className = "read-receipt";
+      pinned.textContent = "Pinned";
+      bubble.append(pinned);
+    }
+    if (dm.from === state.user.username || dm.status === "failed" || !dm.local) {
       const extraActions = document.createElement("div");
       extraActions.className = "message-actions";
       if (dm.from === state.user.username && !dm.local) extraActions.append(accountButton("Edit", () => editDm(dm.id, dm.text)));
       if (dm.status === "failed" && dm.localId) extraActions.append(accountButton("Retry", () => retryPending(dm.localId)));
+      if (!dm.local) {
+        const pinButton = accountButton(dm.pinned ? "Unpin" : "Pin", () => setDmPin(dm.id, !dm.pinned));
+        pinButton.disabled = Boolean(dm.pinned) && !isModerator();
+        extraActions.append(pinButton);
+      }
       bubble.append(extraActions);
     }
     els.dmList.append(bubble);
@@ -7690,7 +7724,7 @@ function renderAdminDms() {
   visible.slice(-250).forEach((dm) => {
     els.adminDmList.append(renderMessageBubble({
       mine: false,
-      title: dmTitle(dm),
+      title: dm.secret ? `Secret DM - ${dmTitle(dm)}` : dmTitle(dm),
       text: dm.text,
       createdAt: dm.createdAt,
       sourceIp: dm.sourceIp,
@@ -8139,6 +8173,7 @@ function updateControls() {
   els.dmInput.disabled = !dmsEnabled;
   els.dmAttachment.disabled = !dmsEnabled;
   els.dmSelfieButton.disabled = !dmsEnabled;
+  if (els.dmSecret) els.dmSecret.disabled = !dmsEnabled || !secretEnabled;
   els.sendDmButton.disabled = !dmsEnabled;
   if (els.secretMessageInput) els.secretMessageInput.disabled = !secretEnabled;
   if (els.secretMessageAttachment) els.secretMessageAttachment.disabled = !secretEnabled;
@@ -8189,8 +8224,13 @@ function addDm(dm) {
   if (state.dms.some((entry) => entry.id === dm.id)) return;
   state.dms.push(dm);
   state.dms = state.dms.slice(-500);
+  if (dm.secret && !state.secretDms.some((entry) => entry.id === dm.id)) {
+    state.secretDms.push(dm);
+    state.secretDms = state.secretDms.slice(-500);
+  }
   renderDms();
   renderAdminDms();
+  if (dm.secret) renderSecretMessages();
 }
 
 function addFile(file) {
@@ -8257,7 +8297,7 @@ async function sendPendingItem(item) {
   try {
     const payload = item.kind === "message"
       ? { text: item.text, attachment: item.attachment, roomId: item.roomId || "main", parentId: item.parentId || "" }
-      : { to: item.to || "", groupId: item.groupId || "", text: item.text, attachment: item.attachment };
+      : { to: item.to || "", groupId: item.groupId || "", text: item.text, attachment: item.attachment, secret: Boolean(item.secret) };
     const data = await api(item.kind === "message" ? "/api/messages" : "/api/dms", {
       method: "POST",
       json: payload,
@@ -8418,6 +8458,31 @@ async function reactMessage(id, emoji) {
     const index = state.messages.findIndex((entry) => entry.id === id);
     if (index !== -1) state.messages[index] = data.message;
     renderMessages();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function setMessagePin(id, pinned) {
+  try {
+    const data = await api(`/api/messages/${encodeURIComponent(id)}/pin`, { method: "POST", json: { pinned } });
+    const index = state.messages.findIndex((entry) => entry.id === id);
+    if (index !== -1) state.messages[index] = data.message;
+    renderMessages();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function setDmPin(id, pinned) {
+  try {
+    const data = await api(`/api/dms/${encodeURIComponent(id)}/pin`, { method: "POST", json: { pinned } });
+    const index = state.dms.findIndex((entry) => entry.id === id);
+    if (index !== -1) state.dms[index] = data.dm;
+    const secretIndex = state.secretDms.findIndex((entry) => entry.id === id);
+    if (secretIndex !== -1) state.secretDms[secretIndex] = data.dm;
+    renderDms();
+    renderSecretMessages();
   } catch (error) {
     notify(error.message);
   }

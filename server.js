@@ -1662,6 +1662,7 @@ async function routeApi(req, res, requestUrl) {
       rooms: safeRoomsForUser(rooms, user),
       messages: normalizedMessages.slice(-STATE_MESSAGE_LIMIT),
       secretMessages: safeSecretMessages(secretMessages, user, settings).slice(-STATE_MESSAGE_LIMIT),
+      secretDms: safeSecretDms(dms, user, settings).slice(-STATE_DM_LIMIT),
       dms: visibleDms.slice(-STATE_DM_LIMIT),
       dmGroups: safeDmGroups(dmGroups, user),
       files: safeFileRecords(files, user, rooms).slice(0, STATE_FILE_LIMIT),
@@ -2750,6 +2751,15 @@ async function routeApi(req, res, requestUrl) {
       participants = [user.username, recipient.username];
     }
 
+    const secret = Boolean(body.secret);
+    if (secret) {
+      if (!canAccessSecretMessaging(settings, user)) return json(res, 403, { error: "Secret messaging is not enabled for this account" });
+      const secretParticipants = group ? participants : [user.username, recipient.username];
+      const accounts = new Map(users.map((entry) => [String(entry.username || "").toLowerCase(), entry]));
+      const denied = secretParticipants.some((username) => !canAccessSecretMessaging(settings, accounts.get(String(username).toLowerCase())));
+      if (denied) return json(res, 403, { error: "Every participant must have secret messaging access for a secret DM" });
+    }
+
     const dms = await readJson(FILES.dms, []);
     const dm = {
       id: crypto.randomUUID(),
@@ -2761,6 +2771,7 @@ async function routeApi(req, res, requestUrl) {
       participants,
       text: textValue,
       attachment,
+      secret,
       sourceIp: getClientIp(req),
       sourceHost: req.headers.host || "",
       sourceAgent: String(req.headers["user-agent"] || "").slice(0, 240),
@@ -3388,6 +3399,51 @@ async function routeApi(req, res, requestUrl) {
     await writeJson(FILES.messages, messages);
     broadcast({ type: "message:update", message: messages[index] });
     return json(res, 200, { message: messages[index] });
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/messages/") && pathname.endsWith("/pin")) {
+    const id = decodeURIComponent(pathname.split("/")[3] || "");
+    const body = await readJsonBody(req);
+    const messages = await readJson(FILES.messages, []);
+    const index = messages.findIndex((entry) => entry.id === id);
+    if (index === -1) return json(res, 404, { error: "Message not found" });
+    const rooms = await readJson(FILES.rooms, []);
+    const room = rooms.find((entry) => entry.id === (messages[index].roomId || "main"));
+    if (!room || !canAccessRoom(room, user)) return json(res, 403, { error: "You do not have access to this message" });
+    const unpin = body.pinned === false;
+    if (unpin && !canModerate(user)) return json(res, 403, { error: "Only moderators and admins can unpin messages" });
+    messages[index] = {
+      ...messages[index],
+      pinned: !unpin,
+      pinnedAt: unpin ? "" : new Date().toISOString(),
+      pinnedBy: unpin ? "" : user.username,
+    };
+    await writeJson(FILES.messages, messages);
+    await addSystemLog(unpin ? "message.unpinned" : "message.pinned", user.username, { id, roomId: messages[index].roomId || "main" }, req);
+    broadcast({ type: "message:update", message: messages[index] });
+    return json(res, 200, { message: messages[index] });
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/dms/") && pathname.endsWith("/pin")) {
+    const id = decodeURIComponent(pathname.split("/")[3] || "");
+    const body = await readJsonBody(req);
+    const dms = await readJson(FILES.dms, []);
+    const index = dms.findIndex((entry) => entry.id === id);
+    if (index === -1) return json(res, 404, { error: "DM not found" });
+    const dm = dms[index];
+    if (!canManage(user) && !(dm.participants || []).includes(user.username)) return json(res, 403, { error: "You do not have access to this DM" });
+    const unpin = body.pinned === false;
+    if (unpin && !canModerate(user)) return json(res, 403, { error: "Only moderators and admins can unpin messages" });
+    dms[index] = {
+      ...dm,
+      pinned: !unpin,
+      pinnedAt: unpin ? "" : new Date().toISOString(),
+      pinnedBy: unpin ? "" : user.username,
+    };
+    await writeJson(FILES.dms, dms);
+    await addSystemLog(unpin ? "dm.unpinned" : "dm.pinned", user.username, { id, secret: Boolean(dm.secret) }, req);
+    broadcastDm({ type: "dm:update", dm: dms[index] }, dms[index]);
+    return json(res, 200, { dm: dms[index] });
   }
 
   if (req.method === "PATCH" && pathname.startsWith("/api/messages/")) {
@@ -5900,6 +5956,30 @@ function safeSecretMessages(messages, user, settings = {}) {
       sourceIp: canOwn(user) ? message.sourceIp || "" : "",
       sourceAgent: canOwn(user) ? message.sourceAgent || "" : "",
       createdAt: message.createdAt || "",
+    }));
+}
+
+function safeSecretDms(dms, user, settings = {}) {
+  if (!user) return [];
+  return (dms || [])
+    .filter((dm) => Boolean(dm && dm.secret))
+    .filter((dm) => canManage(user) || (Array.isArray(dm.participants) && dm.participants.includes(user.username)))
+    .map((dm) => ({
+      id: dm.id,
+      kind: dm.kind || "direct",
+      from: dm.from || "",
+      to: dm.to || "",
+      groupId: dm.groupId || "",
+      groupName: dm.groupName || "",
+      participants: Array.isArray(dm.participants) ? dm.participants : [],
+      text: dm.text || "",
+      attachment: dm.attachment || null,
+      pinned: Boolean(dm.pinned),
+      pinnedAt: dm.pinnedAt || "",
+      pinnedBy: dm.pinnedBy || "",
+      sourceIp: canOwn(user) ? dm.sourceIp || "" : "",
+      sourceAgent: canOwn(user) ? dm.sourceAgent || "" : "",
+      createdAt: dm.createdAt || "",
     }));
 }
 

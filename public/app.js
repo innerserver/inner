@@ -4740,12 +4740,16 @@ function renderWithFocusPreserved(callback) {
 function setupAdminCollapsibles() {
   if (!els.adminView || !hasAdminPanelAccess()) return;
   els.adminView.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => {
-    if (panel.dataset.collapsibleReady === "1") return;
     const title = panel.querySelector("h3");
     if (!title) return;
-    const button = document.createElement("button");
-    button.className = "collapse-toggle";
-    button.type = "button";
+    let button = Array.from(panel.children).find((child) => child.classList && child.classList.contains("collapse-toggle"));
+    if (!button) {
+      button = document.createElement("button");
+      button.className = "collapse-toggle";
+      button.type = "button";
+      panel.append(button);
+    }
+    if (panel.dataset.connectifiAdminCollapsible === "1") return;
     const storageKey = `connectifiAdminPanelCollapsedV188:${index}:${title.textContent}`;
     const setCollapsed = (collapsed, persist = true) => {
       panel.classList.toggle("admin-collapsed", collapsed);
@@ -4767,10 +4771,9 @@ function setupAdminCollapsibles() {
       }
     })();
     setCollapsed(saved, false);
-    // Keep the control out of each panel's custom grid. Some expanded panels
-    // span headings across columns, which otherwise pushes the action away.
-    panel.append(button);
-    panel.dataset.collapsibleReady = "1";
+    // Keep a dedicated marker: older helpers used a generic ready flag and
+    // could prevent the real admin collapse handler from binding.
+    panel.dataset.connectifiAdminCollapsible = "1";
   });
 
   const quickLinks = els.adminView.querySelector(".admin-quick-links");

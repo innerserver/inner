@@ -1,4 +1,4 @@
-Connectifi build v189
+Connectifi build v190
 Released: 2026-09-02
 
 Changes in this package:
@@ -8,4 +8,5 @@ Changes in this package:
 - Permanent non-owner admin promotions assign the selectable permissions automatically.
 - Recovered the admin-panel collapse system from the conflicting UI scripts.
 - Account manager reopens with all members and remembers alphabetical or class sorting.
+- Admin panels retain reliable individual collapse and expand controls.
 - Existing moderation access controls preserved.

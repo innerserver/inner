@@ -787,6 +787,13 @@ async function ensureSettings() {
   } else {
     next.strikeEmails = next.strikeEmails.map(cleanEmailAddress).filter(Boolean).slice(0, 10);
   }
+  next.delegatedAdminFeatures = sanitizeDelegatedAdminFeatures(next.delegatedAdminFeatures || {});
+  if (!Array.isArray(next.nonOwnerAdminFeatures)) {
+    next.nonOwnerAdminFeatures = ["strikes", "screen-time", "reports", "room-controls"];
+    changed = true;
+  } else {
+    next.nonOwnerAdminFeatures = sanitizeNonOwnerAdminFeatures(next.nonOwnerAdminFeatures);
+  }
   if (!next.emailRoutes || typeof next.emailRoutes !== "object" || Array.isArray(next.emailRoutes)) {
     next.emailRoutes = {};
     changed = true;
@@ -1646,8 +1653,8 @@ async function routeApi(req, res, requestUrl) {
       await writeJson(FILES.users, users);
       broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     }
-    const visibleReports = canModerate(user) ? pruneReportsForSettings(reports, settings) : [];
-    if (canModerate(user) && visibleReports.length !== reports.length) {
+    const visibleReports = canUseModerationCapability(user, settings, "reports") ? pruneReportsForSettings(reports, settings) : [];
+    if (canUseModerationCapability(user, settings, "reports") && visibleReports.length !== reports.length) {
       await writeJson(FILES.reports, visibleReports);
     }
     const accessibleRoomIds = new Set(rooms.filter((room) => canAccessRoom(room, user)).map((room) => room.id || "main"));
@@ -1690,7 +1697,7 @@ async function routeApi(req, res, requestUrl) {
       reports: fastState ? [] : safeActiveReports(visibleReports, settings),
       liveIpTracking: canOwn(user) ? liveIpTracking(users) : [],
       readReceipts: safeReadReceipts(readReceipts, user, { messages: normalizedMessages, dms: visibleDms, dmGroups }),
-      moderationLogs: fastState ? [] : moderationLogs.slice(-Math.min(STATE_LOG_LIMIT, 250)),
+      moderationLogs: !fastState && canViewAuditLogs(user, settings) ? moderationLogs.slice(-Math.min(STATE_LOG_LIMIT, 250)) : [],
       logs: canViewAuditLogs(user, settings) && !fastState ? logs.slice(0, STATE_LOG_LIMIT) : [],
       dev: canDev(user) && !fastState
         ? await buildDevState({ settings, rooms, messages, dms, dmGroups, files, accountRequests, users, store, reports, moderationLogs, logs, devConfig, bots, plugins, automod })
@@ -2140,9 +2147,9 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "POST" && pathname === "/api/reports/update") {
-    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
     const body = await readJsonBody(req);
     const [settings, reports] = await Promise.all([readJson(FILES.settings, {}), readJson(FILES.reports, [])]);
+    if (!canUseModerationCapability(user, settings, "reports")) return json(res, 403, { error: "Owner admin has not granted report access" });
     const index = reports.findIndex((entry) => entry.id === String(body.id || ""));
     if (index === -1) return json(res, 404, { error: "Report not found" });
     reports[index] = {
@@ -2847,6 +2854,10 @@ async function routeApi(req, res, requestUrl) {
 
   if (req.method === "POST" && pathname === "/api/features/lock") {
     if (!canManage(user) && !canModerate(user)) return json(res, 403, { error: "Moderator access required" });
+    const settings = await readJson(FILES.settings, {});
+    if (normalizeRole(user.role) === "admin" && !canOwn(user) && !canUseModerationCapability(user, settings, "room-controls")) {
+      return json(res, 403, { error: "Owner admin has not granted room-control access" });
+    }
     const body = await readJsonBody(req);
     const feature = String(body.feature || "").toLowerCase();
     if (!allowedFeatureLocks.has(feature)) return json(res, 400, { error: "Unknown feature" });
@@ -2877,7 +2888,6 @@ async function routeApi(req, res, requestUrl) {
         ? Date.now() + minutes * 60 * 1000
         : 0;
     if (disabledUntil && disabledUntil <= disabledFrom) return json(res, 400, { error: "End time must be after start time" });
-    const settings = await readJson(FILES.settings, {});
     const featureLocks = { ...(settings.featureLocks || {}) };
     const previousLock = featureLocks[feature] && typeof featureLocks[feature] === "object" ? featureLocks[feature] : {};
     const existingSchedules = sanitizeFeatureLockSchedules(previousLock.schedules || []);
@@ -3323,7 +3333,8 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "POST" && pathname === "/api/users/ban") {
-    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
+    const settings = await readJson(FILES.settings, {});
+    if (!canUseModerationCapability(user, settings, "member-actions")) return json(res, 403, { error: "Owner admin has not granted member-action access" });
     const body = await readJsonBody(req);
     const username = String(body.username || "").trim();
     if (!username) return json(res, 400, { error: "Choose a user" });
@@ -3355,7 +3366,10 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "GET" && pathname === "/api/moderation/accounts") {
-    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
+    const settings = await readJson(FILES.settings, {});
+    if (!canUseModerationCapability(user, settings, "strikes") && !canUseModerationCapability(user, settings, "member-actions")) {
+      return json(res, 403, { error: "Owner admin has not granted account moderation access" });
+    }
     const query = String(requestUrl.searchParams.get("q") || "").trim().toLowerCase();
     if (query.length < 2) return json(res, 200, { users: [] });
     const users = await readJson(FILES.users, []);
@@ -3367,12 +3381,13 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "POST" && pathname === "/api/moderation/strikes") {
-    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
+    const settings = await readJson(FILES.settings, {});
+    if (!canUseModerationCapability(user, settings, "strikes")) return json(res, 403, { error: "Moderator strike access required" });
     const body = await readJsonBody(req);
     const username = normalizeUsername(body.username);
     const reason = String(body.reason || "").trim().slice(0, 240);
     if (!username || !reason) return json(res, 400, { error: "Choose an account and provide a strike reason" });
-    const [users, settings] = await Promise.all([readJson(FILES.users, []), readJson(FILES.settings, {})]);
+    const users = await readJson(FILES.users, []);
     const index = users.findIndex((entry) => String(entry.username || "").toLowerCase() === username);
     if (index === -1) return json(res, 404, { error: "Account not found" });
     if (canOwn(users[index]) && !canOwn(user)) return json(res, 403, { error: "Only an owner admin can strike an owner admin account" });
@@ -3397,8 +3412,26 @@ async function routeApi(req, res, requestUrl) {
     return json(res, 200, { user: safeUser(users[index], user), strikes: users[index].strikes });
   }
 
+  if (req.method === "POST" && pathname === "/api/delegated-admin-features") {
+    if (!canOwn(user)) return json(res, 403, { error: "Owner admin access required" });
+    const body = await readJsonBody(req);
+    const username = normalizeUsername(body.username);
+    const users = await readJson(FILES.users, []);
+    const target = users.find((entry) => String(entry.username || "").toLowerCase() === username);
+    if (!target || normalizeRole(target.role) !== "admin" || canOwn(target)) return json(res, 400, { error: "Choose a non-owner admin account" });
+    const settings = await readJson(FILES.settings, {});
+    const features = sanitizeDelegatedAdminFeatureList(body.features || []);
+    const delegatedAdminFeatures = sanitizeDelegatedAdminFeatures({ ...(settings.delegatedAdminFeatures || {}), [username]: features });
+    const next = { ...settings, delegatedAdminFeatures, updatedAt: new Date().toISOString(), updatedBy: user.username };
+    await writeJson(FILES.settings, next);
+    await addSystemLog("delegated-admin.features.updated", user.username, { username, features }, req);
+    broadcastSettings(next);
+    return json(res, 200, { settings: safeSettings(next, user) });
+  }
+
   if (req.method === "POST" && pathname === "/api/users/mute") {
-    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
+    const settings = await readJson(FILES.settings, {});
+    if (!canUseModerationCapability(user, settings, "member-actions")) return json(res, 403, { error: "Owner admin has not granted member-action access" });
     const body = await readJsonBody(req);
     const username = String(body.username || "").trim();
     const minutes = Math.max(0, Number(body.minutes || 0));
@@ -3420,7 +3453,8 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "POST" && pathname === "/api/users/kick") {
-    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
+    const settings = await readJson(FILES.settings, {});
+    if (!canUseModerationCapability(user, settings, "member-actions")) return json(res, 403, { error: "Owner admin has not granted member-action access" });
     const body = await readJsonBody(req);
     const username = String(body.username || "").trim();
     expireUserSessions(username);
@@ -3585,6 +3619,9 @@ async function routeApi(req, res, requestUrl) {
       strikeEmails: canOwn(user) && Array.isArray(body.strikeEmails)
         ? body.strikeEmails.map(cleanEmailAddress).filter(Boolean).slice(0, 10)
         : Array.isArray(settings.strikeEmails) ? settings.strikeEmails.map(cleanEmailAddress).filter(Boolean).slice(0, 10) : REPORT_EMAILS,
+      nonOwnerAdminFeatures: canOwn(user)
+        ? sanitizeNonOwnerAdminFeatures(body.nonOwnerAdminFeatures)
+        : sanitizeNonOwnerAdminFeatures(settings.nonOwnerAdminFeatures),
       emailRoutes: sanitizeEmailRoutes(body.emailRoutes && typeof body.emailRoutes === "object" ? body.emailRoutes : settings.emailRoutes || {}),
       emailContacts: sanitizeEmailContacts(body.emailContacts && typeof body.emailContacts === "object" ? body.emailContacts : settings.emailContacts || {}),
       reportRetentionDays: Math.max(1, Math.min(3650, Number(body.reportRetentionDays || settings.reportRetentionDays || 30))),
@@ -6601,6 +6638,10 @@ function safeSettings(settings, viewer = null) {
     shutdownAt: settings.serverEnabled === false ? String(settings.shutdownAt || "") : "",
     shutdownBy: settings.serverEnabled === false ? String(settings.shutdownBy || "") : "",
     shutdownReason: settings.serverEnabled === false ? String(settings.shutdownReason || "") : "",
+    delegatedAdminFeatures: canOwn(viewer) ? sanitizeDelegatedAdminFeatures(settings.delegatedAdminFeatures || {}) : {},
+    moderationCapabilities: canModerate(viewer)
+      ? ["strikes", "room-controls", "reports", "audit-logs", "member-actions"].filter((capability) => canUseModerationCapability(viewer, settings, capability))
+      : [],
   };
 }
 
@@ -7373,6 +7414,33 @@ function canModerate(user) {
   return moderatorRoles.has(effectiveRole(user));
 }
 
+function sanitizeDelegatedAdminFeatureList(source) {
+  const values = Array.isArray(source) ? source : String(source || "").split(/[\n,;]/);
+  const allowed = new Set(["strikes", "room-controls", "reports", "audit-logs", "member-actions"]);
+  return Array.from(new Set(values.map((value) => String(value || "").trim().toLowerCase()).filter((value) => allowed.has(value))));
+}
+
+function sanitizeNonOwnerAdminFeatures(source) {
+  const values = Array.isArray(source) ? source : String(source || "").split(/[\n,;]/);
+  // Preserve the legacy screen-time name while storing the current room-control capability.
+  return sanitizeDelegatedAdminFeatureList(values.map((value) => String(value || "").trim().toLowerCase() === "screen-time" ? "room-controls" : value));
+}
+
+function sanitizeDelegatedAdminFeatures(source) {
+  const value = source && typeof source === "object" && !Array.isArray(source) ? source : {};
+  return Object.fromEntries(Object.entries(value)
+    .map(([username, features]) => [normalizeUsername(username), sanitizeDelegatedAdminFeatureList(features)])
+    .filter(([username]) => Boolean(username))
+    .slice(0, 100));
+}
+
+function canUseModerationCapability(user, settings, capability) {
+  if (!canModerate(user)) return false;
+  if (normalizeRole(user && user.role) !== "admin" || canOwn(user)) return true;
+  const features = sanitizeDelegatedAdminFeatures(settings && settings.delegatedAdminFeatures)[normalizeUsername(user.username)] || [];
+  return features.includes(capability);
+}
+
 function sanitizeModeratorLogAccessUsers(source) {
   const list = Array.isArray(source) ? source : String(source || "").split(/[\n,;]/);
   return Array.from(new Set(list.map(normalizeUsername).filter(Boolean))).slice(0, 50);
@@ -7381,6 +7449,7 @@ function sanitizeModeratorLogAccessUsers(source) {
 function canViewAuditLogs(user, settings = {}) {
   if (canManage(user)) return true;
   if (!canModerate(user)) return false;
+  if (canUseModerationCapability(user, settings, "audit-logs")) return true;
   const allowed = sanitizeModeratorLogAccessUsers(settings.moderationSettings && settings.moderationSettings.logAccessUsers);
   return allowed.includes(normalizeUsername(user && user.username));
 }

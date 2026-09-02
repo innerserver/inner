@@ -490,6 +490,14 @@ function cacheElements() {
     "submitOwnerCheckinButton",
     "testOwnerCheckinButton",
     "createAccountForm",
+    "delegatedAdminFeaturesForm",
+    "delegatedAdminUser",
+    "delegatedAdminStrikes",
+    "delegatedAdminRoomControls",
+    "delegatedAdminReports",
+    "delegatedAdminAuditLogs",
+    "delegatedAdminMemberActions",
+    "saveDelegatedAdminFeaturesButton",
     "accountManager",
     "showAllAccountsButton",
     "accountGradeFilter",
@@ -519,6 +527,9 @@ function cacheElements() {
     "adminFeatureLockPanelSlot",
     "moderatorFeatureLockPanelSlot",
     "moderatorRoomList",
+    "moderatorRoomControlsPanel",
+    "moderatorReportsPanel",
+    "moderatorStrikesPanel",
     "moderatorReportList",
     "moderatorScope",
     "moderatorRoomCount",
@@ -871,6 +882,8 @@ function bindEvents() {
   els.ownerCheckinForm.addEventListener("submit", submitOwnerCheckin);
   els.testOwnerCheckinButton.addEventListener("click", sendTestOwnerCheckin);
   els.createAccountForm.addEventListener("submit", createAccount);
+  els.delegatedAdminFeaturesForm.addEventListener("submit", saveDelegatedAdminFeatures);
+  els.delegatedAdminUser.addEventListener("change", renderDelegatedAdminFeatures);
   els.moderatorAccountSearchForm.addEventListener("submit", searchModeratorAccounts);
   els.accountSearchInput.addEventListener("input", () => {
     state.accountSearch = els.accountSearchInput.value.trim().toLowerCase();
@@ -2498,6 +2511,55 @@ async function createAccount(event) {
     notify("Account created");
   } catch (error) {
     notify(error.message);
+  }
+}
+
+function renderDelegatedAdminFeatures() {
+  if (!els.delegatedAdminFeaturesForm || !isOwner()) return;
+  const admins = state.users.filter((account) => account.role === "admin" && !account.owner);
+  els.delegatedAdminFeaturesForm.classList.toggle("hidden", !admins.length);
+  if (!admins.length) return;
+  const selected = els.delegatedAdminUser.value || admins[0].username;
+  els.delegatedAdminUser.replaceChildren(...admins.map((account) => {
+    const option = document.createElement("option");
+    option.value = account.username;
+    option.textContent = account.username;
+    return option;
+  }));
+  els.delegatedAdminUser.value = admins.some((account) => account.username === selected) ? selected : admins[0].username;
+  const access = (state.settings.delegatedAdminFeatures || {})[els.delegatedAdminUser.value] || [];
+  els.delegatedAdminStrikes.checked = access.includes("strikes");
+  els.delegatedAdminRoomControls.checked = access.includes("room-controls");
+  els.delegatedAdminReports.checked = access.includes("reports");
+  els.delegatedAdminAuditLogs.checked = access.includes("audit-logs");
+  els.delegatedAdminMemberActions.checked = access.includes("member-actions");
+}
+
+async function saveDelegatedAdminFeatures(event) {
+  event.preventDefault();
+  if (!isOwner()) return notify("Owner admin access required");
+  try {
+    els.saveDelegatedAdminFeaturesButton.disabled = true;
+    const data = await api("/api/delegated-admin-features", {
+      method: "POST",
+      json: {
+        username: els.delegatedAdminUser.value,
+        features: [
+          els.delegatedAdminStrikes.checked ? "strikes" : "",
+          els.delegatedAdminRoomControls.checked ? "room-controls" : "",
+          els.delegatedAdminReports.checked ? "reports" : "",
+          els.delegatedAdminAuditLogs.checked ? "audit-logs" : "",
+          els.delegatedAdminMemberActions.checked ? "member-actions" : "",
+        ].filter(Boolean),
+      },
+    });
+    state.settings = data.settings;
+    renderDelegatedAdminFeatures();
+    notify("Non-owner admin access saved");
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    els.saveDelegatedAdminFeaturesButton.disabled = false;
   }
 }
 
@@ -4659,7 +4721,7 @@ function setupAdminCollapsibles() {
     const saved = (() => {
       try {
         const value = localStorage.getItem(storageKey);
-        return value === null ? true : value === "1";
+        return value === null ? panel.dataset.defaultExpanded !== "true" : value === "1";
       } catch (error) {
         return true;
       }
@@ -6847,6 +6909,7 @@ function renderUsers() {
   if (els.featureLockForm) els.featureLockForm.classList.toggle("hidden", !isModerator());
   renderFeatureLockControls();
   if (!admin) return;
+  renderDelegatedAdminFeatures();
   if (document.activeElement !== els.accountSearchInput) {
     els.accountSearchInput.value = state.accountSearch || "";
   }
@@ -7022,11 +7085,17 @@ function renderFeatureLocks() {
 
 function renderModeratorPanel() {
   const moderator = isModerator() && !hasBuiltInControlAccess();
+  const roomControlAllowed = canUseModeratorCapability("room-controls");
+  const reportAllowed = canUseModeratorCapability("reports");
+  const strikeAllowed = canUseModeratorCapability("strikes") || canUseModeratorCapability("member-actions");
   const formSlot = moderator ? els.moderatorFeatureLockSlot : els.adminFeatureLockSlot;
   const lockPanelSlot = moderator ? els.moderatorFeatureLockPanelSlot : els.adminFeatureLockPanelSlot;
   if (els.featureLockForm && formSlot && els.featureLockForm.parentElement !== formSlot) formSlot.append(els.featureLockForm);
   if (els.featureLockPanel && lockPanelSlot && els.featureLockPanel.parentElement !== lockPanelSlot) lockPanelSlot.append(els.featureLockPanel);
   if (els.featureLockPanel) els.featureLockPanel.classList.toggle("hidden", !isDev() && !moderator);
+  if (els.moderatorRoomControlsPanel) els.moderatorRoomControlsPanel.classList.toggle("hidden", moderator && !roomControlAllowed);
+  if (els.moderatorReportsPanel) els.moderatorReportsPanel.classList.toggle("hidden", moderator && !reportAllowed);
+  if (els.moderatorStrikesPanel) els.moderatorStrikesPanel.classList.toggle("hidden", moderator && !strikeAllowed);
 
   if (!els.moderatorRoomList) return;
   els.moderatorRoomList.replaceChildren();
@@ -7102,7 +7171,7 @@ function renderModeratorAuditLogs() {
 
 async function searchModeratorAccounts(event) {
   event.preventDefault();
-  if (!isModerator()) return notify("Moderator access required");
+  if (!canUseModeratorCapability("strikes") && !canUseModeratorCapability("member-actions")) return notify("Owner admin has not granted account moderation access");
   const query = els.moderatorAccountSearch.value.trim();
   if (query.length < 2) return notify("Enter at least two characters");
   try {
@@ -7119,9 +7188,15 @@ async function searchModeratorAccounts(event) {
 
 function renderModeratorStrikeAccounts() {
   if (!els.moderatorAccountList) return;
+  const canStrike = canUseModeratorCapability("strikes");
+  const canActOnMembers = canUseModeratorCapability("member-actions");
+  if (!canStrike && !canActOnMembers) {
+    els.moderatorAccountList.replaceChildren();
+    return;
+  }
   els.moderatorAccountList.replaceChildren();
   if (!state.moderatorAccounts.length) {
-    els.moderatorAccountList.append(emptyBlock("Search for an account to issue a strike."));
+    els.moderatorAccountList.append(emptyBlock("Search for an account to moderate."));
     return;
   }
   state.moderatorAccounts.forEach((account) => {
@@ -7132,7 +7207,14 @@ function renderModeratorStrikeAccounts() {
     ].filter(Boolean));
     const actions = document.createElement("div");
     actions.className = "account-actions";
-    actions.append(accountButton("Issue strike", () => issueStrike(account.username)));
+    if (canStrike) actions.append(accountButton("Issue strike", () => issueStrike(account.username)));
+    if (canActOnMembers) {
+      actions.append(
+        accountButton("Mute 15m", () => moderateMemberAction(account.username, "mute")),
+        accountButton("Ban 1h", () => moderateMemberAction(account.username, "ban")),
+        accountButton("Kick", () => moderateMemberAction(account.username, "kick"))
+      );
+    }
     card.append(actions);
     els.moderatorAccountList.append(card);
   });
@@ -7148,6 +7230,24 @@ async function issueStrike(username) {
     renderModeratorStrikeAccounts();
     renderUsers();
     notify(`${username} now has ${data.user.strikeCount} strikes`);
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function moderateMemberAction(username, action) {
+  if (!canUseModeratorCapability("member-actions")) return notify("Owner admin has not granted member-action access");
+  const reason = window.prompt(`${action === "kick" ? "Reason for kicking" : `Reason for ${action}ing`} ${username}`) || "";
+  if (!reason.trim()) return;
+  const endpoint = action === "kick" ? "/api/users/kick" : `/api/users/${action}`;
+  const payload = action === "kick"
+    ? { username, reason: reason.trim() }
+    : { username, minutes: action === "ban" ? 60 : 15, reason: reason.trim() };
+  try {
+    const data = await api(endpoint, { method: "POST", json: payload });
+    if (data.users) state.users = data.users;
+    renderUsers();
+    notify(action === "kick" ? `${username} was kicked` : `${username} was ${action}ed`);
   } catch (error) {
     notify(error.message);
   }
@@ -7921,7 +8021,7 @@ function requestedRoleLabel(role) {
 
 function renderReports() {
   if (els.reportList && isOwner()) renderReportList(els.reportList);
-  if (els.moderatorReportList && isModerator()) renderReportList(els.moderatorReportList);
+  if (els.moderatorReportList && canUseModeratorCapability("reports")) renderReportList(els.moderatorReportList);
 
   if (els.moderationLogList && canViewAuditLogs()) {
     els.moderationLogList.replaceChildren();
@@ -9939,11 +10039,21 @@ function isModerator() {
 
 function canViewAuditLogs() {
   if (hasBuiltInControlAccess()) return true;
+  if (canUseModeratorCapability("audit-logs")) return true;
   const allowed = state.settings && state.settings.moderationSettings && Array.isArray(state.settings.moderationSettings.logAccessUsers)
     ? state.settings.moderationSettings.logAccessUsers
     : [];
   const username = String(state.user && state.user.username || "").toLowerCase();
   return isModerator() && allowed.map((entry) => String(entry || "").toLowerCase()).includes(username);
+}
+
+function canUseModeratorCapability(capability) {
+  if (!isModerator()) return false;
+  if (hasBuiltInControlAccess() || String(state.user && state.user.role || "").toLowerCase() !== "admin" || isOwner()) return true;
+  const capabilities = state.settings && Array.isArray(state.settings.moderationCapabilities)
+    ? state.settings.moderationCapabilities
+    : [];
+  return capabilities.includes(capability);
 }
 
 function setConnection(value) {

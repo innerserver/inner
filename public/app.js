@@ -6998,7 +6998,7 @@ function renderUsers() {
     const persistentButton = accountButton(user.allowPersistentLogin ? "Disable persistent" : "Allow persistent", () =>
       updateUser(user.username, { allowPersistentLogin: !user.allowPersistentLogin })
     );
-    const detailsButton = accountButton("Details", () => openAccountDetails(user.username));
+    const detailsButton = accountButton("Details & files", () => openAccountDetails(user.username));
     const detailTabButton = accountButton("Open tab", () => openAccountDetailTab(user.username));
     const tempAdminHour = accountButton("Temp admin 1h", () => updateUser(user.username, { tempAdminMinutes: 60 }));
     const tempAdminDay = accountButton("Temp admin 24h", () => updateUser(user.username, { tempAdminMinutes: 1440 }));

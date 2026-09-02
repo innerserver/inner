@@ -922,6 +922,47 @@ summary:focus-visible {
   }
 }
 
+/* The room rail is deliberately narrow. Long management controls must wrap in
+   place instead of pushing into the moderation workspace beside it. */
+#moderatorView .moderator-grid {
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr) !important;
+}
+
+#moderatorView .moderator-rooms-panel {
+  z-index: 1;
+  min-width: 0;
+  padding: 14px !important;
+}
+
+#moderatorView .moderator-rooms-panel .account-list,
+#moderatorView .moderator-rooms-panel .moderator-room-card,
+#moderatorView .moderator-workbench,
+#moderatorView .moderator-reports-panel,
+#moderatorView .moderator-audit-panel,
+#moderatorView .moderator-strikes-panel {
+  min-width: 0;
+}
+
+#moderatorView .moderator-rooms-panel .moderator-room-card {
+  padding: 14px !important;
+  overflow: hidden;
+}
+
+#moderatorView .moderator-rooms-panel .moderator-room-card .account-actions {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 8px !important;
+}
+
+#moderatorView .moderator-rooms-panel .moderator-room-card .account-actions > button {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 40px !important;
+  padding-inline: 12px !important;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 #moderatorView .moderator-room-card {
   border-left-width: 2px !important;
   box-shadow: none !important;

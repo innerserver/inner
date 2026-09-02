@@ -3263,8 +3263,11 @@ async function routeApi(req, res, requestUrl) {
     if (wantsTempAdmin && username.toLowerCase() === "admin") {
       return json(res, 400, { error: "The main admin account is already permanent admin" });
     }
-    if (nextRole === "admin" && normalizeRole(previous.role) !== "admin" && !wantsTempAdmin) {
-      return json(res, 403, { error: "Promoting accounts to admin is locked. Existing admins only." });
+    if (nextRole === "admin" && normalizeRole(previous.role) !== "admin" && !wantsTempAdmin && !canOwn(user)) {
+      return json(res, 403, { error: "Only an owner admin can promote an account to admin" });
+    }
+    if (canOwn(previous) && nextRole !== "admin") {
+      return json(res, 403, { error: "Owner admin accounts must remain admin accounts" });
     }
     if (["hmd", "dev"].includes(nextRole) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
     const tempAdminUntil = wantsTempAdmin
@@ -6676,7 +6679,7 @@ function safeSettings(settings, viewer = null) {
     shutdownReason: settings.serverEnabled === false ? String(settings.shutdownReason || "") : "",
     delegatedAdminFeatures: canOwn(viewer) ? sanitizeDelegatedAdminFeatures(settings.delegatedAdminFeatures || {}) : {},
     moderationCapabilities: canModerate(viewer)
-      ? ["strikes", "room-controls", "reports", "audit-logs", "member-actions", "content-moderation"].filter((capability) => canUseModerationCapability(viewer, settings, capability))
+      ? ["strikes", "room-controls", "reports", "audit-logs", "member-actions", "content-moderation", "account-requests", "account-management", "live-ip-tracking", "announcements", "store-management", "auto-moderation", "voice-management", "service-scaling", "system-logs"].filter((capability) => canUseModerationCapability(viewer, settings, capability))
       : [],
   };
 }
@@ -7452,7 +7455,7 @@ function canModerate(user) {
 
 function sanitizeDelegatedAdminFeatureList(source) {
   const values = Array.isArray(source) ? source : String(source || "").split(/[\n,;]/);
-  const allowed = new Set(["strikes", "room-controls", "reports", "audit-logs", "member-actions", "content-moderation"]);
+  const allowed = new Set(["strikes", "room-controls", "reports", "audit-logs", "member-actions", "content-moderation", "account-requests", "account-management", "live-ip-tracking", "announcements", "store-management", "auto-moderation", "voice-management", "service-scaling", "system-logs"]);
   return Array.from(new Set(values.map((value) => String(value || "").trim().toLowerCase()).filter((value) => allowed.has(value))));
 }
 

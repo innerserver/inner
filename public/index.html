@@ -12,7 +12,7 @@
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css?v=connectifi-171-moderation-fix" />
     <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-171-moderation-fix" />
-    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-180-moderation-rail" />
+    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-183-owner-access-console" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -805,19 +805,34 @@
             </form>
 
             <form id="delegatedAdminFeaturesForm" class="panel-form owner-only hidden" data-default-expanded="true">
-              <h3>Non-owner admin access</h3>
-              <p class="panel-note">Choose exactly which moderation tools this admin can use. Owner controls stay private to Admin and Admin2.</p>
-              <label>Admin account<select id="delegatedAdminUser"></select></label>
-              <fieldset class="day-selector">
-                <legend>Allowed tools</legend>
-                <label><input id="delegatedAdminStrikes" type="checkbox" /><span>Account strikes</span></label>
-                <label><input id="delegatedAdminRoomControls" type="checkbox" /><span>Room controls and screen time</span></label>
-                <label><input id="delegatedAdminReports" type="checkbox" /><span>Review and resolve reports</span></label>
-                <label><input id="delegatedAdminAuditLogs" type="checkbox" /><span>View and export audit logs</span></label>
-                <label><input id="delegatedAdminMemberActions" type="checkbox" /><span>Member actions: mute, ban, and kick</span></label>
-                <label><input id="delegatedAdminContentModeration" type="checkbox" /><span>Content moderation: remove messages and unpin</span></label>
-              </fieldset>
-              <button id="saveDelegatedAdminFeaturesButton" class="secondary-button" type="submit">Save admin access</button>
+              <div class="delegated-access-heading">
+                <div><p class="section-kicker">Owner controls</p><h3>Non-owner admin access</h3><p class="panel-note">Choose the tools this admin can use. Owner security, private files, secret DMs, backups, and the owner admin panel remain unavailable.</p></div>
+                <label class="delegated-admin-picker"><span>Admin account</span><select id="delegatedAdminUser"></select></label>
+              </div>
+              <div class="delegated-access-grid">
+                <fieldset class="delegated-access-group">
+                  <legend>Moderation and people</legend>
+                  <label><input id="delegatedAdminStrikes" data-admin-capability="strikes" type="checkbox" /><span>Account strikes</span></label>
+                  <label><input id="delegatedAdminMemberActions" data-admin-capability="member-actions" type="checkbox" /><span>Member actions</span><small>Mute, ban, and kick</small></label>
+                  <label><input id="delegatedAdminContentModeration" data-admin-capability="content-moderation" type="checkbox" /><span>Content moderation</span><small>Remove messages and unpin</small></label>
+                  <label><input id="delegatedAdminReports" data-admin-capability="reports" type="checkbox" /><span>Reports</span><small>Review and resolve reports</small></label>
+                  <label><input id="delegatedAdminAuditLogs" data-admin-capability="audit-logs" type="checkbox" /><span>Audit logs</span><small>View and export audit activity</small></label>
+                  <label><input data-admin-capability="account-requests" type="checkbox" /><span>Account requests</span></label>
+                  <label><input data-admin-capability="account-management" type="checkbox" /><span>Member account management</span></label>
+                  <label><input data-admin-capability="live-ip-tracking" type="checkbox" /><span>Live IP tracking</span></label>
+                </fieldset>
+                <fieldset class="delegated-access-group">
+                  <legend>Workspace operations</legend>
+                  <label><input id="delegatedAdminRoomControls" data-admin-capability="room-controls" type="checkbox" /><span>Room controls and screen time</span></label>
+                  <label><input data-admin-capability="announcements" type="checkbox" /><span>Announcements</span></label>
+                  <label><input data-admin-capability="store-management" type="checkbox" /><span>Store management</span></label>
+                  <label><input data-admin-capability="auto-moderation" type="checkbox" /><span>Auto moderation</span></label>
+                  <label><input data-admin-capability="voice-management" type="checkbox" /><span>Voice room management</span></label>
+                  <label><input data-admin-capability="service-scaling" type="checkbox" /><span>Service scaling</span></label>
+                  <label><input data-admin-capability="system-logs" type="checkbox" /><span>System logs</span></label>
+                </fieldset>
+              </div>
+              <div class="delegated-access-footer"><p>Changes apply when this admin next refreshes their workspace.</p><button id="saveDelegatedAdminFeaturesButton" class="primary-button" type="submit">Save access</button></div>
             </form>
 
             <div id="adminFeatureLockSlot"></div>
@@ -1086,7 +1101,7 @@
     <script src="/session-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/status-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/ui-boot.js?v=connectifi-137-ui-polish" defer></script>
-    <script src="/app.js?v=connectifi-182-strike-controls" defer></script>
+    <script src="/app.js?v=connectifi-183-owner-access-console" defer></script>
     <script src="/force-logout.js?v=connectifi-137-ui-polish" defer></script>
   </body>
 </html>

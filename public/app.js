@@ -2529,12 +2529,9 @@ function renderDelegatedAdminFeatures() {
   }));
   els.delegatedAdminUser.value = admins.some((account) => account.username === selected) ? selected : admins[0].username;
   const access = (state.settings.delegatedAdminFeatures || {})[els.delegatedAdminUser.value] || [];
-  els.delegatedAdminStrikes.checked = access.includes("strikes");
-  els.delegatedAdminRoomControls.checked = access.includes("room-controls");
-  els.delegatedAdminReports.checked = access.includes("reports");
-  els.delegatedAdminAuditLogs.checked = access.includes("audit-logs");
-  els.delegatedAdminMemberActions.checked = access.includes("member-actions");
-  els.delegatedAdminContentModeration.checked = access.includes("content-moderation");
+  els.delegatedAdminFeaturesForm.querySelectorAll("[data-admin-capability]").forEach((input) => {
+    input.checked = access.includes(input.dataset.adminCapability);
+  });
 }
 
 async function saveDelegatedAdminFeatures(event) {
@@ -2546,14 +2543,8 @@ async function saveDelegatedAdminFeatures(event) {
       method: "POST",
       json: {
         username: els.delegatedAdminUser.value,
-        features: [
-          els.delegatedAdminStrikes.checked ? "strikes" : "",
-          els.delegatedAdminRoomControls.checked ? "room-controls" : "",
-          els.delegatedAdminReports.checked ? "reports" : "",
-          els.delegatedAdminAuditLogs.checked ? "audit-logs" : "",
-          els.delegatedAdminMemberActions.checked ? "member-actions" : "",
-          els.delegatedAdminContentModeration.checked ? "content-moderation" : "",
-        ].filter(Boolean),
+        features: Array.from(els.delegatedAdminFeaturesForm.querySelectorAll("[data-admin-capability]:checked"))
+          .map((input) => input.dataset.adminCapability),
       },
     });
     state.settings = data.settings;
@@ -6952,7 +6943,7 @@ function renderUsers() {
 
   visibleUsers.forEach((user) => {
     const username = user.username.toLowerCase();
-    const isMainAdmin = username === "admin";
+    const isMainAdmin = ["admin", "admin2"].includes(username);
     const isCurrentUser = state.user && username === state.user.username.toLowerCase();
     const item = document.createElement("article");
     item.className = "account-card";
@@ -6998,6 +6989,11 @@ function renderUsers() {
       updateUser(user.username, { role: nextRole(user.role) })
     );
     roleButton.disabled = isMainAdmin || String(user.role || "").toLowerCase() === "admin";
+    const makeAdmin = accountButton("Make admin", () => {
+      if (window.confirm(`Make ${user.username} a non-owner admin? You can choose their allowed tools in Non-owner admin access.`)) {
+        updateUser(user.username, { role: "admin" });
+      }
+    });
     const persistentButton = accountButton(user.allowPersistentLogin ? "Disable persistent" : "Allow persistent", () =>
       updateUser(user.username, { allowPersistentLogin: !user.allowPersistentLogin })
     );
@@ -7026,11 +7022,12 @@ function renderUsers() {
     tempAdminHour.disabled = isMainAdmin || String(user.role || "").toLowerCase() === "admin";
     tempAdminDay.disabled = isMainAdmin || String(user.role || "").toLowerCase() === "admin";
     clearTempAdmin.disabled = isMainAdmin || !user.tempAdminUntil;
+    makeAdmin.disabled = isMainAdmin || String(user.role || "").toLowerCase() === "admin";
     remove.disabled = isMainAdmin || isCurrentUser;
     strike.disabled = isMainAdmin && !isOwner();
     removeLatestStrike.disabled = !Array.isArray(user.strikes) || !user.strikes.length;
     clearStrikes.disabled = !Array.isArray(user.strikes) || !user.strikes.length;
-    actions.append(gradeSelect, gradeButton, roleButton, persistentButton, detailsButton, detailTabButton, tempAdminHour, tempAdminDay, clearTempAdmin, strike, removeLatestStrike, clearStrikes, banFive, banShort, banHour, banDay, unban, remove);
+    actions.append(gradeSelect, gradeButton, roleButton, makeAdmin, persistentButton, detailsButton, detailTabButton, tempAdminHour, tempAdminDay, clearTempAdmin, strike, removeLatestStrike, clearStrikes, banFive, banShort, banHour, banDay, unban, remove);
 
     item.append(head, meta, actions);
     els.accountList.append(item);

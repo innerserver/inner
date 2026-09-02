@@ -514,27 +514,37 @@ summary:focus-visible {
 
 #delegatedAdminFeaturesForm {
   border-top-color: color-mix(in srgb, var(--accent) 72%, var(--line)) !important;
+  padding: 24px !important;
 }
 
-#delegatedAdminFeaturesForm .day-selector {
+.delegated-access-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 22px;
+}
+
+.delegated-access-heading h3 { margin: 2px 0 7px; }
+.delegated-access-heading .panel-note { max-width: 650px; margin: 0; }
+.delegated-admin-picker { width: min(100%, 270px); margin: 0; flex: 0 0 270px; }
+.delegated-admin-picker > span { display: block; margin-bottom: 7px; font-size: .8rem; font-weight: 800; color: var(--muted); text-transform: uppercase; }
+.delegated-access-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 16px;
 }
 
-#delegatedAdminFeaturesForm .day-selector label {
-  min-height: 46px;
-  align-items: center;
-  padding: 10px 12px;
-  border: 1px solid var(--ui-card-line);
-  border-radius: 6px;
-  background: var(--surface);
-}
-
-#delegatedAdminFeaturesForm .day-selector label:has(input:checked) {
-  border-color: var(--accent);
-  box-shadow: inset 3px 0 0 var(--accent);
-}
+.delegated-access-group { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--ui-card-line); border-radius: 8px; background: color-mix(in srgb, var(--surface) 94%, var(--accent)); }
+.delegated-access-group legend { padding: 0 6px; font-size: .78rem; font-weight: 900; color: var(--accent); letter-spacing: .04em; text-transform: uppercase; }
+.delegated-access-group label { display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 9px; align-items: center; min-height: 48px; margin: 0; padding: 8px 10px; border: 1px solid transparent; border-radius: 6px; cursor: pointer; }
+.delegated-access-group label:hover { background: var(--surface); border-color: var(--ui-card-line); }
+.delegated-access-group label:has(input:checked) { background: var(--surface); border-color: color-mix(in srgb, var(--accent) 58%, var(--ui-card-line)); box-shadow: inset 3px 0 0 var(--accent); }
+.delegated-access-group input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.delegated-access-group span { font-weight: 760; line-height: 1.2; }
+.delegated-access-group small { grid-column: 2; margin-top: 2px; color: var(--muted); font-size: .8rem; }
+.delegated-access-footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--ui-card-line); }
+.delegated-access-footer p { margin: 0; color: var(--muted); font-size: .9rem; }
 
 @media (max-width: 980px) {
   #moderatorView .moderator-grid {
@@ -552,9 +562,12 @@ summary:focus-visible {
     grid-column: auto;
   }
 
-  #delegatedAdminFeaturesForm .day-selector {
+  .delegated-access-grid {
     grid-template-columns: 1fr;
   }
+
+  .delegated-access-heading { align-items: stretch; flex-direction: column; }
+  .delegated-admin-picker { width: 100%; flex-basis: auto; }
 }
 
 @media (max-width: 860px) {

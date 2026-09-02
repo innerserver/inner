@@ -3239,9 +3239,10 @@ async function routeApi(req, res, requestUrl) {
     const username = String(body.username || "").trim();
     if (!username) return json(res, 400, { error: "Choose a user" });
 
-    const [users, profiles] = await Promise.all([
+    const [users, profiles, settings] = await Promise.all([
       readJson(FILES.users, []),
       readJson(FILES.profiles, {}),
+      readJson(FILES.settings, {}),
     ]);
     const index = users.findIndex((entry) => entry.username.toLowerCase() === username.toLowerCase());
     if (index === -1) return json(res, 404, { error: "User not found" });
@@ -3300,12 +3301,26 @@ async function routeApi(req, res, requestUrl) {
       gradeUpdatedAt: users[index].gradeUpdatedAt,
       updatedAt: new Date().toISOString(),
     });
-    await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles)]);
+    const permanentPromotion = nextRole === "admin" && normalizeRole(previous.role) !== "admin" && !wantsTempAdmin;
+    const promotedFeatures = ["strikes", "room-controls", "reports", "audit-logs", "member-actions", "content-moderation", "account-requests", "account-management", "live-ip-tracking", "announcements", "store-management", "auto-moderation", "voice-management", "service-scaling", "system-logs"];
+    const nextSettings = permanentPromotion
+      ? {
+        ...settings,
+        delegatedAdminFeatures: sanitizeDelegatedAdminFeatures({
+          ...(settings.delegatedAdminFeatures || {}),
+          [normalizeUsername(previous.username)]: promotedFeatures,
+        }),
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.username,
+      }
+      : settings;
+    await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles), permanentPromotion ? writeJson(FILES.settings, nextSettings) : Promise.resolve()]);
     if (previous.role !== users[index].role || previous.allowPersistentLogin !== users[index].allowPersistentLogin || tempAdminMinutes || clearTempAdmin) {
       expireUserSessions(username);
     }
     broadcast({ type: "profiles:update", profiles: safeProfiles(profiles, users, user) });
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
+    if (permanentPromotion) broadcastSettings(nextSettings);
     return json(res, 200, { users: users.map((entry) => safeUser(entry, user)), profiles: safeProfiles(profiles, users, user) });
   }
 

@@ -1,8 +1,9 @@
-Connectifi build v185
+Connectifi build v187
 Released: 2026-09-02
 
 Changes in this package:
 - Owner-admin access console for non-owner admin permissions.
 - Direct owner-only promotion of existing accounts to non-owner admin.
-- Provisioned non-owner admin accounts: samreen, navroz, and dwayne.
+- Non-owner admin accounts are normal persisted account records, not hardcoded application identities.
+- Permanent non-owner admin promotions assign the selectable permissions automatically.
 - Existing moderation access controls preserved.

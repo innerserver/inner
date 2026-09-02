@@ -4736,7 +4736,7 @@ function setupAdminCollapsibles() {
     const button = document.createElement("button");
     button.className = "collapse-toggle";
     button.type = "button";
-    const storageKey = `connectifiAdminPanelCollapsedV164:${index}:${title.textContent}`;
+    const storageKey = `connectifiAdminPanelCollapsedV188:${index}:${title.textContent}`;
     const setCollapsed = (collapsed, persist = true) => {
       panel.classList.toggle("admin-collapsed", collapsed);
       button.textContent = collapsed ? "Expand" : "Collapse";
@@ -4751,7 +4751,7 @@ function setupAdminCollapsibles() {
     const saved = (() => {
       try {
         const value = localStorage.getItem(storageKey);
-        return value === null ? panel.dataset.defaultExpanded !== "true" : value === "1";
+        return value === null ? false : value === "1";
       } catch (error) {
         return true;
       }

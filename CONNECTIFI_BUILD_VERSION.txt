@@ -1,4 +1,4 @@
-Connectifi build v187
+Connectifi build v188
 Released: 2026-09-02
 
 Changes in this package:
@@ -6,4 +6,5 @@ Changes in this package:
 - Direct owner-only promotion of existing accounts to non-owner admin.
 - Non-owner admin accounts are normal persisted account records, not hardcoded application identities.
 - Permanent non-owner admin promotions assign the selectable permissions automatically.
+- Recovered the admin-panel collapse system from the conflicting UI scripts.
 - Existing moderation access controls preserved.

@@ -802,6 +802,126 @@ summary:focus-visible {
   background: var(--surface) !important;
 }
 
+/* Account management has more live controls than a compact card can safely
+   contain. Keep each account in normal full-width flow so buttons never spill
+   across into its neighbour. */
+#adminView #accountManager {
+  padding: 22px !important;
+  overflow: clip;
+}
+
+#adminView #accountManager .account-search-row {
+  display: grid !important;
+  grid-template-columns: auto auto minmax(190px, 0.62fr) minmax(280px, 1fr);
+  align-items: center;
+  gap: 12px !important;
+}
+
+#adminView #accountManager .account-search-row h3 {
+  white-space: nowrap;
+}
+
+#adminView #accountManager .compact-account-list {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 12px !important;
+}
+
+#adminView #accountManager .compact-account-list .account-card {
+  display: grid !important;
+  grid-template-columns: minmax(150px, 0.56fr) minmax(280px, 1.28fr) minmax(360px, 1.7fr) !important;
+  align-items: start;
+  min-height: 0 !important;
+  padding: 18px !important;
+  overflow: hidden;
+}
+
+#adminView #accountManager .account-head {
+  min-width: 0;
+  justify-content: flex-start;
+  align-content: start;
+}
+
+#adminView #accountManager .account-head strong {
+  overflow-wrap: anywhere;
+}
+
+#adminView #accountManager .account-meta {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 7px 14px !important;
+  min-width: 0;
+  white-space: normal;
+  overflow: visible;
+}
+
+#adminView #accountManager .account-meta > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#adminView #accountManager .account-actions {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: start;
+  gap: 8px !important;
+  min-width: 0;
+}
+
+#adminView #accountManager .account-actions > * {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 38px !important;
+  padding: 7px 9px !important;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1280px) {
+  #adminView #accountManager .account-search-row {
+    grid-template-columns: auto auto minmax(0, 1fr) !important;
+  }
+
+  #adminView #accountManager .account-search-row input {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  #adminView #accountManager .compact-account-list .account-card {
+    grid-template-columns: minmax(150px, 0.54fr) minmax(0, 1fr) !important;
+  }
+
+  #adminView #accountManager .account-actions {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  #adminView #accountManager {
+    padding: 16px !important;
+  }
+
+  #adminView #accountManager .account-search-row,
+  #adminView #accountManager .compact-account-list .account-card {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  #adminView #accountManager .account-search-row > * {
+    grid-column: auto !important;
+    width: 100%;
+  }
+
+  #adminView #accountManager .account-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #adminView #accountManager .account-actions {
+    grid-column: auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 #moderatorView .moderator-room-card {
   border-left-width: 2px !important;
   box-shadow: none !important;

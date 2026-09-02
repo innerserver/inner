@@ -804,6 +804,12 @@
               <button id="createAccountButton" class="primary-button" type="submit">Create account</button>
             </form>
 
+            <form id="promoteExistingAdminForm" class="panel-form owner-only hidden promote-admin-form">
+              <div><p class="section-kicker">Owner controls</p><h3>Promote existing account</h3><p class="panel-note">Make an existing account a non-owner admin. Their allowed tools are chosen in the access panel below.</p></div>
+              <label>Account<select id="promoteExistingAdminUser"></select></label>
+              <button id="promoteExistingAdminButton" class="secondary-button" type="submit">Make admin</button>
+            </form>
+
             <form id="delegatedAdminFeaturesForm" class="panel-form owner-only hidden" data-default-expanded="true">
               <div class="delegated-access-heading">
                 <div><p class="section-kicker">Owner controls</p><h3>Non-owner admin access</h3><p class="panel-note">Choose the tools this admin can use. Owner security, private files, secret DMs, backups, and the owner admin panel remain unavailable.</p></div>

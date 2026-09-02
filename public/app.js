@@ -490,6 +490,9 @@ function cacheElements() {
     "submitOwnerCheckinButton",
     "testOwnerCheckinButton",
     "createAccountForm",
+    "promoteExistingAdminForm",
+    "promoteExistingAdminUser",
+    "promoteExistingAdminButton",
     "delegatedAdminFeaturesForm",
     "delegatedAdminUser",
     "delegatedAdminStrikes",
@@ -883,6 +886,7 @@ function bindEvents() {
   els.ownerCheckinForm.addEventListener("submit", submitOwnerCheckin);
   els.testOwnerCheckinButton.addEventListener("click", sendTestOwnerCheckin);
   els.createAccountForm.addEventListener("submit", createAccount);
+  els.promoteExistingAdminForm.addEventListener("submit", promoteExistingAdmin);
   els.delegatedAdminFeaturesForm.addEventListener("submit", saveDelegatedAdminFeatures);
   els.delegatedAdminUser.addEventListener("change", renderDelegatedAdminFeatures);
   els.moderatorAccountSearchForm.addEventListener("submit", searchModeratorAccounts);
@@ -2532,6 +2536,38 @@ function renderDelegatedAdminFeatures() {
   els.delegatedAdminFeaturesForm.querySelectorAll("[data-admin-capability]").forEach((input) => {
     input.checked = access.includes(input.dataset.adminCapability);
   });
+}
+
+function renderPromoteExistingAdmin() {
+  if (!els.promoteExistingAdminForm || !isOwner()) return;
+  const candidates = state.users.filter((account) => !["admin", "admin2"].includes(String(account.username || "").toLowerCase()) && String(account.role || "").toLowerCase() !== "admin");
+  els.promoteExistingAdminForm.classList.toggle("hidden", !candidates.length);
+  if (!candidates.length) return;
+  const selected = els.promoteExistingAdminUser.value;
+  els.promoteExistingAdminUser.replaceChildren(...candidates.map((account) => {
+    const option = document.createElement("option");
+    option.value = account.username;
+    option.textContent = `${account.username} (${account.role || "member"})`;
+    return option;
+  }));
+  els.promoteExistingAdminUser.value = candidates.some((account) => account.username === selected) ? selected : candidates[0].username;
+  els.promoteExistingAdminButton.disabled = false;
+}
+
+async function promoteExistingAdmin(event) {
+  event.preventDefault();
+  if (!isOwner()) return notify("Owner admin access required");
+  const username = els.promoteExistingAdminUser.value;
+  if (!username) return notify("Choose an account");
+  if (!window.confirm(`Make ${username} a non-owner admin?`)) return;
+  try {
+    els.promoteExistingAdminButton.disabled = true;
+    await updateUser(username, { role: "admin" });
+    renderPromoteExistingAdmin();
+    renderDelegatedAdminFeatures();
+  } finally {
+    if (els.promoteExistingAdminButton) els.promoteExistingAdminButton.disabled = false;
+  }
 }
 
 async function saveDelegatedAdminFeatures(event) {
@@ -6876,6 +6912,7 @@ function renderQuickEdit() {
   const admin = isOwner();
   els.quickEditForm.classList.toggle("hidden", !admin);
   if (!admin) return;
+  renderPromoteExistingAdmin();
   const custom = state.settings.customizations || {};
   setInputIfNotFocused(els.quickAppName, custom.appName || "");
   setInputIfNotFocused(els.quickConnectedLabel, custom.connectedLabel || "");

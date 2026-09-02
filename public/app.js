@@ -24,7 +24,8 @@ const state = {
   adminDmFilter: "all",
   accountSearch: "",
   accountGradeFilter: "",
-  accountShowAll: false,
+  accountSort: "alphabetical",
+  accountShowAll: true,
   selectedAccountDetails: "",
   accountDetailFiles: { username: "", files: [], loading: false, error: "" },
   moderatorAccounts: [],
@@ -504,6 +505,7 @@ function cacheElements() {
     "saveDelegatedAdminFeaturesButton",
     "accountManager",
     "showAllAccountsButton",
+    "accountSort",
     "accountGradeFilter",
     "accountSearchInput",
     "accountList",
@@ -903,9 +905,17 @@ function bindEvents() {
       renderUsers();
     });
   }
+  if (els.accountSort) {
+    els.accountSort.addEventListener("change", () => {
+      state.accountSort = els.accountSort.value === "class" ? "class" : "alphabetical";
+      try { localStorage.setItem("innerAccountSort", state.accountSort); } catch (error) {}
+      renderUsers();
+    });
+  }
   if (els.showAllAccountsButton) {
     els.showAllAccountsButton.addEventListener("click", () => {
       state.accountShowAll = !state.accountShowAll;
+      try { localStorage.setItem("innerAccountShowAll", state.accountShowAll ? "1" : "0"); } catch (error) {}
       renderUsers();
     });
   }
@@ -6947,6 +6957,9 @@ function renderUsers() {
   if (els.accountGradeFilter && document.activeElement !== els.accountGradeFilter) {
     els.accountGradeFilter.value = state.accountGradeFilter || "";
   }
+  if (els.accountSort && document.activeElement !== els.accountSort) {
+    els.accountSort.value = state.accountSort === "class" ? "class" : "alphabetical";
+  }
 
   els.resetUser.replaceChildren(
     ...state.users.map((user) => {
@@ -6963,7 +6976,7 @@ function renderUsers() {
   syncSearchedAccountDetails(visibleUsers);
   renderAccountDetails();
   if (els.showAllAccountsButton) {
-    els.showAllAccountsButton.textContent = state.accountShowAll ? "Hide all" : "Show all";
+    els.showAllAccountsButton.textContent = state.accountShowAll ? "Hide members" : "Show members";
   }
   if (!String(state.accountSearch || "").trim() && !String(state.accountGradeFilter || "").trim() && !state.accountShowAll && !visibleUsers.length) {
     els.accountList.append(emptyBlock("Public admin accounts show here. Search a username/email/phone/IP/device or choose a grade to show more accounts."));
@@ -9118,15 +9131,26 @@ function filterUsersForAdmin(users) {
     if (!term) return true;
     return userMatchesAccountSearch(user, term);
   };
-  if (state.accountShowAll) return list.filter((user) => matchesGrade(user) && matchesSearch(user));
+  const sortUsers = (items) => items.slice().sort((left, right) => {
+    const leftProfile = state.profiles[left.username] || {};
+    const rightProfile = state.profiles[right.username] || {};
+    const leftName = String(left.displayName || leftProfile.displayName || left.username || "");
+    const rightName = String(right.displayName || rightProfile.displayName || right.username || "");
+    const nameOrder = leftName.localeCompare(rightName, undefined, { sensitivity: "base" });
+    if (state.accountSort !== "class") return nameOrder;
+    const leftGrade = normalizeClientGrade(left.grade || leftProfile.grade || "") || "zzzz";
+    const rightGrade = normalizeClientGrade(right.grade || rightProfile.grade || "") || "zzzz";
+    return leftGrade.localeCompare(rightGrade, undefined, { numeric: true, sensitivity: "base" }) || nameOrder;
+  });
+  if (state.accountShowAll) return sortUsers(list.filter((user) => matchesGrade(user) && matchesSearch(user)));
   if (!term && !gradeFilter && !noGradeFilter) {
-    return list.filter((user) => {
+    return sortUsers(list.filter((user) => {
       const role = String(user.role || "member").toLowerCase();
       const username = String(user.username || "").toLowerCase();
       return username !== "admin" && ["admin", "hmd", "dev"].includes(role);
-    });
+    }));
   }
-  return list.filter((user) => matchesGrade(user) && matchesSearch(user));
+  return sortUsers(list.filter((user) => matchesGrade(user) && matchesSearch(user)));
 }
 
 function userMatchesAccountSearch(user, term) {
@@ -9858,6 +9882,8 @@ function restoreUiState() {
     state.activeView = viewFromPath() || localStorage.getItem("innerActiveView") || "dashboard";
     state.selectedRoomId = localStorage.getItem("innerSelectedRoom") || "main";
     state.selectedDmUser = localStorage.getItem("innerSelectedDm") || "";
+    state.accountShowAll = localStorage.getItem("innerAccountShowAll") !== "0";
+    state.accountSort = localStorage.getItem("innerAccountSort") === "class" ? "class" : "alphabetical";
   } catch (error) {
     state.activeView = viewFromPath() || "dashboard";
   }

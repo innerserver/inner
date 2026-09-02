@@ -830,7 +830,7 @@ summary:focus-visible {
 
 #adminView #accountManager .account-search-row {
   display: grid !important;
-  grid-template-columns: auto auto minmax(190px, 0.62fr) minmax(280px, 1fr);
+  grid-template-columns: auto auto minmax(150px, 0.46fr) minmax(190px, 0.62fr) minmax(280px, 1fr);
   align-items: center;
   gap: 12px !important;
 }
@@ -897,7 +897,7 @@ summary:focus-visible {
 
 @media (max-width: 1280px) {
   #adminView #accountManager .account-search-row {
-    grid-template-columns: auto auto minmax(0, 1fr) !important;
+    grid-template-columns: auto auto minmax(0, 1fr) minmax(0, 1fr) !important;
   }
 
   #adminView #accountManager .account-search-row input {

@@ -3395,9 +3395,9 @@ async function routeApi(req, res, requestUrl) {
     const before = strikes.length;
     const strike = { id: crypto.randomUUID(), issuedBy: user.username, reason, createdAt: new Date().toISOString() };
     users[index] = { ...users[index], strikes: [...strikes, strike].slice(-50), updatedAt: strike.createdAt, updatedBy: user.username };
-    await writeJson(FILES.users, users);
     await addModerationLog(user.username, "user:strike", username, reason);
     await addSystemLog("user.strike.issued", user.username, { username, count: users[index].strikes.length, reason }, req);
+    let thresholdReset = false;
     if (before < 3 && users[index].strikes.length >= 3) {
       const recipients = Array.isArray(settings.strikeEmails) ? settings.strikeEmails.map(cleanEmailAddress).filter(Boolean) : [];
       sendDirectEmail(recipients, "Connectifi account reached three strikes", [
@@ -3407,9 +3407,44 @@ async function routeApi(req, res, requestUrl) {
         `Issued by: ${user.username}`,
         `Time: ${strike.createdAt}`,
       ].join("\n"), { route: "loginFailures", contactType: "security" }).catch(() => {});
+      users[index] = {
+        ...users[index],
+        strikes: [],
+        lastStrikeThresholdAt: strike.createdAt,
+        updatedAt: strike.createdAt,
+        updatedBy: user.username,
+      };
+      thresholdReset = true;
+      await addModerationLog(user.username, "user:strike-threshold-reset", username, "Third-strike email sent and active strikes reset");
+      await addSystemLog("user.strike.threshold.reset", user.username, { username, reason }, req);
     }
+    await writeJson(FILES.users, users);
     broadcastManagers({ type: "users:update", users: users.map((entry) => safeUser(entry, user)) });
-    return json(res, 200, { user: safeUser(users[index], user), strikes: users[index].strikes });
+    return json(res, 200, { user: safeUser(users[index], user), strikes: users[index].strikes, thresholdReset });
+  }
+
+  if (req.method === "POST" && pathname === "/api/moderation/strikes/remove") {
+    const settings = await readJson(FILES.settings, {});
+    if (!canUseModerationCapability(user, settings, "strikes")) return json(res, 403, { error: "Moderator strike access required" });
+    const body = await readJsonBody(req);
+    const username = normalizeUsername(body.username);
+    const removeAll = body.all === true;
+    const strikeId = String(body.strikeId || "").trim();
+    if (!username || (!removeAll && !strikeId)) return json(res, 400, { error: "Choose a strike to remove" });
+    const users = await readJson(FILES.users, []);
+    const index = users.findIndex((entry) => String(entry.username || "").toLowerCase() === username);
+    if (index === -1) return json(res, 404, { error: "Account not found" });
+    if (canOwn(users[index]) && !canOwn(user)) return json(res, 403, { error: "Only an owner admin can change owner admin strikes" });
+    const strikes = Array.isArray(users[index].strikes) ? users[index].strikes : [];
+    const nextStrikes = removeAll ? [] : strikes.filter((strike) => String(strike.id || "") !== strikeId);
+    if (!removeAll && nextStrikes.length === strikes.length) return json(res, 404, { error: "Strike not found" });
+    users[index] = { ...users[index], strikes: nextStrikes, updatedAt: new Date().toISOString(), updatedBy: user.username };
+    await writeJson(FILES.users, users);
+    const detail = removeAll ? `Cleared ${strikes.length} strike${strikes.length === 1 ? "" : "s"}` : "Removed one strike";
+    await addModerationLog(user.username, removeAll ? "user:strikes-cleared" : "user:strike-removed", username, detail);
+    await addSystemLog(removeAll ? "user.strikes.cleared" : "user.strike.removed", user.username, { username, strikeId: removeAll ? "" : strikeId, removed: removeAll ? strikes.length : 1 }, req);
+    broadcastManagers({ type: "users:update", users: users.map((entry) => safeUser(entry, user)) });
+    return json(res, 200, { user: safeUser(users[index], user), strikes: users[index].strikes, removed: removeAll ? strikes.length : 1 });
   }
 
   if (req.method === "POST" && pathname === "/api/delegated-admin-features") {
@@ -3491,11 +3526,11 @@ async function routeApi(req, res, requestUrl) {
     const messages = await readJson(FILES.messages, []);
     const index = messages.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "Message not found" });
-    const rooms = await readJson(FILES.rooms, []);
+    const [rooms, settings] = await Promise.all([readJson(FILES.rooms, []), readJson(FILES.settings, {})]);
     const room = rooms.find((entry) => entry.id === (messages[index].roomId || "main"));
     if (!room || !canAccessRoom(room, user)) return json(res, 403, { error: "You do not have access to this message" });
     const unpin = body.pinned === false;
-    if (unpin && !canModerate(user)) return json(res, 403, { error: "Only moderators and admins can unpin messages" });
+    if (unpin && !canUseModerationCapability(user, settings, "content-moderation")) return json(res, 403, { error: "Owner admin has not granted content-moderation access" });
     messages[index] = {
       ...messages[index],
       pinned: !unpin,
@@ -3511,13 +3546,13 @@ async function routeApi(req, res, requestUrl) {
   if (req.method === "POST" && pathname.startsWith("/api/dms/") && pathname.endsWith("/pin")) {
     const id = decodeURIComponent(pathname.split("/")[3] || "");
     const body = await readJsonBody(req);
-    const dms = await readJson(FILES.dms, []);
+    const [dms, settings] = await Promise.all([readJson(FILES.dms, []), readJson(FILES.settings, {})]);
     const index = dms.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "DM not found" });
     const dm = dms[index];
     if (!canManage(user) && !(dm.participants || []).includes(user.username)) return json(res, 403, { error: "You do not have access to this DM" });
     const unpin = body.pinned === false;
-    if (unpin && !canModerate(user)) return json(res, 403, { error: "Only moderators and admins can unpin messages" });
+    if (unpin && !canUseModerationCapability(user, settings, "content-moderation")) return json(res, 403, { error: "Owner admin has not granted content-moderation access" });
     dms[index] = {
       ...dm,
       pinned: !unpin,
@@ -3554,7 +3589,8 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "DELETE" && pathname.startsWith("/api/messages/")) {
-    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
+    const settings = await readJson(FILES.settings, {});
+    if (!canUseModerationCapability(user, settings, "content-moderation")) return json(res, 403, { error: "Owner admin has not granted content-moderation access" });
     const id = pathname.split("/").pop();
     const messages = await readJson(FILES.messages, []);
     const next = messages.filter((entry) => entry.id !== id);
@@ -6640,7 +6676,7 @@ function safeSettings(settings, viewer = null) {
     shutdownReason: settings.serverEnabled === false ? String(settings.shutdownReason || "") : "",
     delegatedAdminFeatures: canOwn(viewer) ? sanitizeDelegatedAdminFeatures(settings.delegatedAdminFeatures || {}) : {},
     moderationCapabilities: canModerate(viewer)
-      ? ["strikes", "room-controls", "reports", "audit-logs", "member-actions"].filter((capability) => canUseModerationCapability(viewer, settings, capability))
+      ? ["strikes", "room-controls", "reports", "audit-logs", "member-actions", "content-moderation"].filter((capability) => canUseModerationCapability(viewer, settings, capability))
       : [],
   };
 }
@@ -7416,7 +7452,7 @@ function canModerate(user) {
 
 function sanitizeDelegatedAdminFeatureList(source) {
   const values = Array.isArray(source) ? source : String(source || "").split(/[\n,;]/);
-  const allowed = new Set(["strikes", "room-controls", "reports", "audit-logs", "member-actions"]);
+  const allowed = new Set(["strikes", "room-controls", "reports", "audit-logs", "member-actions", "content-moderation"]);
   return Array.from(new Set(values.map((value) => String(value || "").trim().toLowerCase()).filter((value) => allowed.has(value))));
 }
 

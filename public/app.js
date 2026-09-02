@@ -497,6 +497,7 @@ function cacheElements() {
     "delegatedAdminReports",
     "delegatedAdminAuditLogs",
     "delegatedAdminMemberActions",
+    "delegatedAdminContentModeration",
     "saveDelegatedAdminFeaturesButton",
     "accountManager",
     "showAllAccountsButton",
@@ -2533,6 +2534,7 @@ function renderDelegatedAdminFeatures() {
   els.delegatedAdminReports.checked = access.includes("reports");
   els.delegatedAdminAuditLogs.checked = access.includes("audit-logs");
   els.delegatedAdminMemberActions.checked = access.includes("member-actions");
+  els.delegatedAdminContentModeration.checked = access.includes("content-moderation");
 }
 
 async function saveDelegatedAdminFeatures(event) {
@@ -2550,6 +2552,7 @@ async function saveDelegatedAdminFeatures(event) {
           els.delegatedAdminReports.checked ? "reports" : "",
           els.delegatedAdminAuditLogs.checked ? "audit-logs" : "",
           els.delegatedAdminMemberActions.checked ? "member-actions" : "",
+          els.delegatedAdminContentModeration.checked ? "content-moderation" : "",
         ].filter(Boolean),
       },
     });
@@ -5386,7 +5389,7 @@ function renderMessagesInner() {
         pinButton.className = "ghost-light-button compact-button";
         pinButton.type = "button";
         pinButton.textContent = message.pinned ? "Unpin" : "Pin";
-        pinButton.disabled = Boolean(message.pinned) && !isModerator();
+        pinButton.disabled = Boolean(message.pinned) && !canUseModeratorCapability("content-moderation");
         pinButton.addEventListener("click", () => setMessagePin(message.id, !message.pinned));
         actions.append(pinButton);
       }
@@ -5582,7 +5585,7 @@ function renderDmsInner() {
       if (dm.status === "failed" && dm.localId) extraActions.append(accountButton("Retry", () => retryPending(dm.localId)));
       if (!dm.local) {
         const pinButton = accountButton(dm.pinned ? "Unpin" : "Pin", () => setDmPin(dm.id, !dm.pinned));
-        pinButton.disabled = Boolean(dm.pinned) && !isModerator();
+        pinButton.disabled = Boolean(dm.pinned) && !canUseModeratorCapability("content-moderation");
         extraActions.append(pinButton);
       }
       bubble.append(extraActions);
@@ -7010,6 +7013,11 @@ function renderUsers() {
     const unban = accountButton("Unban", () => banUser(user.username, 0));
     const remove = accountButton("Delete", () => deleteUser(user.username));
     const strike = accountButton("Issue strike", () => issueStrike(user.username));
+    const removeLatestStrike = accountButton("Remove latest strike", () => {
+      const latest = Array.isArray(user.strikes) ? user.strikes[user.strikes.length - 1] : null;
+      if (latest && latest.id) removeAccountStrikes(user.username, latest.id);
+    });
+    const clearStrikes = accountButton("Clear all strikes", () => removeAccountStrikes(user.username, "", true));
     banFive.disabled = isMainAdmin;
     banShort.disabled = isMainAdmin;
     banHour.disabled = isMainAdmin;
@@ -7020,7 +7028,9 @@ function renderUsers() {
     clearTempAdmin.disabled = isMainAdmin || !user.tempAdminUntil;
     remove.disabled = isMainAdmin || isCurrentUser;
     strike.disabled = isMainAdmin && !isOwner();
-    actions.append(gradeSelect, gradeButton, roleButton, persistentButton, detailsButton, detailTabButton, tempAdminHour, tempAdminDay, clearTempAdmin, strike, banFive, banShort, banHour, banDay, unban, remove);
+    removeLatestStrike.disabled = !Array.isArray(user.strikes) || !user.strikes.length;
+    clearStrikes.disabled = !Array.isArray(user.strikes) || !user.strikes.length;
+    actions.append(gradeSelect, gradeButton, roleButton, persistentButton, detailsButton, detailTabButton, tempAdminHour, tempAdminDay, clearTempAdmin, strike, removeLatestStrike, clearStrikes, banFive, banShort, banHour, banDay, unban, remove);
 
     item.append(head, meta, actions);
     els.accountList.append(item);
@@ -7207,7 +7217,14 @@ function renderModeratorStrikeAccounts() {
     ].filter(Boolean));
     const actions = document.createElement("div");
     actions.className = "account-actions";
-    if (canStrike) actions.append(accountButton("Issue strike", () => issueStrike(account.username)));
+    if (canStrike) {
+      actions.append(accountButton("Issue strike", () => issueStrike(account.username)));
+      if (account.strikeCount) {
+        const latestStrike = Array.isArray(account.strikes) ? account.strikes[account.strikes.length - 1] : null;
+        if (latestStrike && latestStrike.id) actions.append(accountButton("Remove latest strike", () => removeAccountStrikes(account.username, latestStrike.id)));
+        actions.append(accountButton("Clear all strikes", () => removeAccountStrikes(account.username, "", true)));
+      }
+    }
     if (canActOnMembers) {
       actions.append(
         accountButton("Mute 15m", () => moderateMemberAction(account.username, "mute")),
@@ -7229,7 +7246,22 @@ async function issueStrike(username) {
     if (isOwner()) state.users = state.users.map((entry) => entry.username === username ? { ...entry, ...data.user } : entry);
     renderModeratorStrikeAccounts();
     renderUsers();
-    notify(`${username} now has ${data.user.strikeCount} strikes`);
+    notify(data.thresholdReset ? `${username} reached three strikes: email sent and strikes reset` : `${username} now has ${data.user.strikeCount} strikes`);
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function removeAccountStrikes(username, strikeId = "", all = false) {
+  if (!canUseModeratorCapability("strikes")) return notify("Owner admin has not granted strike access");
+  if (all && !window.confirm(`Clear every active strike for ${username}?`)) return;
+  try {
+    const data = await api("/api/moderation/strikes/remove", { method: "POST", json: { username, strikeId, all } });
+    state.moderatorAccounts = state.moderatorAccounts.map((entry) => entry.username === username ? data.user : entry);
+    if (isOwner()) state.users = state.users.map((entry) => entry.username === username ? { ...entry, ...data.user } : entry);
+    renderModeratorStrikeAccounts();
+    renderUsers();
+    notify(all ? `Cleared ${data.removed} strikes for ${username}` : `Removed one strike from ${username}`);
   } catch (error) {
     notify(error.message);
   }
@@ -8580,7 +8612,7 @@ function mentionNames(text) {
 }
 
 async function deleteMessage(id) {
-  if (!isOwner()) return notify("Admin access required");
+  if (!canUseModeratorCapability("content-moderation")) return notify("Owner admin has not granted content-moderation access");
   try {
     await api(`/api/messages/${encodeURIComponent(id)}`, { method: "DELETE" });
   } catch (error) {

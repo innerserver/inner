@@ -781,6 +781,12 @@ async function ensureSettings() {
     next.reportEmails = REPORT_EMAILS;
     changed = true;
   }
+  if (!Array.isArray(next.strikeEmails)) {
+    next.strikeEmails = REPORT_EMAILS;
+    changed = true;
+  } else {
+    next.strikeEmails = next.strikeEmails.map(cleanEmailAddress).filter(Boolean).slice(0, 10);
+  }
   if (!next.emailRoutes || typeof next.emailRoutes !== "object" || Array.isArray(next.emailRoutes)) {
     next.emailRoutes = {};
     changed = true;
@@ -1651,9 +1657,10 @@ async function routeApi(req, res, requestUrl) {
         roomId: message.roomId || "main",
       }))
       .filter((message) => canManage(user) || accessibleRoomIds.has(message.roomId || "main"));
-    const visibleDms = canManage(user)
+    const visibleDms = (canManage(user)
       ? dms
-      : dms.filter((entry) => Array.isArray(entry.participants) && entry.participants.includes(user.username));
+      : dms.filter((entry) => Array.isArray(entry.participants) && entry.participants.includes(user.username)))
+      .filter((entry) => !entry.secret);
     return json(res, 200, {
       user: safeUser(user, user),
       settings: safeSettings(settings, user),
@@ -3158,7 +3165,7 @@ async function routeApi(req, res, requestUrl) {
     const contact = [email, phone].filter(Boolean).join(" / ");
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
     if (username.toLowerCase() === "admin") return json(res, 400, { error: "The admin account already exists" });
-    if (role === "admin") return json(res, 403, { error: "Creating new admin accounts is locked. Use the existing admin accounts only." });
+    if (role === "admin" && !canOwn(user)) return json(res, 403, { error: "Only an owner admin can create non-owner admin accounts" });
     if (["hmd", "dev"].includes(role) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
     if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
 
@@ -3347,6 +3354,49 @@ async function routeApi(req, res, requestUrl) {
     return json(res, 200, { users: users.map((entry) => safeUser(entry, user)) });
   }
 
+  if (req.method === "GET" && pathname === "/api/moderation/accounts") {
+    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
+    const query = String(requestUrl.searchParams.get("q") || "").trim().toLowerCase();
+    if (query.length < 2) return json(res, 200, { users: [] });
+    const users = await readJson(FILES.users, []);
+    const matches = users
+      .filter((entry) => [entry.username, entry.email, entry.displayName].some((value) => String(value || "").toLowerCase().includes(query)))
+      .slice(0, 30)
+      .map((entry) => safeUser(entry, user));
+    return json(res, 200, { users: matches });
+  }
+
+  if (req.method === "POST" && pathname === "/api/moderation/strikes") {
+    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
+    const body = await readJsonBody(req);
+    const username = normalizeUsername(body.username);
+    const reason = String(body.reason || "").trim().slice(0, 240);
+    if (!username || !reason) return json(res, 400, { error: "Choose an account and provide a strike reason" });
+    const [users, settings] = await Promise.all([readJson(FILES.users, []), readJson(FILES.settings, {})]);
+    const index = users.findIndex((entry) => String(entry.username || "").toLowerCase() === username);
+    if (index === -1) return json(res, 404, { error: "Account not found" });
+    if (canOwn(users[index]) && !canOwn(user)) return json(res, 403, { error: "Only an owner admin can strike an owner admin account" });
+    const strikes = Array.isArray(users[index].strikes) ? users[index].strikes : [];
+    const before = strikes.length;
+    const strike = { id: crypto.randomUUID(), issuedBy: user.username, reason, createdAt: new Date().toISOString() };
+    users[index] = { ...users[index], strikes: [...strikes, strike].slice(-50), updatedAt: strike.createdAt, updatedBy: user.username };
+    await writeJson(FILES.users, users);
+    await addModerationLog(user.username, "user:strike", username, reason);
+    await addSystemLog("user.strike.issued", user.username, { username, count: users[index].strikes.length, reason }, req);
+    if (before < 3 && users[index].strikes.length >= 3) {
+      const recipients = Array.isArray(settings.strikeEmails) ? settings.strikeEmails.map(cleanEmailAddress).filter(Boolean) : [];
+      sendDirectEmail(recipients, "Connectifi account reached three strikes", [
+        `Account: ${users[index].username}`,
+        `Strike count: ${users[index].strikes.length}`,
+        `Latest reason: ${reason}`,
+        `Issued by: ${user.username}`,
+        `Time: ${strike.createdAt}`,
+      ].join("\n"), { route: "loginFailures", contactType: "security" }).catch(() => {});
+    }
+    broadcastManagers({ type: "users:update", users: users.map((entry) => safeUser(entry, user)) });
+    return json(res, 200, { user: safeUser(users[index], user), strikes: users[index].strikes });
+  }
+
   if (req.method === "POST" && pathname === "/api/users/mute") {
     if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
     const body = await readJsonBody(req);
@@ -3532,6 +3582,9 @@ async function routeApi(req, res, requestUrl) {
         : Array.isArray(settings.reportEmails)
           ? settings.reportEmails.slice(0, 4)
           : REPORT_EMAILS,
+      strikeEmails: canOwn(user) && Array.isArray(body.strikeEmails)
+        ? body.strikeEmails.map(cleanEmailAddress).filter(Boolean).slice(0, 10)
+        : Array.isArray(settings.strikeEmails) ? settings.strikeEmails.map(cleanEmailAddress).filter(Boolean).slice(0, 10) : REPORT_EMAILS,
       emailRoutes: sanitizeEmailRoutes(body.emailRoutes && typeof body.emailRoutes === "object" ? body.emailRoutes : settings.emailRoutes || {}),
       emailContacts: sanitizeEmailContacts(body.emailContacts && typeof body.emailContacts === "object" ? body.emailContacts : settings.emailContacts || {}),
       reportRetentionDays: Math.max(1, Math.min(3650, Number(body.reportRetentionDays || settings.reportRetentionDays || 30))),
@@ -5302,7 +5355,7 @@ function broadcastSecretMessage(payload, settings) {
 function broadcastDm(payload, dm) {
   const participants = new Set(Array.isArray(dm.participants) ? dm.participants : [dm.from, dm.to]);
   for (const client of wsClients.values()) {
-    if (canManage(client) || participants.has(client.username)) sendWs(client, payload);
+    if ((dm.secret ? canOwn(client) : canManage(client)) || participants.has(client.username)) sendWs(client, payload);
   }
 }
 
@@ -5568,6 +5621,15 @@ function safeUser(user, viewer = null) {
     mutedUntil: user.mutedUntil || "",
     muted: isUserMuted(user),
     shadowMuted: Boolean(user.shadowMuted),
+    strikeCount: Array.isArray(user.strikes) ? user.strikes.length : 0,
+    strikes: canModerate(viewer) || ownerView
+      ? (Array.isArray(user.strikes) ? user.strikes.slice(-20).map((strike) => ({
+        id: String(strike.id || ""),
+        issuedBy: String(strike.issuedBy || ""),
+        reason: String(strike.reason || ""),
+        createdAt: String(strike.createdAt || ""),
+      })) : [])
+      : [],
     tempAdminUntil: user.tempAdminUntil || "",
     tempAdminPreviousRole: user.tempAdminPreviousRole || "",
   };
@@ -5963,7 +6025,7 @@ function safeSecretDms(dms, user, settings = {}) {
   if (!user) return [];
   return (dms || [])
     .filter((dm) => Boolean(dm && dm.secret))
-    .filter((dm) => canManage(user) || (Array.isArray(dm.participants) && dm.participants.includes(user.username)))
+    .filter((dm) => canOwn(user) || (Array.isArray(dm.participants) && dm.participants.includes(user.username)))
     .map((dm) => ({
       id: dm.id,
       kind: dm.kind || "direct",

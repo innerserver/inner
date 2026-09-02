@@ -27,6 +27,7 @@ const state = {
   accountShowAll: false,
   selectedAccountDetails: "",
   accountDetailFiles: { username: "", files: [], loading: false, error: "" },
+  moderatorAccounts: [],
   logSearch: "",
   logDate: "",
   files: [],
@@ -450,6 +451,7 @@ function cacheElements() {
     "emailAccounts",
     "emailAnnouncements",
     "emailLoginFailures",
+    "strikeEmails",
     "moderatorLogAccessUsers",
     "emailGeneral",
     "emailContactNoreply",
@@ -522,6 +524,10 @@ function cacheElements() {
     "moderatorRoomCount",
     "moderatorReportCount",
     "moderatorLimitCount",
+    "moderatorAccountSearchForm",
+    "moderatorAccountSearch",
+    "moderatorAccountSearchButton",
+    "moderatorAccountList",
     "featureName",
     "featureMinutes",
     "featureStartAt",
@@ -865,6 +871,7 @@ function bindEvents() {
   els.ownerCheckinForm.addEventListener("submit", submitOwnerCheckin);
   els.testOwnerCheckinButton.addEventListener("click", sendTestOwnerCheckin);
   els.createAccountForm.addEventListener("submit", createAccount);
+  els.moderatorAccountSearchForm.addEventListener("submit", searchModeratorAccounts);
   els.accountSearchInput.addEventListener("input", () => {
     state.accountSearch = els.accountSearchInput.value.trim().toLowerCase();
     state.accountShowAll = false;
@@ -2162,6 +2169,7 @@ function serverSettingsPayload(extra = {}) {
     passwordResetEnabled: els.passwordResetEnabled ? els.passwordResetEnabled.checked : true,
     requireProfileUpdate: Boolean(els.requireProfileUpdate && els.requireProfileUpdate.checked),
     reportEmails: els.reportEmails.value.split(",").map((entry) => entry.trim()).filter(Boolean),
+    strikeEmails: splitEmailList(els.strikeEmails ? els.strikeEmails.value : ""),
     emailRoutes: {
       reports: splitEmailList(els.emailReports ? els.emailReports.value : ""),
       accountRequests: splitEmailList(els.emailAccounts ? els.emailAccounts.value : ""),
@@ -3421,7 +3429,7 @@ function handleSocketMessage(message) {
   }
 
   if (message.type === "dm:new") {
-    const incoming = state.user && message.dm && message.dm.from !== state.user.username;
+    const incoming = state.user && message.dm && !message.dm.secret && message.dm.from !== state.user.username;
     addDm(message.dm);
     if (incoming) showIncomingDmAlert(message.dm);
     return;
@@ -3429,7 +3437,8 @@ function handleSocketMessage(message) {
 
   if (message.type === "dm:update") {
     const index = state.dms.findIndex((entry) => entry.id === message.dm.id);
-    if (index !== -1) state.dms[index] = message.dm;
+    if (index !== -1 && !message.dm.secret) state.dms[index] = message.dm;
+    if (index !== -1 && message.dm.secret) state.dms.splice(index, 1);
     const secretIndex = state.secretDms.findIndex((entry) => entry.id === message.dm.id);
     if (secretIndex !== -1) state.secretDms[secretIndex] = message.dm;
     renderDms();
@@ -6699,6 +6708,7 @@ function renderServerInner() {
     els.clearProfileUpdateButton.classList.toggle("hidden", !state.settings.requireProfileUpdate && !state.settings.profileUpdateRequestedAt);
   }
   setInputIfNotFocused(els.reportEmails, Array.isArray(state.settings.reportEmails) ? state.settings.reportEmails.join(", ") : "");
+  setInputIfNotFocused(els.strikeEmails, Array.isArray(state.settings.strikeEmails) ? state.settings.strikeEmails.join(", ") : "");
   const routes = state.settings.emailRoutes || {};
   setInputIfNotFocused(els.emailReports, Array.isArray(routes.reports) ? routes.reports.join(", ") : "");
   if (els.emailAccounts) {
@@ -6760,7 +6770,7 @@ function renderServerInner() {
   if (els.ownerCheckinCode) els.ownerCheckinCode.disabled = !admin || !canSubmitOwnerCheckin;
   if (els.submitOwnerCheckinButton) els.submitOwnerCheckinButton.disabled = !admin || !canSubmitOwnerCheckin;
   if (els.testOwnerCheckinButton) els.testOwnerCheckinButton.disabled = !admin || Boolean((state.settings.ownerCheckin || {}).pending);
-  [els.roomNameInput, els.signupMode, els.requireContact, els.acceptedEmailDomains, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.triggerProfileUpdateButton, els.clearProfileUpdateButton, els.reportEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.moderatorLogAccessUsers, els.emailGeneral, els.emailContactNoreply, els.emailContactReports, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+  [els.roomNameInput, els.signupMode, els.requireContact, els.acceptedEmailDomains, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.triggerProfileUpdateButton, els.clearProfileUpdateButton, els.reportEmails, els.strikeEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.moderatorLogAccessUsers, els.emailGeneral, els.emailContactNoreply, els.emailContactReports, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
   });
@@ -6904,6 +6914,7 @@ function renderUsers() {
     if (user.tempAdminUntil) meta.append(textNode(`Temp admin until ${formatDate(user.tempAdminUntil)}`));
     if (user.bannedUntil) meta.append(textNode(`Ban until ${formatDate(user.bannedUntil)}`));
     if (user.banReason) meta.append(textNode(user.banReason));
+    meta.append(textNode(`Strikes ${user.strikeCount || 0}`));
 
     const actions = document.createElement("div");
     actions.className = "account-actions";
@@ -6935,6 +6946,7 @@ function renderUsers() {
     const banDay = accountButton("Ban 24h", () => banUser(user.username, 1440));
     const unban = accountButton("Unban", () => banUser(user.username, 0));
     const remove = accountButton("Delete", () => deleteUser(user.username));
+    const strike = accountButton("Issue strike", () => issueStrike(user.username));
     banFive.disabled = isMainAdmin;
     banShort.disabled = isMainAdmin;
     banHour.disabled = isMainAdmin;
@@ -6944,7 +6956,8 @@ function renderUsers() {
     tempAdminDay.disabled = isMainAdmin || String(user.role || "").toLowerCase() === "admin";
     clearTempAdmin.disabled = isMainAdmin || !user.tempAdminUntil;
     remove.disabled = isMainAdmin || isCurrentUser;
-    actions.append(gradeSelect, gradeButton, roleButton, persistentButton, detailsButton, detailTabButton, tempAdminHour, tempAdminDay, clearTempAdmin, banFive, banShort, banHour, banDay, unban, remove);
+    strike.disabled = isMainAdmin && !isOwner();
+    actions.append(gradeSelect, gradeButton, roleButton, persistentButton, detailsButton, detailTabButton, tempAdminHour, tempAdminDay, clearTempAdmin, strike, banFive, banShort, banHour, banDay, unban, remove);
 
     item.append(head, meta, actions);
     els.accountList.append(item);
@@ -7018,6 +7031,7 @@ function renderModeratorPanel() {
   if (!els.moderatorRoomList) return;
   els.moderatorRoomList.replaceChildren();
   renderModeratorAuditLogs();
+  renderModeratorStrikeAccounts();
   if (!moderator) return;
   const rooms = (state.rooms || []).slice().sort((left, right) => String(left.name || left.id).localeCompare(String(right.name || right.id)));
   const openReports = (state.reports || []).filter((report) => !reportClosed(report)).length;
@@ -7084,6 +7098,59 @@ function renderModeratorAuditLogs() {
       formatDate(entry.createdAt),
     ].filter(Boolean)));
   });
+}
+
+async function searchModeratorAccounts(event) {
+  event.preventDefault();
+  if (!isModerator()) return notify("Moderator access required");
+  const query = els.moderatorAccountSearch.value.trim();
+  if (query.length < 2) return notify("Enter at least two characters");
+  try {
+    els.moderatorAccountSearchButton.disabled = true;
+    const data = await api(`/api/moderation/accounts?q=${encodeURIComponent(query)}`);
+    state.moderatorAccounts = data.users || [];
+    renderModeratorStrikeAccounts();
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    els.moderatorAccountSearchButton.disabled = false;
+  }
+}
+
+function renderModeratorStrikeAccounts() {
+  if (!els.moderatorAccountList) return;
+  els.moderatorAccountList.replaceChildren();
+  if (!state.moderatorAccounts.length) {
+    els.moderatorAccountList.append(emptyBlock("Search for an account to issue a strike."));
+    return;
+  }
+  state.moderatorAccounts.forEach((account) => {
+    const card = adminCard(account.username, `${account.strikeCount || 0} strikes`, [
+      `Role ${account.role || "member"}`,
+      account.grade ? `Grade ${account.grade}` : "",
+      ...(account.strikes || []).slice(-3).reverse().map((strike) => `${formatDate(strike.createdAt)} - ${strike.reason}`),
+    ].filter(Boolean));
+    const actions = document.createElement("div");
+    actions.className = "account-actions";
+    actions.append(accountButton("Issue strike", () => issueStrike(account.username)));
+    card.append(actions);
+    els.moderatorAccountList.append(card);
+  });
+}
+
+async function issueStrike(username) {
+  const reason = window.prompt(`Strike reason for ${username}`) || "";
+  if (!reason.trim()) return;
+  try {
+    const data = await api("/api/moderation/strikes", { method: "POST", json: { username, reason } });
+    state.moderatorAccounts = state.moderatorAccounts.map((entry) => entry.username === username ? data.user : entry);
+    if (isOwner()) state.users = state.users.map((entry) => entry.username === username ? { ...entry, ...data.user } : entry);
+    renderModeratorStrikeAccounts();
+    renderUsers();
+    notify(`${username} now has ${data.user.strikeCount} strikes`);
+  } catch (error) {
+    notify(error.message);
+  }
 }
 
 function currentFeatureScheduleEditor() {
@@ -8221,15 +8288,19 @@ function addSecretMessage(message) {
 }
 
 function addDm(dm) {
-  if (state.dms.some((entry) => entry.id === dm.id)) return;
-  state.dms.push(dm);
-  state.dms = state.dms.slice(-500);
+  if (!dm) return;
+  if (!dm.secret && !state.dms.some((entry) => entry.id === dm.id)) {
+    state.dms.push(dm);
+    state.dms = state.dms.slice(-500);
+  }
   if (dm.secret && !state.secretDms.some((entry) => entry.id === dm.id)) {
     state.secretDms.push(dm);
     state.secretDms = state.secretDms.slice(-500);
   }
-  renderDms();
-  renderAdminDms();
+  if (!dm.secret) {
+    renderDms();
+    renderAdminDms();
+  }
   if (dm.secret) renderSecretMessages();
 }
 

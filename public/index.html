@@ -650,6 +650,14 @@
               <div class="panel-title-row"><div><h3>Audit logs</h3><p class="panel-note">Recent system and moderation activity for selected moderators.</p></div><button id="moderatorExportLogsButton" class="secondary-button compact-button" type="button">Export</button></div>
               <div id="moderatorAuditList" class="account-list compact-list"></div>
             </section>
+            <section class="status-panel moderator-strikes-panel">
+              <div class="panel-title-row"><div><h3>Account strikes</h3><p class="panel-note">Search an account, then issue a strike with a recorded reason.</p></div></div>
+              <form id="moderatorAccountSearchForm" class="upload-bar">
+                <input id="moderatorAccountSearch" maxlength="120" placeholder="Search username, display name, or email" autocomplete="off" />
+                <button id="moderatorAccountSearchButton" class="secondary-button" type="submit">Search</button>
+              </form>
+              <div id="moderatorAccountList" class="account-list compact-list"></div>
+            </section>
           </div>
         </section>
 
@@ -693,6 +701,7 @@
               <label>Account request/signup emails<input id="emailAccounts" maxlength="500" placeholder="accounts@school.com, admissions@school.com" /></label>
               <label>Announcement emails<input id="emailAnnouncements" maxlength="500" placeholder="announcements@school.com" /></label>
               <label>Security/admin fallback emails<input id="emailLoginFailures" maxlength="500" placeholder="security@school.com" /></label>
+              <label>Three-strike alert emails<input id="strikeEmails" maxlength="500" placeholder="discipline@school.com, admin@school.com" /></label>
               <label>Selected moderator log access<input id="moderatorLogAccessUsers" maxlength="500" placeholder="moderator usernames, comma separated" /></label>
               <label>Admin test/general emails<input id="emailGeneral" maxlength="500" placeholder="admin@school.com" /></label>
               <div class="email-contact-grid">
@@ -790,7 +799,7 @@
               <h3>Create account</h3>
               <label>Username<input id="newAccountUsername" autocomplete="off" placeholder="letters, numbers, dot, dash, underscore" /></label>
               <label>Password<input id="newAccountPassword" type="password" autocomplete="new-password" /></label>
-              <label>Access<select id="newAccountRole"><option value="member">Member</option><option value="moderator">Moderator</option><option value="hmd">HMD</option><option value="dev">Dev</option></select></label>
+              <label>Access<select id="newAccountRole"><option value="member">Member</option><option value="moderator">Moderator</option><option value="admin">Admin (non-owner)</option><option value="hmd">HMD</option><option value="dev">Dev</option></select></label>
               <label class="switch-row"><input id="newAccountPersistent" type="checkbox" /><span>Allow persistent login</span></label>
               <button id="createAccountButton" class="primary-button" type="submit">Create account</button>
             </form>

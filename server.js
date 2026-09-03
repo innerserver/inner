@@ -71,6 +71,7 @@ const FILES = {
   store: path.join(DATA_DIR, "store.json"),
   aiRequests: path.join(DATA_DIR, "ai-requests.json"),
   ai: path.join(DATA_DIR, "ai.json"),
+  aiSecurityFlags: path.join(DATA_DIR, "ai-security-flags.json"),
   innerDocs: path.join(DATA_DIR, "inner-docs.json"),
   settings: path.join(DATA_DIR, "settings.json"),
   vpn: path.join(DATA_DIR, "vpn.json"),
@@ -441,6 +442,7 @@ async function ensureStorage() {
   await ensureJson(FILES.store, { items: [], orders: [] });
   await ensureJson(FILES.aiRequests, []);
   await ensureJson(FILES.ai, { apiKey: "", baseUrl: "", model: "", updatedAt: "", updatedBy: "" });
+  await ensureJson(FILES.aiSecurityFlags, []);
   await ensureJson(FILES.innerDocs, []);
   await ensureJson(FILES.profiles, {});
   await ensureJson(FILES.friends, { requests: [], friendships: [] });
@@ -1035,6 +1037,19 @@ async function routeApi(req, res, requestUrl) {
           console.error("New IP login alert failed:", error.message || error);
         });
       }
+      // This monitor is intentionally detached from the sign-in response. It only
+      // runs after an owner has configured an AI key and never blocks access.
+      void assessAiLoginSecurity(users[userIndex], {
+        ip: currentLoginIp,
+        device: currentLoginDevice,
+        previousIp: previousLoginIp,
+        previousDevice: previousLoginDevice,
+        outsideRecentIps,
+        differentLogin,
+        loginAt,
+      }).catch((error) => {
+        console.error("AI login security assessment failed:", error.message || error);
+      });
     }
 
     res.setHeader("Set-Cookie", sessionCookie(token, req, persistent ? Math.floor(SESSION_PERSISTENT_MS / 1000) : null));
@@ -2542,6 +2557,12 @@ async function routeApi(req, res, requestUrl) {
       updatedBy: user.username,
     });
     return json(res, 200, { aiConfigured: true });
+  }
+
+  if (req.method === "GET" && pathname === "/api/ai/security-flags") {
+    if (!canOwn(user)) return json(res, 403, { error: "Owner admin access required" });
+    const flags = await readJson(FILES.aiSecurityFlags, []);
+    return json(res, 200, { flags: Array.isArray(flags) ? flags.slice(0, 100) : [] });
   }
 
   if (req.method === "POST" && pathname === "/api/rooms") {
@@ -9290,6 +9311,96 @@ async function generateAiSuggestion(prompt) {
       configured: false,
       text: error.message || "AI request failed.",
     };
+  }
+}
+
+async function assessAiLoginSecurity(user, login) {
+  const aiConfig = await readJson(FILES.ai, {});
+  const config = resolveAiConfig(aiConfig);
+  if (!config.apiKey || !user || !login) return;
+
+  const history = Array.isArray(user.loginHistory) ? user.loginHistory : [];
+  const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+  const recentIps = new Set(history
+    .filter((entry) => Date.parse(entry.loggedInAt || "") >= dayAgo)
+    .map((entry) => String(entry.ip || "").trim())
+    .filter(Boolean));
+  const deviceChanged = Boolean(login.previousDevice && login.device && login.previousDevice !== login.device);
+  const ipChanged = Boolean(login.previousIp && login.ip && login.previousIp !== login.ip);
+  const signalScore = (login.outsideRecentIps ? 1 : 0) + (deviceChanged ? 1 : 0) + (ipChanged ? 1 : 0) + (recentIps.size >= 3 ? 1 : 0);
+  if (signalScore < 2) return;
+
+  const flags = await readJson(FILES.aiSecurityFlags, []);
+  const fingerprint = `${String(user.username || "").toLowerCase()}|${login.ip || ""}|${login.device || ""}`;
+  const recentlyFlagged = Array.isArray(flags) && flags.some((flag) =>
+    flag && flag.fingerprint === fingerprint && Date.now() - Date.parse(flag.createdAt || "") < 6 * 60 * 60 * 1000
+  );
+  if (recentlyFlagged) return;
+
+  const prompt = [
+    "You are a security triage assistant for a private workspace.",
+    "Assess whether this login pattern warrants an owner review. Do not infer identity, location, intent, or wrongdoing.",
+    "Return only JSON in this shape: {\"suspicious\":true|false,\"severity\":\"low\"|\"medium\"|\"high\",\"reason\":\"short factual reason\"}.",
+    `Signals: IP changed=${ipChanged}; device changed=${deviceChanged}; new compared with recent IPs=${Boolean(login.outsideRecentIps)}; distinct IPs in last 24h=${recentIps.size}; combined signal score=${signalScore}.`,
+  ].join("\n");
+  const assessment = await generateAiSecurityAssessment(config, prompt);
+  if (!assessment.suspicious) return;
+
+  const flag = {
+    id: crypto.randomUUID(),
+    fingerprint,
+    username: user.username,
+    severity: assessment.severity,
+    reason: assessment.reason,
+    createdAt: new Date().toISOString(),
+    loginAt: login.loginAt,
+    ip: login.ip || "",
+    device: login.device || "",
+    signals: {
+      ipChanged,
+      deviceChanged,
+      newComparedWithRecentIps: Boolean(login.outsideRecentIps),
+      distinctIpsLast24Hours: recentIps.size,
+    },
+  };
+  const next = [flag, ...(Array.isArray(flags) ? flags : [])].slice(0, 500);
+  await writeJson(FILES.aiSecurityFlags, next);
+  await addSystemLog("security.ai_login_flag", user.username, { severity: flag.severity, reason: flag.reason }, null);
+}
+
+async function generateAiSecurityAssessment(config, prompt) {
+  if (typeof fetch !== "function") return { suspicious: true, severity: "medium", reason: "Multiple login signals need owner review." };
+  try {
+    let response = await fetchAi(config.responsesUrl, config.apiKey, {
+      model: config.model,
+      instructions: "You triage login anomaly signals. Return only the requested JSON. Never claim certainty or wrongdoing.",
+      input: prompt,
+      max_output_tokens: 180,
+      store: false,
+    });
+    let data = await response.json().catch(() => ({}));
+    if (!response.ok && [400, 404, 405].includes(response.status)) {
+      response = await fetchAi(config.chatUrl, config.apiKey, {
+        model: config.model,
+        messages: [{ role: "system", content: "Return only the requested JSON for login anomaly triage." }, { role: "user", content: prompt }],
+        max_tokens: 180,
+      });
+      data = await response.json().catch(() => ({}));
+    }
+    if (!response.ok) return { suspicious: true, severity: "medium", reason: "Multiple login signals need owner review." };
+    const text = extractAiText(data);
+    const match = String(text || "").match(/\{[\s\S]*\}/);
+    const parsed = match ? JSON.parse(match[0]) : {};
+    const severity = ["low", "medium", "high"].includes(String(parsed.severity || "").toLowerCase())
+      ? String(parsed.severity).toLowerCase()
+      : "medium";
+    return {
+      suspicious: parsed.suspicious === true || String(parsed.suspicious).toLowerCase() === "true",
+      severity,
+      reason: String(parsed.reason || "Multiple login signals need owner review.").replace(/\s+/g, " ").trim().slice(0, 280),
+    };
+  } catch (error) {
+    return { suspicious: true, severity: "medium", reason: "Multiple login signals need owner review." };
   }
 }
 

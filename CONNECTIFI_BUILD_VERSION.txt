@@ -1,9 +1,9 @@
-Connectifi build v194
+Connectifi build v195
 Released: 2026-09-03
 
 Changes in this package:
-- Account manager no longer opens every member by default.
-- Added a dedicated Collapse list / Expand list control that keeps search and filters visible.
-- Searching or filtering automatically expands the matched account results.
-- Show all members is now an explicit choice and remembers only after being selected in this version.
-- Sidebar organization and all existing routes, permissions, and account controls are preserved.
+- Added owner-only AI login security review for unusual account-level IP and device changes.
+- A saved AI API key automatically enables review; Base URL and model settings remain optional for compatible providers.
+- AI receives minimized login-signal metadata, while detailed alerts remain in the owner-only local security panel.
+- Login assessments run in the background and do not delay authentication.
+- Added deduplication, bounded local alert storage, audit logging, and a protected owner-only alert endpoint.

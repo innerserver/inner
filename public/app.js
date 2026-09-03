@@ -75,6 +75,9 @@ const state = {
   store: { items: [], orders: [] },
   aiRequests: [],
   aiConfigured: false,
+  aiSecurityFlags: [],
+  aiSecurityFlagsLoaded: false,
+  aiSecurityFlagsLoading: false,
   adminStateLoaded: false,
   adminStateHydrating: false,
   ws: null,
@@ -642,6 +645,10 @@ function cacheElements() {
     "saveAiKeyButton",
     "clearAiKeyButton",
     "aiResponseList",
+    "aiSecurityPanel",
+    "aiSecurityStatus",
+    "aiSecurityFlagList",
+    "refreshAiSecurityFlagsButton",
     "adminAutomodForm",
     "adminAutomodEnabled",
     "adminAutomodWindow",
@@ -960,6 +967,7 @@ function bindEvents() {
   els.aiForm.addEventListener("submit", askAi);
   els.aiKeyForm.addEventListener("submit", saveAiKey);
   els.clearAiKeyButton.addEventListener("click", clearAiKey);
+  if (els.refreshAiSecurityFlagsButton) els.refreshAiSecurityFlagsButton.addEventListener("click", () => loadAiSecurityFlags(true));
   els.devConfigForm.addEventListener("submit", saveDevConfig);
   els.botForm.addEventListener("submit", createBot);
   els.pluginForm.addEventListener("submit", createPlugin);
@@ -1446,6 +1454,7 @@ async function hydrateAdminState() {
     state.automod = data.automod || {};
     state.aiRequests = data.aiRequests || [];
     state.aiConfigured = Boolean(data.aiConfigured);
+    state.aiSecurityFlagsLoaded = false;
     state.emailStatus = data.emailStatus || null;
     state.adminStateLoaded = true;
     renderAll();
@@ -2987,10 +2996,12 @@ async function saveAiKey(event) {
       },
     });
     state.aiConfigured = Boolean(data.aiConfigured);
+    state.aiSecurityFlagsLoaded = false;
     els.aiApiKey.value = "";
     if (els.aiBaseUrl) els.aiBaseUrl.value = "";
     if (els.aiModel) els.aiModel.value = "";
     renderAiRequests();
+    loadAiSecurityFlags(true).catch(() => {});
     notify("AI key saved");
   } catch (error) {
     notify(error.message);
@@ -8467,8 +8478,10 @@ function renderAiRequests() {
   if (els.aiState) {
     els.aiState.textContent = state.aiConfigured
       ? "AI connection is configured. Ask for small safe changes."
-      : "AI is not configured. Add any OpenAI-compatible key, base URL, and model below.";
+      : "AI is not configured. Add an API key below; provider options are optional.";
   }
+  renderAiSecurityFlags();
+  if (!state.aiSecurityFlagsLoaded && !state.aiSecurityFlagsLoading) loadAiSecurityFlags().catch(() => {});
   els.aiResponseList.replaceChildren();
   if (!state.aiRequests.length) {
     els.aiResponseList.append(emptyBlock("No AI requests yet"));
@@ -8480,6 +8493,50 @@ function renderAiRequests() {
       `By ${request.createdBy} at ${formatDate(request.createdAt)}`,
     ]);
     els.aiResponseList.append(card);
+  });
+}
+
+async function loadAiSecurityFlags(force = false) {
+  if (!isOwner() || state.aiSecurityFlagsLoading || (state.aiSecurityFlagsLoaded && !force)) return;
+  state.aiSecurityFlagsLoading = true;
+  if (els.refreshAiSecurityFlagsButton) els.refreshAiSecurityFlagsButton.disabled = true;
+  try {
+    const data = await api("/api/ai/security-flags");
+    state.aiSecurityFlags = Array.isArray(data.flags) ? data.flags : [];
+    state.aiSecurityFlagsLoaded = true;
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    state.aiSecurityFlagsLoading = false;
+    if (els.refreshAiSecurityFlagsButton) els.refreshAiSecurityFlagsButton.disabled = false;
+    renderAiSecurityFlags();
+  }
+}
+
+function renderAiSecurityFlags() {
+  if (!els.aiSecurityPanel || !isOwner()) return;
+  els.aiSecurityPanel.classList.remove("hidden");
+  if (els.aiSecurityStatus) {
+    els.aiSecurityStatus.textContent = state.aiConfigured
+      ? "Automatic review is active for unusual IP and device changes. Only owner admins can view these alerts."
+      : "Add an API key above to enable automatic login anomaly review.";
+  }
+  if (!els.aiSecurityFlagList) return;
+  els.aiSecurityFlagList.replaceChildren();
+  if (!state.aiSecurityFlags.length) {
+    els.aiSecurityFlagList.append(emptyBlock(state.aiConfigured ? "No suspicious login patterns flagged yet" : "AI login review is waiting for an API key"));
+    return;
+  }
+  state.aiSecurityFlags.forEach((flag) => {
+    const signals = flag.signals || {};
+    const card = adminCard(flag.username || "Account", String(flag.severity || "review").toUpperCase(), [
+      flag.reason || "Login pattern needs owner review.",
+      flag.loginAt ? `Login ${formatDate(flag.loginAt)}` : "",
+      flag.ip ? `IP ${flag.ip}` : "",
+      flag.device ? `Device ${flag.device}` : "",
+      `Signals: ${signals.ipChanged ? "IP changed" : ""}${signals.ipChanged && signals.deviceChanged ? ", " : ""}${signals.deviceChanged ? "device changed" : ""}${signals.distinctIpsLast24Hours ? `, ${signals.distinctIpsLast24Hours} IPs in 24h` : ""}`.replace(/^Signals: ,\s*/, "Signals: "),
+    ].filter(Boolean));
+    els.aiSecurityFlagList.append(card);
   });
 }
 

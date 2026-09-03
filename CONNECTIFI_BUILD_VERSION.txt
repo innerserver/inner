@@ -1,9 +1,9 @@
-Connectifi build v193
+Connectifi build v194
 Released: 2026-09-03
 
 Changes in this package:
-- Reorganized the sidebar into Social, Workspace & files, and Communication sections.
-- Social now contains Profile, room messages, direct messages, Secret, and Friends.
-- Workspace & files now contains Files, Google Workspace, and Browser.
-- Calls and screen sharing remain together under Communication.
-- Existing routes, permissions, and account-management controls are unchanged.
+- Account manager no longer opens every member by default.
+- Added a dedicated Collapse list / Expand list control that keeps search and filters visible.
+- Searching or filtering automatically expands the matched account results.
+- Show all members is now an explicit choice and remembers only after being selected in this version.
+- Sidebar organization and all existing routes, permissions, and account controls are preserved.

@@ -896,7 +896,7 @@ summary:focus-visible {
 
 #adminView #accountManager .account-search-row {
   display: grid !important;
-  grid-template-columns: auto auto minmax(150px, 0.46fr) minmax(190px, 0.62fr) minmax(280px, 1fr);
+  grid-template-columns: auto auto auto minmax(150px, 0.46fr) minmax(190px, 0.62fr) minmax(280px, 1fr);
   align-items: center;
   gap: 12px !important;
 }

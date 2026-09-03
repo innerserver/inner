@@ -25,7 +25,8 @@ const state = {
   accountSearch: "",
   accountGradeFilter: "",
   accountSort: "alphabetical",
-  accountShowAll: true,
+  accountShowAll: false,
+  accountListCollapsed: false,
   selectedAccountDetails: "",
   accountDetailFiles: { username: "", files: [], loading: false, error: "" },
   moderatorAccounts: [],
@@ -508,6 +509,8 @@ function cacheElements() {
     "saveDelegatedAdminFeaturesButton",
     "accountManager",
     "showAllAccountsButton",
+    "toggleAccountListButton",
+    "accountListWrap",
     "accountSort",
     "accountGradeFilter",
     "accountSearchInput",
@@ -899,6 +902,7 @@ function bindEvents() {
   els.accountSearchInput.addEventListener("input", () => {
     state.accountSearch = els.accountSearchInput.value.trim().toLowerCase();
     state.accountShowAll = false;
+    state.accountListCollapsed = false;
     state.selectedAccountDetails = "";
     renderUsers();
   });
@@ -906,6 +910,7 @@ function bindEvents() {
     els.accountGradeFilter.addEventListener("change", () => {
       state.accountGradeFilter = els.accountGradeFilter.value || "";
       state.accountShowAll = false;
+      state.accountListCollapsed = false;
       renderUsers();
     });
   }
@@ -919,7 +924,14 @@ function bindEvents() {
   if (els.showAllAccountsButton) {
     els.showAllAccountsButton.addEventListener("click", () => {
       state.accountShowAll = !state.accountShowAll;
-      try { localStorage.setItem("innerAccountShowAll", state.accountShowAll ? "1" : "0"); } catch (error) {}
+      try { localStorage.setItem("innerAccountShowAllV194", state.accountShowAll ? "1" : "0"); } catch (error) {}
+      renderUsers();
+    });
+  }
+  if (els.toggleAccountListButton) {
+    els.toggleAccountListButton.addEventListener("click", () => {
+      state.accountListCollapsed = !state.accountListCollapsed;
+      try { localStorage.setItem("innerAccountListCollapsedV194", state.accountListCollapsed ? "1" : "0"); } catch (error) {}
       renderUsers();
     });
   }
@@ -4801,6 +4813,7 @@ function renderWithFocusPreserved(callback) {
 function setupAdminCollapsibles() {
   if (!els.adminView || !hasAdminPanelAccess()) return;
   els.adminView.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => {
+    if (panel === els.accountManager) return;
     const title = panel.querySelector("h3");
     if (!title) return;
     let button = Array.from(panel.children).find((child) => child.classList && child.classList.contains("collapse-toggle"));
@@ -7041,7 +7054,12 @@ function renderUsers() {
   syncSearchedAccountDetails(visibleUsers);
   renderAccountDetails();
   if (els.showAllAccountsButton) {
-    els.showAllAccountsButton.textContent = state.accountShowAll ? "Hide members" : "Show members";
+    els.showAllAccountsButton.textContent = state.accountShowAll ? "Hide members" : "Show all members";
+  }
+  if (els.accountListWrap) els.accountListWrap.classList.toggle("hidden", state.accountListCollapsed);
+  if (els.toggleAccountListButton) {
+    els.toggleAccountListButton.textContent = state.accountListCollapsed ? "Expand list" : "Collapse list";
+    els.toggleAccountListButton.setAttribute("aria-expanded", state.accountListCollapsed ? "false" : "true");
   }
   if (!String(state.accountSearch || "").trim() && !String(state.accountGradeFilter || "").trim() && !state.accountShowAll && !visibleUsers.length) {
     els.accountList.append(emptyBlock("Public admin accounts show here. Search a username/email/phone/IP/device or choose a grade to show more accounts."));
@@ -9964,7 +9982,8 @@ function restoreUiState() {
     state.activeView = viewFromPath() || localStorage.getItem("innerActiveView") || "dashboard";
     state.selectedRoomId = localStorage.getItem("innerSelectedRoom") || "main";
     state.selectedDmUser = localStorage.getItem("innerSelectedDm") || "";
-    state.accountShowAll = localStorage.getItem("innerAccountShowAll") !== "0";
+    state.accountShowAll = localStorage.getItem("innerAccountShowAllV194") === "1";
+    state.accountListCollapsed = localStorage.getItem("innerAccountListCollapsedV194") === "1";
     state.accountSort = localStorage.getItem("innerAccountSort") === "class" ? "class" : "alphabetical";
   } catch (error) {
     state.activeView = viewFromPath() || "dashboard";

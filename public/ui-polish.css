@@ -1220,3 +1220,60 @@ body[data-theme="glass"] .file-card {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* Keep messaging controls in explicit grid rows.  Earlier compatibility rules
+   target these views several times; without explicit placement the composer
+   can land in an implicit row and overlap the scroller. */
+#messagesView.view.active {
+  display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+#messagesView > .section-header { grid-row: 1; }
+#messagesView > .invite-join-bar { grid-row: 2; }
+#messagesView > .message-list { grid-row: 3; }
+#messagesView > .composer { grid-row: 4; }
+
+#dmsView.view.active {
+  display: grid !important;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+#dmsView > .section-header { grid-row: 1; }
+#dmsView > .dm-tools-panel { grid-row: 2; }
+#dmsView > .dm-call-panel { grid-row: 3; }
+#dmsView > .message-list { grid-row: 4; }
+#dmsView > .composer { grid-row: 5; }
+
+#messagesView > .message-list,
+#dmsView > .message-list {
+  min-height: 0 !important;
+  height: auto !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+
+#messagesView > .composer,
+#dmsView > .composer {
+  position: relative !important;
+  inset: auto !important;
+  z-index: 1 !important;
+}
+
+@media (max-width: 860px) {
+  #messagesView.view.active,
+  #dmsView.view.active {
+    height: auto !important;
+    min-height: calc(100dvh - 58px) !important;
+    overflow: visible !important;
+  }
+
+  #messagesView > .message-list,
+  #dmsView > .message-list {
+    max-height: min(52dvh, 520px) !important;
+  }
+}

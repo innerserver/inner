@@ -5155,43 +5155,6 @@ function showOnboarding() {
   renderOnboarding();
 }
 
-function sidebarIconMarkup() {
-  return '<span class="hamburger-lines" aria-hidden="true"><span></span><span></span><span></span></span>';
-}
-
-function toggleSidebar() {
-  if (!els.appView) return;
-  const phoneMode = window.matchMedia("(max-width: 920px)").matches;
-  if (phoneMode) {
-    const open = !els.appView.classList.contains("sidebar-open");
-    els.appView.classList.toggle("sidebar-open", open);
-    if (els.sidebarToggleButton) {
-      els.sidebarToggleButton.innerHTML = open ? '<span aria-hidden="true">??</span>' : '<span aria-hidden="true">???</span>';
-      els.sidebarToggleButton.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
-      els.sidebarToggleButton.setAttribute("aria-expanded", String(open));
-    }
-    return;
-  }
-  const closed = !els.appView.classList.contains("sidebar-closed");
-  els.appView.classList.toggle("sidebar-closed", closed);
-  if (els.sidebarToggleButton) {
-    els.sidebarToggleButton.innerHTML = closed ? '<span aria-hidden="true">???</span>' : '<span aria-hidden="true">??</span>';
-    els.sidebarToggleButton.setAttribute("aria-label", closed ? "Open navigation" : "Close navigation");
-    els.sidebarToggleButton.setAttribute("aria-expanded", String(!closed));
-  }
-}
-
-function closeSidebar() {
-  if (!els.appView) return;
-  els.appView.classList.remove("sidebar-open");
-  if (els.sidebarToggleButton) {
-    const closed = els.appView.classList.contains("sidebar-closed");
-    els.sidebarToggleButton.innerHTML = closed ? '<span aria-hidden="true">???</span>' : '<span aria-hidden="true">???</span>';
-    els.sidebarToggleButton.setAttribute("aria-label", "Open navigation");
-    els.sidebarToggleButton.setAttribute("aria-expanded", String(!els.appView.classList.contains("sidebar-closed")));
-  }
-}
-
 function setSidebarButtonIcon(open) {
   if (!els.sidebarToggleButton) return;
   els.sidebarToggleButton.replaceChildren();

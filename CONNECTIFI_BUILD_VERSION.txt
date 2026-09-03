@@ -1,9 +1,8 @@
-Connectifi build v195
+Connectifi build v196
 Released: 2026-09-03
 
 Changes in this package:
-- Added owner-only AI login security review for unusual account-level IP and device changes.
-- A saved AI API key automatically enables review; Base URL and model settings remain optional for compatible providers.
-- AI receives minimized login-signal metadata, while detailed alerts remain in the owner-only local security panel.
-- Login assessments run in the background and do not delay authentication.
-- Added deduplication, bounded local alert storage, audit logging, and a protected owner-only alert endpoint.
+- Completed a final isolated-server audit of login, signup, authentication, authorization, and load behavior.
+- Fixed the Messages and DMs layout so headers, tools, call controls, message lists, and composers always occupy explicit grid rows.
+- Removed the competing sticky composer behavior on small screens that could overlap message content.
+- Preserved the existing sidebar, application routes, APIs, account permissions, and feature behavior.

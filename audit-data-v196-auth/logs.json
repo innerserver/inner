@@ -1,0 +1,117 @@
+[
+  {
+    "id": "ea03df5b-6b76-4074-804d-84aa5cb0b2d3",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3100",
+    "createdAt": "2026-09-03T12:47:04.541Z"
+  },
+  {
+    "id": "15c9ff03-7797-40dc-806d-c681d6068b04",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3100",
+    "createdAt": "2026-09-03T12:46:02.068Z"
+  },
+  {
+    "id": "c91c789e-6f93-422a-82f3-1f9de7b264fd",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3100",
+    "createdAt": "2026-09-03T12:46:01.977Z"
+  },
+  {
+    "id": "8edba23e-239b-4542-9067-9ec96bbad726",
+    "action": "login.success",
+    "actor": "auditmember196",
+    "details": {
+      "role": "member",
+      "persistent": true,
+      "persistentReason": "per-account enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3100",
+    "createdAt": "2026-09-03T12:45:52.149Z"
+  },
+  {
+    "id": "35c699a7-d012-49f7-aad1-7ba83a2a9fbf",
+    "action": "email.queued",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi signup successful",
+      "recipients": [
+        "auditmember196@example.test"
+      ],
+      "reason": "No email provider configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-09-03T12:45:52.005Z"
+  },
+  {
+    "id": "96a272f7-320a-4452-9176-37de2ab93308",
+    "action": "email.skipped",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi open signup",
+      "reason": "No recipients configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-09-03T12:45:51.999Z"
+  },
+  {
+    "id": "729a7622-cb9d-46ea-8ee8-f3f2847d5a68",
+    "action": "account.signup.created",
+    "actor": "auditmember196",
+    "details": {
+      "sourceIp": "127.0.0.1",
+      "contact": "auditmember196@example.test"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3100",
+    "createdAt": "2026-09-03T12:45:51.991Z"
+  },
+  {
+    "id": "a5f2895c-33c6-49ab-b947-f14ea1dc98a6",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3100",
+    "createdAt": "2026-09-03T12:45:29.989Z"
+  },
+  {
+    "id": "51b12f73-90e6-448e-9bfb-495cb4e7ac88",
+    "action": "login.failed",
+    "actor": "admin",
+    "details": {
+      "reason": "Invalid username or password"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3100",
+    "createdAt": "2026-09-03T12:45:29.818Z"
+  }
+]

@@ -1785,7 +1785,7 @@ async function routeApi(req, res, requestUrl) {
     const room = rooms.find((entry) => entry.id === roomId);
     if (!room) return json(res, 404, { error: "Room not found" });
     if (!canAccessRoom(room, user)) return json(res, 403, { error: "You do not have access to this room" });
-    const automodError = await checkAutomod(textValue, user);
+    const automodError = await checkAutomod(textValue, user, req);
     if (automodError) return json(res, 400, { error: automodError });
 
     const messages = await readJson(FILES.messages, []);
@@ -1829,7 +1829,7 @@ async function routeApi(req, res, requestUrl) {
     const textValue = String(body.text || "").trim().slice(0, 2000);
     const attachment = await resolveChatAttachment(body.attachment);
     if (!textValue && !attachment) return json(res, 400, { error: "Message cannot be empty" });
-    const automodError = await checkAutomod(textValue, user);
+    const automodError = await checkAutomod(textValue, user, req);
     if (automodError) return json(res, 400, { error: automodError });
     const secretMessages = await readJson(FILES.secretMessages, []);
     const message = {
@@ -2828,6 +2828,9 @@ async function routeApi(req, res, requestUrl) {
       if (denied) return json(res, 403, { error: "Every participant must have secret messaging access for a secret DM" });
     }
 
+    const automodError = await checkAutomod(textValue, user, req);
+    if (automodError) return json(res, 400, { error: automodError });
+
     const dms = await readJson(FILES.dms, []);
     const dm = {
       id: crypto.randomUUID(),
@@ -2864,6 +2867,8 @@ async function routeApi(req, res, requestUrl) {
     if (index === -1) return json(res, 404, { error: "DM not found" });
     const dm = dms[index];
     if (dm.from !== user.username && !canModerate(user)) return json(res, 403, { error: "You can edit only your DMs" });
+    const automodError = await checkAutomod(textValue, user, req);
+    if (automodError) return json(res, 400, { error: automodError });
     dms[index] = {
       ...dm,
       text: textValue,
@@ -3647,7 +3652,7 @@ async function routeApi(req, res, requestUrl) {
     const index = messages.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "Message not found" });
     if (messages[index].user !== user.username && !canModerate(user)) return json(res, 403, { error: "You can edit only your messages" });
-    const automodError = await checkAutomod(textValue, user);
+    const automodError = await checkAutomod(textValue, user, req);
     if (automodError) return json(res, 400, { error: automodError });
     messages[index] = {
       ...messages[index],
@@ -7930,13 +7935,62 @@ function applySlashCommand(textValue) {
   return textValue;
 }
 
-async function checkAutomod(textValue, user) {
+async function issueMutedWordStrike(user, req) {
+  const [settings, users] = await Promise.all([
+    readJson(FILES.settings, {}),
+    readJson(FILES.users, []),
+  ]);
+  const index = users.findIndex((entry) => String(entry.username || "").toLowerCase() === String(user.username || "").toLowerCase());
+  if (index === -1 || canModerate(users[index])) return { thresholdReset: false, strikeCount: 0 };
+
+  const issuedAt = new Date().toISOString();
+  const reason = "Muted word used";
+  const strikes = Array.isArray(users[index].strikes) ? users[index].strikes : [];
+  const strike = { id: crypto.randomUUID(), issuedBy: "automod", reason, createdAt: issuedAt };
+  const nextStrikes = [...strikes, strike].slice(-50);
+  users[index] = { ...users[index], strikes: nextStrikes, updatedAt: issuedAt, updatedBy: "automod" };
+  await addModerationLog("automod", "user:strike", users[index].username, reason);
+  await addSystemLog("user.strike.issued", "automod", { username: users[index].username, count: nextStrikes.length, reason }, req);
+
+  let thresholdReset = false;
+  if (strikes.length < 3 && nextStrikes.length >= 3) {
+    const recipients = Array.isArray(settings.strikeEmails) ? settings.strikeEmails.map(cleanEmailAddress).filter(Boolean) : [];
+    sendDirectEmail(recipients, "Connectifi account reached three strikes", [
+      `Account: ${users[index].username}`,
+      `Strike count: ${nextStrikes.length}`,
+      `Latest reason: ${reason}`,
+      "Issued by: automod",
+      `Time: ${issuedAt}`,
+    ].join("\n"), { route: "loginFailures", contactType: "security" }).catch(() => {});
+    users[index] = {
+      ...users[index],
+      strikes: [],
+      lastStrikeThresholdAt: issuedAt,
+      updatedAt: issuedAt,
+      updatedBy: "automod",
+    };
+    thresholdReset = true;
+    await addModerationLog("automod", "user:strike-threshold-reset", users[index].username, "Third-strike email sent and active strikes reset");
+    await addSystemLog("user.strike.threshold.reset", "automod", { username: users[index].username, reason }, req);
+  }
+
+  await writeJson(FILES.users, users);
+  broadcastManagers({ type: "users:update", users: users.map((entry) => safeUser(entry, user)) });
+  return { thresholdReset, strikeCount: Array.isArray(users[index].strikes) ? users[index].strikes.length : 0 };
+}
+
+async function checkAutomod(textValue, user, req) {
   if (canModerate(user)) return "";
   const automod = await readJson(FILES.automod, {});
   if (!automod.enabled) return "";
   const lower = String(textValue || "").toLowerCase();
   for (const word of automod.mutedWords || []) {
-    if (word && lower.includes(String(word).toLowerCase())) return "Message blocked by auto moderation";
+    if (word && lower.includes(String(word).toLowerCase())) {
+      const result = await issueMutedWordStrike(user, req);
+      return result.thresholdReset
+        ? "Message blocked by auto moderation. A third strike was issued, the strike email was sent, and active strikes were reset."
+        : "Message blocked by auto moderation. A strike was issued.";
+    }
   }
   return "";
 }

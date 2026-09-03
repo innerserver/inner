@@ -1,7 +1,7 @@
-Connectifi build v200
+Connectifi build v202
 Released: 2026-09-03
 
 Changes in this package:
-- Replaced raw normal-DM state records with a role-aware DTO.
-- Omitted source, device, location, storage, and cloud-provider fields entirely from non-owner file and message payloads.
-- Reduced peer profiles to public display data while preserving each account's own full profile settings.
+- Issued automatic strikes for muted-word matches in room messages, secret messages, DMs, and edits.
+- Preserved the existing third-strike email and active-strike reset behavior.
+- Kept the v201 messaging layout repair and refreshed client asset cache tokens.

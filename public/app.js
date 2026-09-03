@@ -5452,8 +5452,11 @@ function renderMessagesInner() {
 
       item.append(meta, body);
       appendMessageAttachment(item, message.attachment);
-      const actions = document.createElement("div");
-      actions.className = "message-actions";
+      const actions = item.querySelector(":scope > .message-actions") || document.createElement("div");
+      if (!actions.parentElement) {
+        actions.className = "message-actions";
+        item.append(actions);
+      }
       ["like", "heart", "laugh"].forEach((emoji) => {
         const reactionButton = document.createElement("button");
         reactionButton.className = "ghost-light-button compact-button";
@@ -6646,8 +6649,13 @@ function appendMessageAttachment(item, attachment) {
     preview.classList.add("message-attachment");
     item.append(preview);
   }
-  const actions = document.createElement("div");
-  actions.className = "message-actions";
+  // A message can also have reactions and moderation controls. Reuse that
+  // action row so attachments never create a second row outside the bubble.
+  const actions = item.querySelector(":scope > .message-actions") || document.createElement("div");
+  if (!actions.parentElement) {
+    actions.className = "message-actions";
+    item.append(actions);
+  }
   const open = document.createElement("a");
   open.href = attachment.url;
   open.target = "_blank";
@@ -9791,8 +9799,11 @@ function renderMessageBubble({ mine, title, text, createdAt, sourceIp, attachmen
   appendMessageAttachment(item, attachment);
 
   if (onDelete) {
-    const actions = document.createElement("div");
-    actions.className = "message-actions";
+    const actions = item.querySelector(":scope > .message-actions") || document.createElement("div");
+    if (!actions.parentElement) {
+      actions.className = "message-actions";
+      item.append(actions);
+    }
     const deleteButton = document.createElement("button");
     deleteButton.className = "ghost-light-button compact-button";
     deleteButton.type = "button";

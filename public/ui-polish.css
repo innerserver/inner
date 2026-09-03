@@ -1264,7 +1264,7 @@ body[data-theme="glass"] .file-card {
    can land in an implicit row and overlap the scroller. */
 #messagesView.view.active {
   display: grid !important;
-  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto !important;
   min-height: 0 !important;
   overflow: hidden !important;
 }
@@ -1272,11 +1272,12 @@ body[data-theme="glass"] .file-card {
 #messagesView > .section-header { grid-row: 1; }
 #messagesView > .invite-join-bar { grid-row: 2; }
 #messagesView > .message-list { grid-row: 3; }
-#messagesView > .composer { grid-row: 4; }
+#messagesView > .jump-bottom-button { grid-row: 4; }
+#messagesView > .composer { grid-row: 5; }
 
 #dmsView.view.active {
   display: grid !important;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto !important;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto !important;
   min-height: 0 !important;
   overflow: hidden !important;
 }
@@ -1285,7 +1286,8 @@ body[data-theme="glass"] .file-card {
 #dmsView > .dm-tools-panel { grid-row: 2; }
 #dmsView > .dm-call-panel { grid-row: 3; }
 #dmsView > .message-list { grid-row: 4; }
-#dmsView > .composer { grid-row: 5; }
+#dmsView > .jump-bottom-button { grid-row: 5; }
+#dmsView > .composer { grid-row: 6; }
 
 #messagesView > .message-list,
 #dmsView > .message-list {
@@ -1300,6 +1302,138 @@ body[data-theme="glass"] .file-card {
   position: relative !important;
   inset: auto !important;
   z-index: 1 !important;
+}
+
+/* Messaging layout contract: cards remain normal flex children, all controls
+   stay in the card flow, and the composer gets its own responsive grid. */
+#messagesView > .message-list,
+#dmsView > .message-list {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 12px !important;
+  min-width: 0 !important;
+}
+
+#messagesView .message,
+#dmsView .message {
+  box-sizing: border-box !important;
+  flex: 0 0 auto !important;
+  width: min(760px, 100%) !important;
+  max-width: min(760px, 100%) !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  overflow-wrap: anywhere !important;
+}
+
+#messagesView .message:not(.mine),
+#dmsView .message:not(.mine) {
+  align-self: flex-start !important;
+}
+
+#messagesView .message.mine,
+#dmsView .message.mine {
+  align-self: flex-end !important;
+}
+
+#messagesView .message-meta,
+#dmsView .message-meta,
+#messagesView .message-text,
+#dmsView .message-text,
+#messagesView .read-receipt,
+#dmsView .read-receipt {
+  min-width: 0 !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word;
+}
+
+#messagesView .message-actions,
+#dmsView .message-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  margin-top: 10px !important;
+}
+
+#messagesView .message-actions > button,
+#messagesView .message-actions > a,
+#dmsView .message-actions > button,
+#dmsView .message-actions > a {
+  box-sizing: border-box;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-wrap: anywhere;
+}
+
+#messagesView .message-attachment,
+#dmsView .message-attachment {
+  display: block;
+  box-sizing: border-box;
+  max-width: 100% !important;
+  max-height: min(360px, 45dvh);
+  margin-top: 10px;
+  object-fit: contain;
+}
+
+#messagesView > .jump-bottom-button,
+#dmsView > .jump-bottom-button {
+  justify-self: center;
+  margin: 6px 0;
+}
+
+#messagesView > .composer,
+#dmsView > .composer {
+  display: grid !important;
+  align-items: center !important;
+  min-width: 0 !important;
+}
+
+#messagesView > .composer {
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 210px) auto auto !important;
+}
+
+#dmsView > .composer {
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 210px) auto auto auto !important;
+}
+
+#messagesView > .composer > *,
+#dmsView > .composer > * {
+  min-width: 0;
+}
+
+@media (max-width: 700px) {
+  #messagesView .message,
+  #dmsView .message {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  #messagesView .message-actions > button,
+  #messagesView .message-actions > a,
+  #dmsView .message-actions > button,
+  #dmsView .message-actions > a {
+    flex: 1 1 calc(50% - 4px) !important;
+    text-align: center;
+  }
+
+  #messagesView > .composer,
+  #dmsView > .composer {
+    grid-template-columns: minmax(0, 1fr) auto auto !important;
+  }
+
+  #messagesView > .composer > input:first-child,
+  #dmsView > .composer > input:first-child {
+    grid-column: 1 / -1;
+  }
+
+  #messagesView > .composer > input[type="file"],
+  #dmsView > .composer > input[type="file"] {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
 }
 
 @media (max-width: 860px) {

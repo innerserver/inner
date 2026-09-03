@@ -1,8 +1,0 @@
-{
-  "enabled": true,
-  "spamWindowSeconds": 8,
-  "maxMessagesPerWindow": 6,
-  "mutedWords": [],
-  "updatedAt": "2026-09-03T12:44:57.716Z",
-  "updatedBy": "system"
-}

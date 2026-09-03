@@ -986,6 +986,39 @@ summary:focus-visible {
   box-shadow: none !important;
 }
 
+/* The room rail occupies its own grid column for the full moderation desk.
+   This prevents a sticky rail from sitting over reports, audit logs, or account controls. */
+#moderatorView .moderator-rooms-panel {
+  grid-column: 1 !important;
+  grid-row: 1 / span 4 !important;
+  width: 100% !important;
+  max-width: 300px !important;
+  box-sizing: border-box;
+}
+
+#moderatorView .moderator-workbench,
+#moderatorView .moderator-reports-panel,
+#moderatorView .moderator-audit-panel,
+#moderatorView .moderator-strikes-panel {
+  grid-column: 2 !important;
+  min-width: 0 !important;
+}
+
+@media (max-width: 980px) {
+  #moderatorView .moderator-rooms-panel {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    max-width: none !important;
+  }
+
+  #moderatorView .moderator-workbench,
+  #moderatorView .moderator-reports-panel,
+  #moderatorView .moderator-audit-panel,
+  #moderatorView .moderator-strikes-panel {
+    grid-column: auto !important;
+  }
+}
+
 body[data-theme="midnight"] .secondary-button,
 body[data-theme="midnight"] .ghost-button,
 body[data-theme="midnight"] .ghost-light-button,

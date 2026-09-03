@@ -1,12 +1,9 @@
-Connectifi build v190
-Released: 2026-09-02
+Connectifi build v191
+Released: 2026-09-03
 
 Changes in this package:
-- Owner-admin access console for non-owner admin permissions.
-- Direct owner-only promotion of existing accounts to non-owner admin.
-- Non-owner admin accounts are normal persisted account records, not hardcoded application identities.
-- Permanent non-owner admin promotions assign the selectable permissions automatically.
-- Recovered the admin-panel collapse system from the conflicting UI scripts.
-- Account manager reopens with all members and remembers alphabetical or class sorting.
-- Admin panels retain reliable individual collapse and expand controls.
-- Existing moderation access controls preserved.
+- Fixed the moderator workspace grid so the sticky room rail never overlays reports, logs, strikes, or account controls.
+- Preserved the moderator room list while giving its work area a stable dedicated column on desktop and a single-column mobile layout.
+- Added an owner-only IST delivery-time setting for the Sunday operational check-in email.
+- Check-in scheduling is persisted, audited, and respects weekly or monthly cadence.
+- Refreshed client asset versions so the corrected moderator UI loads instead of a cached stylesheet.

@@ -486,6 +486,9 @@ function cacheElements() {
     "ownerFailsafeUnlockCode",
     "unlockOwnerFailsafeButton",
     "ownerCheckinStatus",
+    "ownerCheckinScheduleForm",
+    "ownerCheckinTime",
+    "saveOwnerCheckinScheduleButton",
     "ownerCheckinForm",
     "ownerCheckinCode",
     "submitOwnerCheckinButton",
@@ -885,6 +888,7 @@ function bindEvents() {
   els.ownerPasswordForm.addEventListener("submit", resetUserPassword);
   els.ownerFailsafeCodeForm.addEventListener("submit", saveOwnerFailsafeCode);
   els.ownerFailsafeUnlockForm.addEventListener("submit", unlockOwnerFailsafe);
+  els.ownerCheckinScheduleForm.addEventListener("submit", saveOwnerCheckinSchedule);
   els.ownerCheckinForm.addEventListener("submit", submitOwnerCheckin);
   els.testOwnerCheckinButton.addEventListener("click", sendTestOwnerCheckin);
   els.createAccountForm.addEventListener("submit", createAccount);
@@ -2130,6 +2134,25 @@ async function submitOwnerCheckin(event) {
     notify(error.message);
   } finally {
     els.submitOwnerCheckinButton.disabled = false;
+  }
+}
+
+async function saveOwnerCheckinSchedule(event) {
+  event.preventDefault();
+  if (!isOwner()) return notify("Owner admin access required");
+  try {
+    els.saveOwnerCheckinScheduleButton.disabled = true;
+    const data = await api("/api/owner-checkin/schedule", {
+      method: "POST",
+      json: { scheduleTime: els.ownerCheckinTime.value },
+    });
+    state.settings = data.settings;
+    renderAll();
+    notify("Owner check-in delivery time saved");
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    els.saveOwnerCheckinScheduleButton.disabled = false;
   }
 }
 
@@ -6860,6 +6883,7 @@ function renderServerInner() {
   if (els.ownerFailsafeUnlockForm) els.ownerFailsafeUnlockForm.classList.toggle("hidden", !admin || !failsafe.locked);
   if (els.ownerCheckinStatus) {
     const checkin = state.settings.ownerCheckin || {};
+    if (els.ownerCheckinTime && document.activeElement !== els.ownerCheckinTime) els.ownerCheckinTime.value = checkin.scheduleTime || "12:00";
     if (checkin.pending) {
       els.ownerCheckinStatus.textContent = `A check-in is due. Submit a code before ${formatDate(checkin.deadlineAt)} or the owner recovery lock will activate.`;
     } else if (checkin.moderatorOnlyActive) {
@@ -6867,7 +6891,7 @@ function renderServerInner() {
     } else if (checkin.restrictionActive) {
       els.ownerCheckinStatus.textContent = `Limited mode is active: ${(checkin.restrictedFeatures || []).map(featureLabel).join(", ")}. Next ${checkin.cadence || "weekly"} check-in: ${formatDate(checkin.nextCheckAt)}.`;
     } else {
-      els.ownerCheckinStatus.textContent = `Next ${checkin.cadence || "weekly"} check-in: ${formatDate(checkin.nextCheckAt)}. Delivery includes dev.s.shah2013@gmail.com.`;
+      els.ownerCheckinStatus.textContent = `Next ${checkin.cadence || "weekly"} check-in: ${formatDate(checkin.nextCheckAt)}. Delivery time: ${checkin.scheduleTime || "12:00"} IST.`;
     }
   }
   const checkinAccessState = state.settings.ownerCheckin || {};
@@ -6875,7 +6899,7 @@ function renderServerInner() {
   if (els.ownerCheckinCode) els.ownerCheckinCode.disabled = !admin || !canSubmitOwnerCheckin;
   if (els.submitOwnerCheckinButton) els.submitOwnerCheckinButton.disabled = !admin || !canSubmitOwnerCheckin;
   if (els.testOwnerCheckinButton) els.testOwnerCheckinButton.disabled = !admin || Boolean((state.settings.ownerCheckin || {}).pending);
-  [els.roomNameInput, els.signupMode, els.requireContact, els.acceptedEmailDomains, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.triggerProfileUpdateButton, els.clearProfileUpdateButton, els.reportEmails, els.strikeEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.moderatorLogAccessUsers, els.emailGeneral, els.emailContactNoreply, els.emailContactReports, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
+  [els.roomNameInput, els.signupMode, els.requireContact, els.acceptedEmailDomains, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.triggerProfileUpdateButton, els.clearProfileUpdateButton, els.reportEmails, els.strikeEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.moderatorLogAccessUsers, els.emailGeneral, els.emailContactNoreply, els.emailContactReports, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton, els.ownerCheckinTime, els.saveOwnerCheckinScheduleButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
   });

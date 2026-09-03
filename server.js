@@ -1545,7 +1545,7 @@ async function routeApi(req, res, requestUrl) {
         pending: false,
         requestedAt: "",
         deadlineAt: "",
-        nextCheckAt: nextOwnerCheckinAt(cadence).toISOString(),
+        nextCheckAt: nextOwnerCheckinAt(cadence, new Date(), current.scheduleTime).toISOString(),
         lastResponseCode: code,
         lastRespondedAt: new Date().toISOString(),
         lastRespondedBy: user.username,
@@ -1558,6 +1558,28 @@ async function routeApi(req, res, requestUrl) {
     };
     await writeJson(FILES.settings, next);
     await addSystemLog("owner.checkin.responded", user.username, { code, cadence, restrictedFeatures, unlocked: unlockWithNormalCode }, req);
+    broadcastSettings(next);
+    return json(res, 200, { settings: safeSettings(next, user) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/owner-checkin/schedule") {
+    if (!canOwn(user)) return json(res, 403, { error: "Owner admin access required" });
+    const body = await readJsonBody(req);
+    const settings = await readJson(FILES.settings, {});
+    const checkin = normalizeOwnerCheckin(settings.ownerCheckin);
+    const scheduleTime = normalizeOwnerCheckinTime(body.scheduleTime);
+    const next = {
+      ...settings,
+      ownerCheckin: normalizeOwnerCheckin({
+        ...checkin,
+        scheduleTime,
+        nextCheckAt: checkin.pending ? checkin.nextCheckAt : nextOwnerCheckinAt(checkin.cadence, new Date(), scheduleTime).toISOString(),
+      }),
+      updatedAt: new Date().toISOString(),
+      updatedBy: user.username,
+    };
+    await writeJson(FILES.settings, next);
+    await addSystemLog("owner.checkin.schedule.updated", user.username, { scheduleTime, cadence: checkin.cadence }, req);
     broadcastSettings(next);
     return json(res, 200, { settings: safeSettings(next, user) });
   }
@@ -6702,7 +6724,8 @@ function safeSettings(settings, viewer = null) {
 function defaultOwnerCheckin() {
   return normalizeOwnerCheckin({
     cadence: "weekly",
-    nextCheckAt: nextOwnerCheckinAt("weekly").toISOString(),
+    scheduleTime: "12:00",
+    nextCheckAt: nextOwnerCheckinAt("weekly", new Date(), "12:00").toISOString(),
     recipients: [OWNER_CHECKIN_EMAIL],
   });
 }
@@ -6710,12 +6733,14 @@ function defaultOwnerCheckin() {
 function normalizeOwnerCheckin(source = {}) {
   const value = source && typeof source === "object" && !Array.isArray(source) ? source : {};
   const cadence = String(value.cadence || "weekly").toLowerCase() === "monthly" ? "monthly" : "weekly";
+  const scheduleTime = normalizeOwnerCheckinTime(value.scheduleTime);
   const restrictedFeatures = Array.from(new Set((Array.isArray(value.restrictedFeatures) ? value.restrictedFeatures : [])
     .map((feature) => String(feature || "").trim().toLowerCase())
     .filter((feature) => ["browser", "store", "chess"].includes(feature))));
-  const nextCheckAt = Date.parse(value.nextCheckAt) ? String(value.nextCheckAt) : nextOwnerCheckinAt(cadence).toISOString();
+  const nextCheckAt = Date.parse(value.nextCheckAt) ? String(value.nextCheckAt) : nextOwnerCheckinAt(cadence, new Date(), scheduleTime).toISOString();
   return {
     cadence,
+    scheduleTime,
     recipients: Array.from(new Set([OWNER_CHECKIN_EMAIL, ...(Array.isArray(value.recipients) ? value.recipients : [])]
       .map(cleanEmailAddress).filter(Boolean))).slice(0, 10),
     nextCheckAt,
@@ -6743,20 +6768,26 @@ function safeOwnerCheckin(source = {}, viewer = null) {
   };
 }
 
-function nextOwnerCheckinAt(cadence, now = new Date()) {
+function normalizeOwnerCheckinTime(value) {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value || "")) ? String(value) : "12:00";
+}
+
+function nextOwnerCheckinAt(cadence, now = new Date(), scheduleTime = "12:00") {
   const indiaOffsetMs = 5.5 * 60 * 60 * 1000;
   const indiaNow = new Date(now.getTime() + indiaOffsetMs);
+  const [hourText, minuteText] = normalizeOwnerCheckinTime(scheduleTime).split(":");
+  const scheduledMinutes = Number(hourText) * 60 + Number(minuteText);
   let year = indiaNow.getUTCFullYear();
   let month = indiaNow.getUTCMonth();
   let day = indiaNow.getUTCDate();
-  const noonPassed = indiaNow.getUTCHours() > 12 || (indiaNow.getUTCHours() === 12 && indiaNow.getUTCMinutes() >= 0);
+  const scheduledTimePassed = (indiaNow.getUTCHours() * 60 + indiaNow.getUTCMinutes()) >= scheduledMinutes;
   if (cadence === "monthly") {
     const firstSunday = (targetYear, targetMonth) => {
       const first = new Date(Date.UTC(targetYear, targetMonth, 1));
       return 1 + ((7 - first.getUTCDay()) % 7);
     };
     let targetDay = firstSunday(year, month);
-    if (day > targetDay || (day === targetDay && noonPassed)) {
+    if (day > targetDay || (day === targetDay && scheduledTimePassed)) {
       month += 1;
       if (month > 11) { month = 0; year += 1; }
       targetDay = firstSunday(year, month);
@@ -6764,13 +6795,13 @@ function nextOwnerCheckinAt(cadence, now = new Date()) {
     day = targetDay;
   } else {
     const daysUntilSunday = (7 - indiaNow.getUTCDay()) % 7;
-    const addDays = daysUntilSunday || (noonPassed ? 7 : 0);
+    const addDays = daysUntilSunday || (scheduledTimePassed ? 7 : 0);
     const target = new Date(Date.UTC(year, month, day + addDays));
     year = target.getUTCFullYear();
     month = target.getUTCMonth();
     day = target.getUTCDate();
   }
-  return new Date(Date.UTC(year, month, day, 6, 30, 0));
+  return new Date(Date.UTC(year, month, day, Number(hourText), Number(minuteText), 0) - indiaOffsetMs);
 }
 
 function defaultOwnerFailsafe() {

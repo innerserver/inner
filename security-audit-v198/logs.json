@@ -1,0 +1,187 @@
+[
+  {
+    "id": "00518652-ec7f-4951-aad3-3930fc1f0887",
+    "action": "login.failed",
+    "actor": "throttleprobe198",
+    "details": {
+      "reason": "Invalid username or password"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3101",
+    "createdAt": "2026-09-03T13:15:52.324Z"
+  },
+  {
+    "id": "07278dbb-b5ad-4579-ae82-ee87e6718f1d",
+    "action": "login.failed",
+    "actor": "throttleprobe198",
+    "details": {
+      "reason": "Invalid username or password"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3101",
+    "createdAt": "2026-09-03T13:15:52.318Z"
+  },
+  {
+    "id": "1798f61e-a7d8-407e-b142-14d9aafe18cf",
+    "action": "login.failed",
+    "actor": "throttleprobe198",
+    "details": {
+      "reason": "Invalid username or password"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3101",
+    "createdAt": "2026-09-03T13:15:52.311Z"
+  },
+  {
+    "id": "bc267b98-b29c-43b3-aea2-9f9b71bb813b",
+    "action": "login.failed",
+    "actor": "throttleprobe198",
+    "details": {
+      "reason": "Invalid username or password"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3101",
+    "createdAt": "2026-09-03T13:15:52.304Z"
+  },
+  {
+    "id": "bad24825-bbdb-416b-9f0d-909a738c5d60",
+    "action": "login.failed",
+    "actor": "throttleprobe198",
+    "details": {
+      "reason": "Invalid username or password"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3101",
+    "createdAt": "2026-09-03T13:15:52.259Z"
+  },
+  {
+    "id": "2aeb3bfb-85be-4718-8ea4-ce9d7d8b7a20",
+    "action": "message.sent",
+    "actor": "securitymember198",
+    "details": {
+      "roomId": "main",
+      "hasAttachment": false,
+      "mentions": []
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3101",
+    "createdAt": "2026-09-03T13:15:23.618Z"
+  },
+  {
+    "id": "67ff75d9-5288-4368-8d0a-9efdaf57d760",
+    "action": "login.success",
+    "actor": "securitymember198",
+    "details": {
+      "role": "member",
+      "persistent": true,
+      "persistentReason": "per-account enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3101",
+    "createdAt": "2026-09-03T13:15:23.528Z"
+  },
+  {
+    "id": "19b76a20-fc88-408e-8db1-8079b7afc577",
+    "action": "login.success",
+    "actor": "securitymember198",
+    "details": {
+      "role": "member",
+      "persistent": true,
+      "persistentReason": "per-account enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3101",
+    "createdAt": "2026-09-03T13:14:42.842Z"
+  },
+  {
+    "id": "53e96115-0ff8-46b0-b972-e141f94f5fe1",
+    "action": "login.success",
+    "actor": "securitymember198",
+    "details": {
+      "role": "member",
+      "persistent": true,
+      "persistentReason": "per-account enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3101",
+    "createdAt": "2026-09-03T13:14:12.825Z"
+  },
+  {
+    "id": "76db512a-8fc5-4e6f-8f5d-bc9ed9b908ed",
+    "action": "login.success",
+    "actor": "securitymember198",
+    "details": {
+      "role": "member",
+      "persistent": true,
+      "persistentReason": "per-account enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3101",
+    "createdAt": "2026-09-03T13:13:40.250Z"
+  },
+  {
+    "id": "4ef989c9-fca0-449f-a92f-89234cd969fe",
+    "action": "login.success",
+    "actor": "securitymember198",
+    "details": {
+      "role": "member",
+      "persistent": true,
+      "persistentReason": "per-account enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3101",
+    "createdAt": "2026-09-03T13:13:29.928Z"
+  },
+  {
+    "id": "29b315ed-3085-453e-b500-44b8310b5328",
+    "action": "login.success",
+    "actor": "securitymember198",
+    "details": {
+      "role": "member",
+      "persistent": true,
+      "persistentReason": "per-account enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3101",
+    "createdAt": "2026-09-03T13:13:10.960Z"
+  },
+  {
+    "id": "428d98a0-a37b-41a3-bbfc-3ed6e32a4058",
+    "action": "email.queued",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi signup successful",
+      "recipients": [
+        "securitymember198@example.test"
+      ],
+      "reason": "No email provider configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-09-03T13:13:10.879Z"
+  },
+  {
+    "id": "ea6fd740-4e96-4427-911a-c845bb2edfb7",
+    "action": "email.skipped",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi open signup",
+      "reason": "No recipients configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-09-03T13:13:10.875Z"
+  },
+  {
+    "id": "75fd3da7-7391-440a-a21c-7bd45c9a517d",
+    "action": "account.signup.created",
+    "actor": "securitymember198",
+    "details": {
+      "sourceIp": "127.0.0.1",
+      "contact": "securitymember198@example.test"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3101",
+    "createdAt": "2026-09-03T13:13:10.871Z"
+  }
+]

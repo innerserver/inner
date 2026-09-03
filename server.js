@@ -103,7 +103,7 @@ const MESSAGE_STORE_LIMIT = Math.max(500, Number(firstEnvValue("INNER_MESSAGE_ST
 const DM_STORE_LIMIT = Math.max(500, Number(firstEnvValue("INNER_DM_STORE_LIMIT", "DM_STORE_LIMIT") || 5000));
 const SESSION_COOKIE = "server_app_session";
 const SESSION_IDLE_MS = Math.max(60 * 60 * 1000, Number(process.env.INNER_SESSION_IDLE_MS || 12 * 60 * 60 * 1000));
-const SESSION_PERSISTENT_MS = 180 * 24 * 60 * 60 * 1000;
+const SESSION_PERSISTENT_MS = Math.max(24 * 60 * 60 * 1000, Number(process.env.INNER_SESSION_PERSISTENT_MS || 30 * 24 * 60 * 60 * 1000));
 const sessions = new Map();
 const wsClients = new Map();
 const httpRealtimeClients = new Map();
@@ -113,6 +113,7 @@ const HTTP_REALTIME_EVENT_TTL_MS = Math.max(15000, Number(process.env.INNER_HTTP
 let wsHeartbeatTimer = null;
 let ownerCheckinTimer = null;
 const messageRateLimits = new Map();
+const loginRateLimits = new Map();
 const banExpiryTimers = new Map();
 const serverStartedAt = new Date().toISOString();
 const persistence = {
@@ -867,6 +868,7 @@ async function ensureJson(file, fallback) {
 }
 
 async function route(req, res) {
+  applySecurityHeaders(req, res);
   if (shouldRedirectToHttps(req)) {
     return redirectToHttps(req, res);
   }
@@ -874,11 +876,11 @@ async function route(req, res) {
   const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
   const pathname = decodeURIComponent(requestUrl.pathname);
 
-  if (req.method === "GET" && pathname === "/") {
-    return serveStatic(res, path.join(PUBLIC_DIR, "index.html"));
+  if ((req.method === "GET" || req.method === "HEAD") && pathname === "/") {
+    return serveStatic(req, res, path.join(PUBLIC_DIR, "index.html"));
   }
 
-  if (req.method === "GET" && pathname === "/accessibility.html") {
+  if ((req.method === "GET" || req.method === "HEAD") && pathname === "/accessibility.html") {
     res.writeHead(302, {
       Location: "/contact.html",
       "Cache-Control": "no-store",
@@ -897,20 +899,15 @@ async function route(req, res) {
     return serveUpload(req, res, pathname, user);
   }
 
-  if (req.method === "GET") {
+  if (req.method === "GET" || req.method === "HEAD") {
     const safePath = safeJoin(PUBLIC_DIR, pathname);
     if (!safePath) return text(res, 404, "Not found");
     try {
       const stat = await fsp.stat(safePath);
-      if (stat.isFile()) return serveStatic(res, safePath);
+      if (stat.isFile()) return serveStatic(req, res, safePath);
     } catch (error) {
-      // Fall through to the SPA shell for client-side routes.
+      // Unknown paths must remain observable as real 404s.
     }
-
-    if (!path.extname(pathname)) {
-      return serveStatic(res, path.join(PUBLIC_DIR, "index.html"));
-    }
-
     return text(res, 404, "Not found");
   }
 
@@ -920,13 +917,23 @@ async function route(req, res) {
 async function routeApi(req, res, requestUrl) {
   const pathname = requestUrl.pathname;
 
+  if (requiresCsrfProtection(req) && getCookie(req, SESSION_COOKIE) && !isSameOriginRequest(req)) {
+    return json(res, 403, { error: "Cross-site request blocked" });
+  }
+
   if (req.method === "POST" && pathname === "/api/login") {
     const body = await readJsonBody(req);
+    const loginLimit = checkLoginRate(req, body.username);
+    if (loginLimit.retryAfterSeconds > 0) {
+      res.setHeader("Retry-After", String(loginLimit.retryAfterSeconds));
+      return json(res, 429, { error: "Too many sign-in attempts. Please try again later." });
+    }
     const users = await readJson(FILES.users, []);
     if (clearExpiredUserRestrictions(users)) await writeJson(FILES.users, users);
     const user = users.find((entry) => entry.username.toLowerCase() === String(body.username || "").toLowerCase());
 
     if (!user || !(await verifyPasswordAsync(String(body.password || ""), user.passwordHash))) {
+      registerLoginFailure(req, body.username);
       const requestLogin = await requestLoginStatus(String(body.username || ""), String(body.password || ""));
       if (requestLogin) {
         return json(res, 403, { error: requestLogin.message, requestStatus: requestLogin.status });
@@ -946,6 +953,8 @@ async function routeApi(req, res, requestUrl) {
       }
       return json(res, 401, { error: "Invalid username or password" });
     }
+
+    clearLoginFailures(req, body.username);
 
     const requestBlock = await requestLoginBlockForExistingUser(user);
     if (requestBlock) {
@@ -1700,7 +1709,8 @@ async function routeApi(req, res, requestUrl) {
         ...message,
         roomId: message.roomId || "main",
       }))
-      .filter((message) => canManage(user) || accessibleRoomIds.has(message.roomId || "main"));
+      .filter((message) => canManage(user) || accessibleRoomIds.has(message.roomId || "main"))
+      .map((message) => safeRoomMessage(message, user));
     const visibleDms = (canManage(user)
       ? dms
       : dms.filter((entry) => Array.isArray(entry.participants) && entry.participants.includes(user.username)))
@@ -1723,8 +1733,8 @@ async function routeApi(req, res, requestUrl) {
       aiRequests: canManage(user) && !fastState ? aiRequests.slice(-100) : [],
       aiConfigured: canManage(user) && !fastState ? Boolean(resolveAiConfig(aiConfig).apiKey) : false,
       emailStatus: canManage(user) && !fastState ? emailProviderStatus() : null,
-      vpn: safeVpn(vpn),
-      locations: vpnLocations,
+      vpn: canOwn(user) ? safeVpn(vpn) : { enabled: Boolean(vpn.enabled), location: String(vpn.location || "") },
+      locations: canOwn(user) ? vpnLocations : [],
       users: canManage(user) ? users.map((entry) => safeUser(entry, user)) : [],
       people: users.map((entry) => publicUser(entry, profiles[entry.username])),
       backups: fastState ? [] : backups,
@@ -1740,9 +1750,9 @@ async function routeApi(req, res, requestUrl) {
         ? await buildDevState({ settings, rooms, messages, dms, dmGroups, files, accountRequests, users, store, reports, moderationLogs, logs, devConfig, bots, plugins, automod })
         : null,
       voiceRooms,
-      bots: fastState ? [] : bots,
-      plugins: fastState ? [] : plugins,
-      automod: fastState ? {} : automod,
+      bots: canDev(user) && !fastState ? bots : [],
+      plugins: canDev(user) && !fastState ? plugins : [],
+      automod: canUseModerationCapability(user, settings, "auto-moderation") && !fastState ? automod : {},
       announcements: safeAnnouncements(announcements, user, rooms),
       presence: presenceList(profiles, user, users, friends),
     });
@@ -3436,6 +3446,7 @@ async function routeApi(req, res, requestUrl) {
     const users = await readJson(FILES.users, []);
     const matches = users
       .filter((entry) => [entry.username, entry.email, entry.displayName].some((value) => String(value || "").toLowerCase().includes(query)))
+      .filter((entry) => canOwn(user) || !canOwn(entry))
       .slice(0, 30)
       .map((entry) => safeUser(entry, user));
     return json(res, 200, { users: matches });
@@ -5693,6 +5704,55 @@ function getCookie(req, name) {
   return "";
 }
 
+function applySecurityHeaders(req, res) {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "geolocation=(self), camera=(self), microphone=(self), display-capture=(self), payment=()");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Content-Security-Policy", "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' ws: wss: https:; frame-src 'self' https: http:");
+  if (isHttpsRequest(req)) res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+}
+
+function requiresCsrfProtection(req) {
+  return !["GET", "HEAD", "OPTIONS"].includes(String(req.method || "").toUpperCase());
+}
+
+function isSameOriginRequest(req) {
+  const requestHost = String(req.headers.host || "").toLowerCase();
+  const source = String(req.headers.origin || req.headers.referer || "").trim();
+  if (!source) return true;
+  try {
+    return new URL(source).host.toLowerCase() === requestHost;
+  } catch (error) {
+    return false;
+  }
+}
+
+function loginRateKey(req, username) {
+  return `${normalizeIpAddress(getClientIp(req)) || "unknown"}:${normalizeUsername(username) || "unknown"}`;
+}
+
+function checkLoginRate(req, username) {
+  const entry = loginRateLimits.get(loginRateKey(req, username));
+  const now = Date.now();
+  if (!entry || entry.blockedUntil <= now) return { retryAfterSeconds: 0 };
+  return { retryAfterSeconds: Math.max(1, Math.ceil((entry.blockedUntil - now) / 1000)) };
+}
+
+function registerLoginFailure(req, username) {
+  const key = loginRateKey(req, username);
+  const now = Date.now();
+  const previous = loginRateLimits.get(key);
+  const withinWindow = previous && now - previous.firstAttemptAt <= 15 * 60 * 1000;
+  const failures = (withinWindow ? previous.failures : 0) + 1;
+  const cooldownMs = failures >= 8 ? 15 * 60 * 1000 : failures >= 5 ? 60 * 1000 : 0;
+  loginRateLimits.set(key, { firstAttemptAt: withinWindow ? previous.firstAttemptAt : now, failures, blockedUntil: now + cooldownMs });
+}
+
+function clearLoginFailures(req, username) {
+  loginRateLimits.delete(loginRateKey(req, username));
+}
+
 function sessionCookie(value, req, maxAgeSeconds = null) {
   const parts = [`${SESSION_COOKIE}=${encodeURIComponent(value)}`, "HttpOnly", "SameSite=Lax", "Path=/"];
   if (maxAgeSeconds !== null) parts.push(`Max-Age=${Math.max(0, Number(maxAgeSeconds) || 0)}`);
@@ -5733,6 +5793,7 @@ function firstForwardedValue(value) {
 
 function safeUser(user, viewer = null) {
   const ownerView = canOwn(viewer);
+  const selfView = Boolean(viewer && String(viewer.username || "").toLowerCase() === String(user.username || "").toLowerCase());
   const safe = {
     username: user.username,
     role: effectiveRole(user),
@@ -5746,9 +5807,9 @@ function safeUser(user, viewer = null) {
     banned: isUserBanned(user),
     allowPersistentLogin: Boolean(user.allowPersistentLogin),
     locked: Boolean(user.locked),
-    contact: user.contact || "",
-    email: user.email || "",
-    phone: user.phone || "",
+    contact: ownerView || selfView ? user.contact || "" : "",
+    email: ownerView || selfView ? user.email || "" : "",
+    phone: ownerView || selfView ? user.phone || "" : "",
     grade: normalizeGrade(user.grade || ""),
     gradeUpdatedAt: user.gradeUpdatedAt || "",
     contactUpdatedAt: user.contactUpdatedAt || "",
@@ -5857,10 +5918,23 @@ function safeProfiles(profiles, users, viewer) {
       ...defaultProfile(user.username),
       ...(profiles[user.username] || {}),
     });
+    const ownProfile = viewer && viewer.username === user.username;
+    if (ownProfile || canOwn(viewer)) {
+      result[user.username] = {
+        ...profile,
+        status: profile.invisible && !ownProfile ? "offline" : profile.status,
+        invisible: ownProfile ? profile.invisible : false,
+      };
+      continue;
+    }
     result[user.username] = {
-      ...profile,
-      status: profile.invisible && (!viewer || viewer.username !== user.username) ? "offline" : profile.status,
-      invisible: viewer && viewer.username === user.username ? profile.invisible : false,
+      displayName: profile.displayName,
+      avatarUrl: profile.avatarUrl,
+      bannerUrl: profile.bannerUrl,
+      badges: profile.badges,
+      customStatus: profile.customStatus,
+      status: profile.invisible ? "offline" : profile.status,
+      grade: profile.grade,
     };
   }
   return result;
@@ -6183,6 +6257,34 @@ function safeFileRecords(files, user, rooms = []) {
   return (files || [])
     .filter((file) => canAccessFileRecord(file, user, rooms))
     .map((file) => safeFileRecord(file, user));
+}
+
+function safeRoomMessage(message, viewer) {
+  const safe = {
+    id: String(message.id || ""),
+    roomId: String(message.roomId || "main"),
+    parentId: String(message.parentId || ""),
+    text: String(message.text || ""),
+    attachment: message.attachment || null,
+    mentions: Array.isArray(message.mentions) ? message.mentions.map((entry) => String(entry || "")).filter(Boolean).slice(0, 50) : [],
+    reactions: message.reactions && typeof message.reactions === "object" ? message.reactions : {},
+    user: String(message.user || ""),
+    status: String(message.status || ""),
+    localId: String(message.localId || ""),
+    pinned: Boolean(message.pinned),
+    pinnedAt: String(message.pinnedAt || ""),
+    pinnedBy: String(message.pinnedBy || ""),
+    createdAt: String(message.createdAt || ""),
+    editedAt: String(message.editedAt || ""),
+  };
+  if (canOwn(viewer)) {
+    safe.sourceIp = String(message.sourceIp || "");
+    safe.sourceHost = String(message.sourceHost || "");
+    safe.sourceAgent = String(message.sourceAgent || "");
+    safe.sourceDevice = String(message.sourceDevice || "");
+    safe.approximateLocation = message.approximateLocation || null;
+  }
+  return safe;
 }
 
 function sanitizeInnerDoc(doc) {
@@ -6714,16 +6816,25 @@ function normalizeAccountRequestStatus(status) {
 }
 
 function safeSettings(settings, viewer = null) {
+  const source = { ...(settings || {}) };
+  if (!canOwn(viewer)) {
+    [
+      "ownerFailsafe", "ownerCheckin", "emailRoutes", "emailContacts", "adminContactEmail",
+      "delegatedAdminFeatures", "ai", "aiConfig", "apiKey", "smtp", "smtpConfig",
+      "backup", "backups", "storage", "storageConfig", "serviceScale", "devConfig",
+      "reportEmails", "strikeEmails", "moderationSettings", "nonOwnerAdminFeatures",
+    ].forEach((key) => delete source[key]);
+  }
   return {
-    ...settings,
-    ownerFailsafe: safeOwnerFailsafe(settings.ownerFailsafe),
-    ownerCheckin: safeOwnerCheckin(settings.ownerCheckin, viewer),
-    emailRoutes: sanitizeEmailRoutes(settings.emailRoutes || {}),
-    emailContacts: sanitizeEmailContacts(settings.emailContacts || {}),
+    ...source,
+    ownerFailsafe: canOwn(viewer) ? safeOwnerFailsafe(settings.ownerFailsafe) : undefined,
+    ownerCheckin: canOwn(viewer) ? safeOwnerCheckin(settings.ownerCheckin, viewer) : undefined,
+    emailRoutes: canOwn(viewer) ? sanitizeEmailRoutes(settings.emailRoutes || {}) : undefined,
+    emailContacts: canOwn(viewer) ? sanitizeEmailContacts(settings.emailContacts || {}) : undefined,
     acceptedEmailDomains: sanitizeAcceptedEmailDomains(settings.acceptedEmailDomains || []),
     gameLinks: sanitizeGameLinks(settings.gameLinks || []),
     customizations: sanitizeCustomizations(settings.customizations || {}),
-    serviceScale: sanitizeServiceScale(settings.serviceScale || {}),
+    serviceScale: canOwn(viewer) ? sanitizeServiceScale(settings.serviceScale || {}) : undefined,
     persistentLogin: sanitizePersistentLogin(settings.persistentLogin || {}),
     featureLocks: visibleFeatureLocks(settings.featureLocks || {}),
     featureVisibility: sanitizeFeatureVisibility(settings.featureVisibility || {}),
@@ -6735,7 +6846,7 @@ function safeSettings(settings, viewer = null) {
     shutdownAt: settings.serverEnabled === false ? String(settings.shutdownAt || "") : "",
     shutdownBy: settings.serverEnabled === false ? String(settings.shutdownBy || "") : "",
     shutdownReason: settings.serverEnabled === false ? String(settings.shutdownReason || "") : "",
-    delegatedAdminFeatures: canOwn(viewer) ? sanitizeDelegatedAdminFeatures(settings.delegatedAdminFeatures || {}) : {},
+    delegatedAdminFeatures: canOwn(viewer) ? sanitizeDelegatedAdminFeatures(settings.delegatedAdminFeatures || {}) : undefined,
     moderationCapabilities: canModerate(viewer)
       ? ["strikes", "room-controls", "reports", "audit-logs", "member-actions", "content-moderation", "account-requests", "account-management", "live-ip-tracking", "announcements", "store-management", "auto-moderation", "voice-management", "service-scaling", "system-logs"].filter((capability) => canUseModerationCapability(viewer, settings, capability))
       : [],
@@ -9505,7 +9616,7 @@ function text(res, status, payload) {
   res.end(payload);
 }
 
-async function serveStatic(res, filePath) {
+async function serveStatic(req, res, filePath) {
   const safePath = safeJoin(PUBLIC_DIR, path.relative(PUBLIC_DIR, filePath));
   if (!safePath) return text(res, 404, "Not found");
   try {
@@ -9516,6 +9627,7 @@ async function serveStatic(res, filePath) {
       "Content-Type": mimeTypes[extension] || "application/octet-stream",
       "Cache-Control": "no-cache",
     });
+    if (req.method === "HEAD") return res.end();
     fs.createReadStream(safePath).pipe(res);
   } catch (error) {
     text(res, 404, "Not found");

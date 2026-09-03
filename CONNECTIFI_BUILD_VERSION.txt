@@ -1,8 +1,9 @@
-Connectifi build v196
+Connectifi build v198
 Released: 2026-09-03
 
 Changes in this package:
-- Completed a final isolated-server audit of login, signup, authentication, authorization, and load behavior.
-- Fixed the Messages and DMs layout so headers, tools, call controls, message lists, and composers always occupy explicit grid rows.
-- Removed the competing sticky composer behavior on small screens that could overlap message content.
-- Preserved the existing sidebar, application routes, APIs, account permissions, and feature behavior.
+- Added server-enforced hostile-origin rejection for cookie-authenticated writes.
+- Added core browser security headers, static HEAD support, and real 404 responses for unknown paths.
+- Added login rate limiting and reduced the default persistent-session lifetime to 30 days (configurable by environment).
+- Scoped lower-privilege state payloads to remove sensitive settings, location arrays, contact fields, and message source metadata.
+- Removed stale localStorage-based client-side admin gating and aligned the PWA start URL/cache version.

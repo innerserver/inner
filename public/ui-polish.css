@@ -723,6 +723,44 @@ summary:focus-visible {
   }
 }
 
+/* Message cards are also used by the Secret and owner review views.  Keep
+   their controls in ordinary document flow so long reaction rows never paint
+   across the next card. */
+.message {
+  display: block !important;
+  position: relative !important;
+  min-width: 0 !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.message > .message-meta,
+.message > .message-text,
+.message > .message-attachment,
+.message > .message-actions,
+.message > .read-receipt {
+  position: static !important;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.message > .message-actions {
+  display: flex !important;
+  flex-flow: row wrap !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  margin-top: 10px !important;
+  clear: both;
+}
+
+.message > .message-actions > button,
+.message > .message-actions > a {
+  position: static !important;
+  flex: 0 0 auto !important;
+  max-width: 100%;
+}
+
 @media (max-width: 480px) {
   .login-shell {
     padding-inline: 0 !important;

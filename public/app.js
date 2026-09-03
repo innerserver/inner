@@ -10262,7 +10262,7 @@ function canViewAuditLogs() {
 
 function canUseModeratorCapability(capability) {
   if (!isModerator()) return false;
-  if (hasBuiltInControlAccess() || String(state.user && state.user.role || "").toLowerCase() !== "admin" || isOwner()) return true;
+  if (hasBuiltInControlAccess() || isOwner()) return true;
   const capabilities = state.settings && Array.isArray(state.settings.moderationCapabilities)
     ? state.settings.moderationCapabilities
     : [];

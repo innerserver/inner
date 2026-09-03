@@ -1,9 +1,6 @@
-Connectifi build v198
+Connectifi build v199
 Released: 2026-09-03
 
 Changes in this package:
-- Added server-enforced hostile-origin rejection for cookie-authenticated writes.
-- Added core browser security headers, static HEAD support, and real 404 responses for unknown paths.
-- Added login rate limiting and reduced the default persistent-session lifetime to 30 days (configurable by environment).
-- Scoped lower-privilege state payloads to remove sensitive settings, location arrays, contact fields, and message source metadata.
-- Removed stale localStorage-based client-side admin gating and aligned the PWA start URL/cache version.
+- Fixed the DM message renderer so owner Delete, Edit, Pin, and retry controls use one in-card action row.
+- Preserved the security hardening from v198 and bumped client/PWA cache versions so the renderer update loads immediately.

@@ -5667,8 +5667,14 @@ function renderDmsInner() {
       bubble.append(pinned);
     }
     if (dm.from === state.user.username || dm.status === "failed" || !dm.local) {
-      const extraActions = document.createElement("div");
-      extraActions.className = "message-actions";
+      // renderMessageBubble may already have added the owner Delete action.
+      // Keep every DM action in that same row so a second row cannot escape
+      // the bubble when the conversation is constrained vertically.
+      const extraActions = bubble.querySelector(".message-actions") || document.createElement("div");
+      if (!extraActions.parentElement) {
+        extraActions.className = "message-actions";
+        bubble.append(extraActions);
+      }
       if (dm.from === state.user.username && !dm.local) extraActions.append(accountButton("Edit", () => editDm(dm.id, dm.text)));
       if (dm.status === "failed" && dm.localId) extraActions.append(accountButton("Retry", () => retryPending(dm.localId)));
       if (!dm.local) {
@@ -5676,7 +5682,6 @@ function renderDmsInner() {
         pinButton.disabled = Boolean(dm.pinned) && !canUseModeratorCapability("content-moderation");
         extraActions.append(pinButton);
       }
-      bubble.append(extraActions);
     }
     els.dmList.append(bubble);
   });

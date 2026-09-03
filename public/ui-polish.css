@@ -203,6 +203,72 @@ summary:focus-visible {
   font-weight: 800;
 }
 
+/* Keep related places together without changing their existing routes. */
+#appView .nav-group {
+  display: grid;
+  gap: 3px;
+  margin: 2px 0;
+}
+
+#appView .nav-group-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--ink);
+  background: transparent;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 760;
+  text-align: left;
+  cursor: pointer;
+}
+
+#appView .nav-group-toggle:hover,
+#appView .nav-group.contains-active-view .nav-group-toggle {
+  background: var(--surface-muted);
+}
+
+#appView .nav-group.contains-active-view .nav-group-toggle {
+  color: var(--accent);
+}
+
+#appView .nav-group-chevron {
+  width: 8px;
+  height: 8px;
+  margin-right: 3px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 150ms ease;
+}
+
+#appView .nav-group.is-open .nav-group-chevron {
+  transform: rotate(225deg) translate(-2px, -2px);
+}
+
+#appView .nav-submenu {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 3px 14px;
+  padding: 3px 0 3px 10px;
+  border-left: 1px solid var(--ui-card-line);
+}
+
+#appView .nav-submenu[hidden] {
+  display: none !important;
+}
+
+#appView .nav-submenu .nav-button {
+  min-height: 36px;
+  padding-block: 7px;
+  font-size: 0.86rem;
+}
+
 #appView .sidebar-footer {
   margin: 10px 4px 0;
   padding: 16px 4px 2px;
@@ -895,6 +961,76 @@ summary:focus-visible {
   overflow-wrap: anywhere;
 }
 
+/* Account actions stay complete, but are grouped by intent instead of becoming
+   an unreadable wall of equally weighted controls. */
+#adminView #accountManager .compact-account-list .account-card {
+  grid-template-columns: minmax(180px, 0.58fr) minmax(0, 1.42fr) !important;
+  gap: 14px 24px !important;
+}
+
+#adminView #accountManager .account-action-groups {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 8px;
+  min-width: 0;
+}
+
+#adminView #accountManager .account-action-group {
+  min-width: 0;
+  border: 1px solid var(--ui-card-line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 96%, var(--accent-soft));
+}
+
+#adminView #accountManager .account-action-group > summary {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 14px;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+
+#adminView #accountManager .account-action-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+#adminView #accountManager .account-action-group > summary::after {
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  content: "";
+  transform: rotate(45deg) translateY(-2px);
+}
+
+#adminView #accountManager .account-action-group[open] > summary {
+  border-bottom: 1px solid var(--ui-card-line);
+  color: var(--accent);
+}
+
+#adminView #accountManager .account-action-group[open] > summary::after {
+  transform: rotate(225deg) translate(-2px, -2px);
+}
+
+#adminView #accountManager .account-action-group .account-actions {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) !important;
+  gap: 8px !important;
+  padding: 12px !important;
+}
+
+#adminView #accountManager .account-action-group .account-actions > * {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 38px !important;
+  padding: 7px 9px !important;
+}
+
 @media (max-width: 1280px) {
   #adminView #accountManager .account-search-row {
     grid-template-columns: auto auto minmax(0, 1fr) minmax(0, 1fr) !important;
@@ -937,6 +1073,10 @@ summary:focus-visible {
   #adminView #accountManager .account-actions {
     grid-column: auto;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #adminView #accountManager .account-action-group .account-actions {
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 }
 

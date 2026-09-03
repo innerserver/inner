@@ -1,9 +1,9 @@
-Connectifi build v191
+Connectifi build v192
 Released: 2026-09-03
 
 Changes in this package:
-- Fixed the moderator workspace grid so the sticky room rail never overlays reports, logs, strikes, or account controls.
-- Preserved the moderator room list while giving its work area a stable dedicated column on desktop and a single-column mobile layout.
-- Added an owner-only IST delivery-time setting for the Sunday operational check-in email.
-- Check-in scheduling is persisted, audited, and respects weekly or monthly cadence.
-- Refreshed client asset versions so the corrected moderator UI loads instead of a cached stylesheet.
+- Grouped navigation into expandable Messages, Work & files, and Communication sections while preserving every existing route.
+- Calls and screen sharing now live under Communication; room and direct messages live under Messages; Files and Google Workspace live under Work & files.
+- Rebuilt the owner account-management presentation into readable Account access, Temporary access, and Safety and strikes sections without removing controls.
+- Improved small-screen behavior for account actions and expandable navigation.
+- Preserved the owner-only IST delivery-time setting for operational check-in email.

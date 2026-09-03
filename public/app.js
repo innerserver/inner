@@ -1004,6 +1004,7 @@ function bindEvents() {
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.addEventListener("click", handleNavButton);
   });
+  setupNavigationGroups();
   document.addEventListener("click", handleNavButton, true);
   document.addEventListener("pointerup", handleNavButton, true);
   document.addEventListener("keydown", (event) => {
@@ -1491,6 +1492,7 @@ function showView(viewName, options = {}) {
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === viewName);
   });
+  syncNavigationGroups(viewName);
   document.querySelectorAll(".view").forEach((view) => {
     view.classList.toggle("active", view.id === `${viewName}View`);
   });
@@ -1500,6 +1502,42 @@ function showView(viewName, options = {}) {
     }, 0);
   }
   if (window.matchMedia("(max-width: 920px)").matches) closeSidebar();
+}
+
+function setupNavigationGroups() {
+  document.querySelectorAll(".nav-group-toggle").forEach((toggle) => {
+    const group = toggle.closest(".nav-group");
+    const submenu = group && group.querySelector(".nav-submenu");
+    if (!group || !submenu) return;
+    const key = `connectifi.nav-group.${group.dataset.navGroup || ""}`;
+    const saved = window.localStorage.getItem(key);
+    const expanded = saved === "open";
+    group.classList.toggle("is-open", expanded);
+    submenu.hidden = !expanded;
+    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+    toggle.addEventListener("click", () => {
+      const next = !group.classList.contains("is-open");
+      group.classList.toggle("is-open", next);
+      submenu.hidden = !next;
+      toggle.setAttribute("aria-expanded", next ? "true" : "false");
+      window.localStorage.setItem(key, next ? "open" : "closed");
+    });
+  });
+  syncNavigationGroups(state.activeView);
+}
+
+function syncNavigationGroups(activeView) {
+  document.querySelectorAll(".nav-group").forEach((group) => {
+    const containsActiveView = Boolean(group.querySelector(`.nav-button[data-view="${activeView}"]`));
+    group.classList.toggle("contains-active-view", containsActiveView);
+    if (!containsActiveView) return;
+    const submenu = group.querySelector(".nav-submenu");
+    const toggle = group.querySelector(".nav-group-toggle");
+    if (!submenu || !toggle) return;
+    group.classList.add("is-open");
+    submenu.hidden = false;
+    toggle.setAttribute("aria-expanded", "true");
+  });
 }
 
 async function sendMessage(event) {
@@ -4947,7 +4985,7 @@ function renderDashboardReportAlerts() {
     );
     card.classList.add("report-dashboard-alert", "dashboard-report-card");
     const actions = document.createElement("div");
-    actions.className = "account-actions";
+    actions.className = "account-action-groups";
     actions.append(
       accountButton("Mark seen", () => updateReport(report.id, "reviewing")),
       accountButton("Done", () => updateReport(report.id, "done"))
@@ -7051,7 +7089,7 @@ function renderUsers() {
     meta.append(textNode(`Strikes ${user.strikeCount || 0}`));
 
     const actions = document.createElement("div");
-    actions.className = "account-actions";
+    actions.className = "account-action-groups";
     const gradeSelect = document.createElement("select");
     gradeSelect.className = "compact-select account-grade-select";
     gradeSelect.setAttribute("aria-label", `Grade for ${user.username}`);
@@ -7104,7 +7142,11 @@ function renderUsers() {
     strike.disabled = isMainAdmin && !isOwner();
     removeLatestStrike.disabled = !Array.isArray(user.strikes) || !user.strikes.length;
     clearStrikes.disabled = !Array.isArray(user.strikes) || !user.strikes.length;
-    actions.append(gradeSelect, gradeButton, roleButton, makeAdmin, persistentButton, detailsButton, detailTabButton, tempAdminHour, tempAdminDay, clearTempAdmin, strike, removeLatestStrike, clearStrikes, banFive, banShort, banHour, banDay, unban, remove);
+    actions.append(
+      accountActionGroup("Account access", [gradeSelect, gradeButton, roleButton, makeAdmin, persistentButton, detailsButton, detailTabButton], true),
+      accountActionGroup("Temporary access", [tempAdminHour, tempAdminDay, clearTempAdmin], Boolean(user.tempAdminUntil)),
+      accountActionGroup("Safety and strikes", [strike, removeLatestStrike, clearStrikes, banFive, banShort, banHour, banDay, unban, remove], false)
+    );
 
     item.append(head, meta, actions);
     els.accountList.append(item);
@@ -9023,6 +9065,19 @@ function accountButton(label, onClick) {
   button.textContent = label;
   button.addEventListener("click", onClick);
   return button;
+}
+
+function accountActionGroup(title, controls, open = false) {
+  const group = document.createElement("details");
+  group.className = "account-action-group";
+  group.open = open;
+  const summary = document.createElement("summary");
+  summary.textContent = title;
+  const actions = document.createElement("div");
+  actions.className = "account-actions";
+  actions.append(...controls);
+  group.append(summary, actions);
+  return group;
 }
 
 function gradeOptions() {

@@ -1,0 +1,67 @@
+[
+  {
+    "id": "ba39dbdb-c28f-49ce-ba66-698462166066",
+    "action": "message.sent",
+    "actor": "dto-member-200",
+    "details": {
+      "roomId": "main",
+      "hasAttachment": false,
+      "mentions": []
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3102",
+    "createdAt": "2026-09-03T16:11:52.084Z"
+  },
+  {
+    "id": "fe285393-1a94-49b8-83d1-fea79cbabd09",
+    "action": "login.success",
+    "actor": "dto-member-200",
+    "details": {
+      "role": "member",
+      "persistent": true,
+      "persistentReason": "per-account enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3102",
+    "createdAt": "2026-09-03T16:11:52.066Z"
+  },
+  {
+    "id": "149e89e3-3cdf-4ac0-a643-0b3b7da5a61d",
+    "action": "email.queued",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi signup successful",
+      "recipients": [
+        "dto-member-200@example.test"
+      ],
+      "reason": "No email provider configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-09-03T16:11:51.905Z"
+  },
+  {
+    "id": "4a3b6a08-9629-477a-89ca-7f5c9c09c3c3",
+    "action": "email.skipped",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi open signup",
+      "reason": "No recipients configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-09-03T16:11:51.899Z"
+  },
+  {
+    "id": "ce56e375-8beb-476b-8288-08b41e3fce85",
+    "action": "account.signup.created",
+    "actor": "dto-member-200",
+    "details": {
+      "sourceIp": "127.0.0.1",
+      "contact": "dto-member-200@example.test"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3102",
+    "createdAt": "2026-09-03T16:11:51.888Z"
+  }
+]

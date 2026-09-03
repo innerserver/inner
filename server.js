@@ -1714,7 +1714,8 @@ async function routeApi(req, res, requestUrl) {
     const visibleDms = (canManage(user)
       ? dms
       : dms.filter((entry) => Array.isArray(entry.participants) && entry.participants.includes(user.username)))
-      .filter((entry) => !entry.secret);
+      .filter((entry) => !entry.secret)
+      .map((entry) => safeDm(entry, user));
     return json(res, 200, {
       user: safeUser(user, user),
       settings: safeSettings(settings, user),
@@ -6223,9 +6224,8 @@ function safeSecretMessages(messages, user, settings = {}) {
       user: message.user,
       attachment: message.attachment || null,
       reactions: message.reactions || {},
-      sourceIp: canOwn(user) ? message.sourceIp || "" : "",
-      sourceAgent: canOwn(user) ? message.sourceAgent || "" : "",
       createdAt: message.createdAt || "",
+      ...(canOwn(user) ? { sourceIp: message.sourceIp || "", sourceAgent: message.sourceAgent || "" } : {}),
     }));
 }
 
@@ -6234,23 +6234,38 @@ function safeSecretDms(dms, user, settings = {}) {
   return (dms || [])
     .filter((dm) => Boolean(dm && dm.secret))
     .filter((dm) => canOwn(user) || (Array.isArray(dm.participants) && dm.participants.includes(user.username)))
-    .map((dm) => ({
-      id: dm.id,
-      kind: dm.kind || "direct",
-      from: dm.from || "",
-      to: dm.to || "",
-      groupId: dm.groupId || "",
-      groupName: dm.groupName || "",
-      participants: Array.isArray(dm.participants) ? dm.participants : [],
-      text: dm.text || "",
-      attachment: dm.attachment || null,
-      pinned: Boolean(dm.pinned),
-      pinnedAt: dm.pinnedAt || "",
-      pinnedBy: dm.pinnedBy || "",
-      sourceIp: canOwn(user) ? dm.sourceIp || "" : "",
-      sourceAgent: canOwn(user) ? dm.sourceAgent || "" : "",
-      createdAt: dm.createdAt || "",
-    }));
+    .map((dm) => safeDm(dm, user));
+}
+
+function safeDm(dm, viewer) {
+  const safe = {
+    id: String(dm.id || ""),
+    kind: String(dm.kind || "direct"),
+    from: String(dm.from || ""),
+    to: String(dm.to || ""),
+    groupId: String(dm.groupId || ""),
+    groupName: String(dm.groupName || ""),
+    participants: Array.isArray(dm.participants) ? dm.participants.map((entry) => String(entry || "")).filter(Boolean).slice(0, 100) : [],
+    text: String(dm.text || ""),
+    attachment: dm.attachment || null,
+    reactions: dm.reactions && typeof dm.reactions === "object" ? dm.reactions : {},
+    pinned: Boolean(dm.pinned),
+    pinnedAt: String(dm.pinnedAt || ""),
+    pinnedBy: String(dm.pinnedBy || ""),
+    createdAt: String(dm.createdAt || ""),
+    editedAt: String(dm.editedAt || ""),
+    status: String(dm.status || ""),
+    localId: String(dm.localId || ""),
+    secret: Boolean(dm.secret),
+  };
+  if (canOwn(viewer)) {
+    safe.sourceIp = String(dm.sourceIp || "");
+    safe.sourceHost = String(dm.sourceHost || "");
+    safe.sourceAgent = String(dm.sourceAgent || "");
+    safe.sourceDevice = String(dm.sourceDevice || "");
+    safe.approximateLocation = dm.approximateLocation || null;
+  }
+  return safe;
 }
 
 function safeFileRecords(files, user, rooms = []) {
@@ -6387,10 +6402,9 @@ function canAccessInnerDoc(doc, user) {
 
 function safeFileRecord(file, viewer) {
   const showAdminMeta = viewer && canOwn(viewer);
-  return {
+  const safe = {
     id: file.id,
     originalName: file.originalName,
-    storedName: file.storedName,
     category: file.category,
     kind: file.kind,
     mimeType: file.mimeType,
@@ -6399,22 +6413,28 @@ function safeFileRecord(file, viewer) {
     private: Boolean(file.private),
     releaseAt: file.releaseAt || "",
     releaseRoom: file.releaseRoom || "",
-    sourceIp: showAdminMeta ? file.sourceIp : "",
-    sourceHost: showAdminMeta ? file.sourceHost : "",
-    sourceAgent: showAdminMeta ? file.sourceAgent : "",
-    sourceDevice: showAdminMeta ? file.sourceDevice || "" : "",
-    approximateLocation: showAdminMeta ? file.approximateLocation || null : null,
     createdAt: file.createdAt,
     url: `/api/files/${encodeURIComponent(file.id)}/download`,
-    persistence: file.persistence || (file.inlineData ? "disk+inline" : "disk"),
-    cloudStorage: file.cloudStorage || "",
-    externalBacked: Boolean(file.cloudinarySecureUrl || file.cloudFileId || file.b2FileId),
-    cloudinaryPublicId: showAdminMeta ? file.cloudinaryPublicId || "" : "",
-    b2FileId: showAdminMeta ? file.b2FileId || "" : "",
-    b2FileName: showAdminMeta ? file.b2FileName || "" : "",
-    inlineBacked: Boolean(file.inlineData),
-    inlineSize: Number(file.inlineSize || 0),
   };
+  if (showAdminMeta) {
+    Object.assign(safe, {
+      storedName: file.storedName,
+      sourceIp: file.sourceIp || "",
+      sourceHost: file.sourceHost || "",
+      sourceAgent: file.sourceAgent || "",
+      sourceDevice: file.sourceDevice || "",
+      approximateLocation: file.approximateLocation || null,
+      persistence: file.persistence || (file.inlineData ? "disk+inline" : "disk"),
+      cloudStorage: file.cloudStorage || "",
+      externalBacked: Boolean(file.cloudinarySecureUrl || file.cloudFileId || file.b2FileId),
+      cloudinaryPublicId: file.cloudinaryPublicId || "",
+      b2FileId: file.b2FileId || "",
+      b2FileName: file.b2FileName || "",
+      inlineBacked: Boolean(file.inlineData),
+      inlineSize: Number(file.inlineSize || 0),
+    });
+  }
+  return safe;
 }
 
 function sanitizeAccountRequest(request) {

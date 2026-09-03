@@ -1,6 +1,7 @@
-Connectifi build v199
+Connectifi build v200
 Released: 2026-09-03
 
 Changes in this package:
-- Fixed the DM message renderer so owner Delete, Edit, Pin, and retry controls use one in-card action row.
-- Preserved the security hardening from v198 and bumped client/PWA cache versions so the renderer update loads immediately.
+- Replaced raw normal-DM state records with a role-aware DTO.
+- Omitted source, device, location, storage, and cloud-provider fields entirely from non-owner file and message payloads.
+- Reduced peer profiles to public display data while preserving each account's own full profile settings.

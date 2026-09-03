@@ -1,0 +1,87 @@
+[
+  {
+    "username": "admin",
+    "role": "admin",
+    "passwordHash": "03c38a9901149928227b2a9ef005176c:97bb5be7a10266eae9980782955c0b73dc25efdebcb9f657eda5edbf28cb7ab2e067e516e4cdef45850a86aae60ecf1c0a9ca40cad7804fc8e485d6d006e57db",
+    "passwordPreset": "admin-v1",
+    "allowPersistentLogin": false,
+    "locked": true,
+    "createdAt": "2026-09-03T16:11:27.688Z"
+  },
+  {
+    "username": "admin2",
+    "role": "admin",
+    "passwordHash": "edfff199daec290ddd92c34375ffd843:38cc409d50abe131a7b45c7a1e36ffc24edac9def5f8b699eb36249f02cdfc99a5da3e15e59722d8b9d6ad2a59cb24455edb56dd4a3f0caa1454aba7509aa012",
+    "passwordPreset": "admin2-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-09-03T16:11:27.688Z"
+  },
+  {
+    "username": "hmd",
+    "role": "hmd",
+    "passwordHash": "e3d6b68a056ff2188359822a435b5700:ca6de4290c0cef69b0e0ea2f21a9b733f11da172caacb5d8adfd5f3c06e4c14251d778a06daf14d38303df6dc186543f32b9ca003850e26e64e90db683f891d6",
+    "passwordPreset": "hmd-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-09-03T16:11:27.688Z",
+    "createdBy": "system"
+  },
+  {
+    "username": "dev",
+    "role": "dev",
+    "passwordHash": "a86cd361f734a5d250834076e5ac8813:a23e71a7aa474fb69a325eb615fee78e11d88dcd34ec20c8d2d907a19f7fe805474ce3c838893ec0007ef0e9e83f107a72dc7f5f8f0a22891dcfa7813eb36443",
+    "passwordPreset": "dev-v1",
+    "allowPersistentLogin": false,
+    "locked": false,
+    "createdAt": "2026-09-03T16:11:27.688Z",
+    "createdBy": "system"
+  },
+  {
+    "username": "dto-member-200",
+    "role": "member",
+    "passwordHash": "248b72cdb8bbb4ae5b342ccce14dc079:9faac2dabd6c676296aaa4bbd65fac661f6f5e81816f992d550c9db9993789b47b24b528f1e09209a505ec7b1c61502ef2633a01e73ccef9d23a82a6caf05797",
+    "passwordPreset": "",
+    "contact": "dto-member-200@example.test",
+    "email": "dto-member-200@example.test",
+    "phone": "",
+    "grade": "",
+    "gradeUpdatedAt": "",
+    "contactUpdatedAt": "2026-09-03T16:11:51.791Z",
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:3102",
+    "sourceAgent": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.6.4",
+    "sourceDevice": "1063f772d4ba05384217053d",
+    "approximateLocation": {
+      "ip": "127.0.0.1",
+      "type": "private/local",
+      "note": "Approximate location unavailable for local/private IP"
+    },
+    "allowPersistentLogin": true,
+    "createdAt": "2026-09-03T16:11:51.791Z",
+    "createdBy": "open-signup",
+    "lastLoginAt": "2026-09-03T16:11:52.059Z",
+    "lastLoginIp": "127.0.0.1",
+    "lastLoginDevice": "1063f772d4ba05384217053d",
+    "lastLoginApproximateLocation": {
+      "ip": "127.0.0.1",
+      "type": "private/local",
+      "note": "Approximate location unavailable for local/private IP"
+    },
+    "loginHistory": [
+      {
+        "ip": "127.0.0.1",
+        "device": "1063f772d4ba05384217053d",
+        "approximateLocation": {
+          "ip": "127.0.0.1",
+          "type": "private/local",
+          "note": "Approximate location unavailable for local/private IP"
+        },
+        "loggedInAt": "2026-09-03T16:11:52.059Z"
+      }
+    ],
+    "loginIpCounts": {
+      "127.0.0.1": 1
+    }
+  }
+]

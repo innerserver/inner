@@ -12,7 +12,7 @@
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css?v=connectifi-171-moderation-fix" />
     <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-171-moderation-fix" />
-    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-192-navigation-account-ui" />
+    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-193-sidebar-organization" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -116,25 +116,25 @@
 
         <nav class="nav-list" aria-label="Main">
           <button class="nav-button active" type="button" data-view="dashboard">Dashboard</button>
-          <section class="nav-group" data-nav-group="messages">
-            <button class="nav-group-toggle" type="button" aria-expanded="false" aria-controls="messagesNavGroup">Messages<span class="nav-group-chevron" aria-hidden="true"></span></button>
-            <div id="messagesNavGroup" class="nav-submenu" hidden>
+          <section class="nav-group" data-nav-group="social">
+            <button class="nav-group-toggle" type="button" aria-expanded="false" aria-controls="socialNavGroup">Social<span class="nav-group-chevron" aria-hidden="true"></span></button>
+            <div id="socialNavGroup" class="nav-submenu" hidden>
+              <button class="nav-button" type="button" data-view="profile">Profile</button>
               <button class="nav-button" type="button" data-view="messages">Room messages</button>
               <button class="nav-button" type="button" data-view="dms">Direct messages</button>
               <button id="secretNavButton" class="nav-button hidden" type="button" data-view="secret">Secret</button>
               <button class="nav-button" type="button" data-view="friends">Friends</button>
             </div>
           </section>
-          <button class="nav-button" type="button" data-view="profile">Profile</button>
           <button class="nav-button" type="button" data-view="store">Store</button>
           <section class="nav-group" data-nav-group="work">
-            <button class="nav-group-toggle" type="button" aria-expanded="false" aria-controls="workNavGroup">Work &amp; files<span class="nav-group-chevron" aria-hidden="true"></span></button>
+            <button class="nav-group-toggle" type="button" aria-expanded="false" aria-controls="workNavGroup">Workspace &amp; files<span class="nav-group-chevron" aria-hidden="true"></span></button>
             <div id="workNavGroup" class="nav-submenu" hidden>
               <button class="nav-button" type="button" data-view="files">Files</button>
               <button class="nav-button" type="button" data-view="googleWorkspace">Google Workspace</button>
+              <button class="nav-button" type="button" data-view="browser">Browser</button>
             </div>
           </section>
-          <button class="nav-button" type="button" data-view="browser">Browser</button>
           <button class="nav-button" type="button" data-view="chess">Games</button>
           <section class="nav-group" data-nav-group="communication">
             <button class="nav-group-toggle" type="button" aria-expanded="false" aria-controls="communicationNavGroup">Communication<span class="nav-group-chevron" aria-hidden="true"></span></button>
@@ -1125,8 +1125,8 @@
     <div id="toast" class="toast hidden" role="status"></div>
     <script src="/session-guard.js?v=connectifi-137-ui-polish" defer></script>
     <script src="/status-guard.js?v=connectifi-137-ui-polish" defer></script>
-    <script src="/ui-boot.js?v=connectifi-192-navigation-account-ui" defer></script>
-    <script src="/app.js?v=connectifi-192-navigation-account-ui" defer></script>
+    <script src="/ui-boot.js?v=connectifi-193-sidebar-organization" defer></script>
+    <script src="/app.js?v=connectifi-193-sidebar-organization" defer></script>
     <script src="/force-logout.js?v=connectifi-137-ui-polish" defer></script>
   </body>
 </html>

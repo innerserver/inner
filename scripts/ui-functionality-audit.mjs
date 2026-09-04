@@ -1,4 +1,6 @@
 const base = process.env.AUDIT_BASE_URL || "http://127.0.0.1:5181";
+const adminUsername = process.env.AUDIT_ADMIN_USERNAME || "admin2";
+const adminPassword = process.env.AUDIT_ADMIN_PASSWORD || "LocalAuditAdmin-20260904";
 const suffix = Date.now().toString(36).slice(-5);
 const names = { a: `auditalex${suffix}`, b: `auditbailey${suffix}`, c: `auditcasey${suffix}` };
 
@@ -6,10 +8,10 @@ function cookieFrom(headers) {
   return headers.get("set-cookie")?.split(";")[0] || "";
 }
 
-async function request(path, { method = "GET", json, cookie } = {}) {
+async function request(path, { method = "GET", json, cookie, headers = {} } = {}) {
   const response = await fetch(`${base}${path}`, {
     method,
-    headers: { ...(json ? { "content-type": "application/json" } : {}), ...(cookie ? { cookie } : {}) },
+    headers: { ...(json ? { "content-type": "application/json" } : {}), ...(cookie ? { cookie } : {}), ...headers },
     body: json ? JSON.stringify(json) : undefined,
   });
   const text = await response.text();
@@ -28,7 +30,7 @@ function assert(condition, message, details = {}) {
 
 async function main() {
   const checks = [];
-  const adminLogin = await request("/api/login", { method: "POST", json: { username: "admin", password: process.env.AUDIT_ADMIN_PASSWORD || "LocalAuditAdmin-20260904" } });
+  const adminLogin = await request("/api/login", { method: "POST", json: { username: adminUsername, password: adminPassword } });
   const adminCookie = cookieFrom(adminLogin.headers);
   assert(adminLogin.status === 200 && adminCookie, "admin login failed", adminLogin);
   checks.push("admin login");
@@ -46,6 +48,23 @@ async function main() {
   const loginA = await request("/api/login", { method: "POST", json: { username: names.a, password: "AuditPass1234" } });
   const cookieA = cookieFrom(loginA.headers);
   assert(loginA.status === 200 && cookieA, "user A login failed", loginA);
+  const csrfProfile = await request("/api/profile", {
+    method: "POST",
+    cookie: cookieA,
+    headers: { Origin: "https://evil.example.test" },
+    json: { displayName: "Blocked Cross Site" },
+  });
+  assert(csrfProfile.status === 403, "cross-origin authenticated POST was not blocked", csrfProfile);
+  const privateBrowserTargets = [
+    "http://127.0.0.1:5181/api/state",
+    "http://localhost:5181/api/state",
+    "http://user:pass@example.com/",
+  ];
+  for (const target of privateBrowserTargets) {
+    const browserCheck = await request(`/api/browser/frame?url=${encodeURIComponent(target)}`, { cookie: cookieA });
+    assert([400, 403].includes(browserCheck.status), `unsafe browser target was not blocked: ${target}`, browserCheck);
+  }
+  checks.push("CSRF and private browser target protections");
   const sameGrade = await request("/api/friends/candidates?q=grade%3A10A", { cookie: cookieA });
   assert((sameGrade.body.people || []).some((person) => person.username === names.b), "same-grade candidate missing", sameGrade.body);
   const exactCross = await request(`/api/friends/candidates?q=${encodeURIComponent(names.c)}`, { cookie: cookieA });

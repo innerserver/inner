@@ -1,8 +1,8 @@
-Connectifi build v210
+Connectifi build v212
 Released: 2026-09-04
 
 Changes in this package:
-- Contained the sidebar and workspace in separate desktop grid cells so chat cannot render beneath navigation.
-- Kept the DM call, video, and share actions directly in the chat header; the live call stage appears only while active.
-- Replaced permanent room and DM tool rows with a compact + action menu and renamed Selfie to Photo.
-- Added an authorized viewer-ready screen-share handshake so online room viewers can trigger the presenter's WebRTC offer even when generic presence filtering hides them.
+- Added a final message/DM layout recovery layer so message lists scroll independently and composers stay inside the active view on desktop and mobile.
+- Fixed server-side browser SSRF exposure by blocking local/private addresses, embedded credentials, unsafe redirects, oversized responses, and long-running fetches.
+- Added same-origin protection for authenticated WebSocket upgrades.
+- Extended the reusable UI audit script with CSRF and private browser target checks.

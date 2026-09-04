@@ -10,9 +10,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-171-moderation-fix" />
-    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-171-moderation-fix" />
-    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-171-moderation-fix" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-210-dm-recovery" />
+    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-210-dm-recovery" />
+    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-210-dm-recovery" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -116,18 +116,33 @@
 
         <nav class="nav-list" aria-label="Main">
           <button class="nav-button active" type="button" data-view="dashboard">Dashboard</button>
-          <button class="nav-button" type="button" data-view="messages">Messages</button>
-          <button class="nav-button" type="button" data-view="dms">DMs</button>
-          <button id="secretNavButton" class="nav-button hidden" type="button" data-view="secret">Secret</button>
-          <button class="nav-button" type="button" data-view="friends">Friends</button>
-          <button class="nav-button" type="button" data-view="profile">Profile</button>
+          <section class="nav-group" data-nav-group="social">
+            <button class="nav-group-toggle" type="button" aria-expanded="false" aria-controls="socialNavGroup">Social<span class="nav-group-chevron" aria-hidden="true"></span></button>
+            <div id="socialNavGroup" class="nav-submenu" hidden>
+              <button class="nav-button" type="button" data-view="profile">Profile</button>
+              <button class="nav-button" type="button" data-view="messages">Room messages</button>
+              <button class="nav-button" type="button" data-view="dms">Direct messages</button>
+              <button id="secretNavButton" class="nav-button hidden" type="button" data-view="secret">Secret</button>
+              <button class="nav-button" type="button" data-view="friends">Friends</button>
+            </div>
+          </section>
           <button class="nav-button" type="button" data-view="store">Store</button>
-          <button class="nav-button" type="button" data-view="files">Files</button>
-          <button class="nav-button" type="button" data-view="googleWorkspace">Google Workspace</button>
-          <button class="nav-button" type="button" data-view="browser">Browser</button>
+          <section class="nav-group" data-nav-group="work">
+            <button class="nav-group-toggle" type="button" aria-expanded="false" aria-controls="workNavGroup">Workspace &amp; files<span class="nav-group-chevron" aria-hidden="true"></span></button>
+            <div id="workNavGroup" class="nav-submenu" hidden>
+              <button class="nav-button" type="button" data-view="files">Files</button>
+              <button class="nav-button" type="button" data-view="googleWorkspace">Google Workspace</button>
+              <button class="nav-button" type="button" data-view="browser">Browser</button>
+            </div>
+          </section>
           <button class="nav-button" type="button" data-view="chess">Games</button>
-          <button class="nav-button" type="button" data-view="voice">Voice</button>
-          <button class="nav-button" type="button" data-view="screen">Screen</button>
+          <section class="nav-group" data-nav-group="communication">
+            <button class="nav-group-toggle" type="button" aria-expanded="false" aria-controls="communicationNavGroup">Communication<span class="nav-group-chevron" aria-hidden="true"></span></button>
+            <div id="communicationNavGroup" class="nav-submenu" hidden>
+              <button class="nav-button" type="button" data-view="voice">Calls</button>
+              <button class="nav-button" type="button" data-view="screen">Screen share</button>
+            </div>
+          </section>
           <button id="moderatorNavButton" class="nav-button hidden" type="button" data-view="moderator">Moderation</button>
           <button id="domainNavButton" class="nav-button owner-only hidden" type="button" data-view="domain">Domain</button>
           <button id="adminNavButton" class="nav-button built-in-control-only hidden" type="button" data-view="admin">Admin</button>
@@ -212,22 +227,33 @@
               <h2>Messages</h2>
               <p id="messageState">Live room</p>
             </div>
-            <label class="compact-label">
-              Room
-              <select id="roomSelect"></select>
-            </label>
+            <div class="message-header-controls">
+              <label class="compact-label">
+                Room
+                <select id="roomSelect"></select>
+              </label>
+              <details class="message-more-menu">
+                <summary aria-label="More room actions">+</summary>
+                <div class="message-more-menu-content">
+                  <label class="more-menu-action" for="messageAttachment">Attach file</label>
+                  <input id="messageAttachment" class="menu-file-input" type="file" accept="image/*,video/*,audio/*" form="messageForm" />
+                  <input id="messageSelfieInput" class="hidden" type="file" accept="image/*" capture="user" form="messageForm" />
+                  <button id="messageSelfieButton" class="secondary-button more-menu-action" type="button">Photo</button>
+                  <details class="message-tools-panel">
+                    <summary>Join room</summary>
+                    <form id="inviteJoinForm" class="upload-bar invite-join-bar">
+                      <input id="inviteCodeInput" maxlength="80" placeholder="Paste room invite code" autocomplete="off" />
+                      <button id="joinInviteButton" class="secondary-button" type="submit">Join</button>
+                    </form>
+                  </details>
+                </div>
+              </details>
+            </div>
           </div>
-          <form id="inviteJoinForm" class="upload-bar invite-join-bar">
-            <input id="inviteCodeInput" maxlength="80" placeholder="Paste room invite code" autocomplete="off" />
-            <button id="joinInviteButton" class="secondary-button" type="submit">Join invite</button>
-          </form>
           <div id="messageList" class="message-list" aria-live="polite"></div>
           <button id="messageJumpBottomButton" class="jump-bottom-button hidden" type="button">Jump to bottom</button>
           <form id="messageForm" class="composer">
             <input id="messageInput" maxlength="2000" placeholder="Write a message" autocomplete="off" />
-            <input id="messageAttachment" type="file" accept="image/*,video/*,audio/*" />
-            <input id="messageSelfieInput" class="hidden" type="file" accept="image/*" capture="user" />
-            <button id="messageSelfieButton" class="secondary-button" type="button">Selfie</button>
             <button id="sendMessageButton" class="primary-button" type="submit">Send</button>
           </form>
         </section>
@@ -238,48 +264,63 @@
               <h2>DMs</h2>
               <p id="dmState">Direct messages are not visible to anyone but you</p>
             </div>
-            <label class="compact-label">
-              Account
-              <select id="dmPeerSelect"></select>
-            </label>
+            <div class="message-header-controls">
+              <label class="compact-label">
+                Chat
+                <select id="dmPeerSelect"></select>
+              </label>
+              <div class="dm-quick-actions" aria-label="Call actions">
+                <button id="dmVoiceCallButton" class="secondary-button compact-button" type="button">Call</button>
+                <button id="dmVideoCallButton" class="secondary-button compact-button" type="button">Video</button>
+                <button id="dmShareScreenButton" class="secondary-button compact-button" type="button">Share screen</button>
+              </div>
+              <details class="message-more-menu dm-more-menu">
+                <summary aria-label="More direct message actions">+</summary>
+                <div class="message-more-menu-content">
+                  <label class="more-menu-action" for="dmAttachment">Attach file</label>
+                  <input id="dmAttachment" class="menu-file-input" type="file" accept="image/*,video/*,audio/*" form="dmForm" />
+                  <input id="dmSelfieInput" class="hidden" type="file" accept="image/*" capture="user" form="dmForm" />
+                  <button id="dmSelfieButton" class="secondary-button more-menu-action" type="button">Photo</button>
+                  <button id="openDmAppearanceButton" class="secondary-button more-menu-action" type="button">Chat appearance</button>
+                  <label class="switch-row compact-switch more-menu-secret"><input id="dmSecret" type="checkbox" form="dmForm" /><span>Secret message</span></label>
+                  <div class="dm-tools-panel">
+                    <details class="dm-tool-card">
+                      <summary>Create group DM</summary>
+                      <form id="dmGroupForm" class="upload-bar">
+                        <input id="dmGroupName" maxlength="80" placeholder="Group name" autocomplete="off" />
+                        <div id="dmGroupMembers" class="member-picker" role="group" aria-label="Group members"></div>
+                        <button id="createDmGroupButton" class="secondary-button" type="submit">Create group</button>
+                        <button id="deleteDmGroupButton" class="danger-button hidden" type="button">Delete group</button>
+                      </form>
+                    </details>
+                    <details class="dm-tool-card">
+                      <summary>Share link/doc</summary>
+                      <form id="shareLinkForm" class="upload-bar share-link-form">
+                        <input id="shareLinkTitle" maxlength="120" placeholder="Title, doc name, or slide name" autocomplete="off" />
+                        <input id="shareLinkUrl" maxlength="700" placeholder="Paste a link to share with friends" autocomplete="off" />
+                        <select id="shareLinkType" aria-label="Share type">
+                          <option value="link">Link</option>
+                          <option value="doc">Doc</option>
+                          <option value="slides">Slides</option>
+                          <option value="sheet">Sheet</option>
+                          <option value="app">App</option>
+                        </select>
+                        <select id="shareLinkTarget" aria-label="Share target"></select>
+                        <button id="shareLinkButton" class="primary-button" type="submit">Share</button>
+                      </form>
+                    </details>
+                  </div>
+                </div>
+              </details>
+            </div>
           </div>
-          <div class="dm-tools-panel">
-            <details class="dm-tool-card">
-              <summary>Create group DM</summary>
-              <form id="dmGroupForm" class="upload-bar">
-                <input id="dmGroupName" maxlength="80" placeholder="Group name" autocomplete="off" />
-                <div id="dmGroupMembers" class="member-picker" role="group" aria-label="Group members"></div>
-                <button id="createDmGroupButton" class="secondary-button" type="submit">Create group</button>
-                <button id="deleteDmGroupButton" class="danger-button hidden" type="button">Delete group</button>
-              </form>
-            </details>
-            <details class="dm-tool-card">
-              <summary>Share link/doc</summary>
-              <form id="shareLinkForm" class="upload-bar share-link-form">
-                <input id="shareLinkTitle" maxlength="120" placeholder="Title, doc name, or slide name" autocomplete="off" />
-                <input id="shareLinkUrl" maxlength="700" placeholder="Paste a link to share with friends" autocomplete="off" />
-                <select id="shareLinkType" aria-label="Share type">
-                  <option value="link">Link</option>
-                  <option value="doc">Doc</option>
-                  <option value="slides">Slides</option>
-                  <option value="sheet">Sheet</option>
-                  <option value="app">App</option>
-                </select>
-                <select id="shareLinkTarget" aria-label="Share target"></select>
-                <button id="shareLinkButton" class="primary-button" type="submit">Share</button>
-              </form>
-            </details>
-          </div>
-          <div id="dmCallPanel" class="dm-call-panel">
+          <details id="dmCallPanel" class="dm-call-panel">
             <div class="panel-title-row">
               <div>
-                <h3>DM call</h3>
+                <h3>Live call</h3>
                 <p id="dmCallState" class="panel-note">Choose a DM or group to start a call</p>
               </div>
               <div class="button-row">
-                <button id="dmVoiceCallButton" class="primary-button" type="button">Voice call</button>
-                <button id="dmVideoCallButton" class="secondary-button" type="button">Video call</button>
-                <button id="dmShareScreenButton" class="secondary-button" type="button">Share screen</button>
                 <button id="dmStopScreenButton" class="danger-button" type="button" disabled>Stop share</button>
                 <button id="dmLeaveCallButton" class="danger-button" type="button" disabled>Leave</button>
                 <button id="dmAnswerCallButton" class="primary-button hidden" type="button">Answer</button>
@@ -298,15 +339,11 @@
                 <strong>Screen</strong>
               </article>
             </div>
-          </div>
+          </details>
           <div id="dmList" class="message-list" aria-live="polite"></div>
           <button id="dmJumpBottomButton" class="jump-bottom-button hidden" type="button">Jump to bottom</button>
           <form id="dmForm" class="composer">
             <input id="dmInput" maxlength="2000" placeholder="Write a direct message" autocomplete="off" />
-            <input id="dmAttachment" type="file" accept="image/*,video/*,audio/*" />
-            <input id="dmSelfieInput" class="hidden" type="file" accept="image/*" capture="user" />
-            <button id="dmSelfieButton" class="secondary-button" type="button">Selfie</button>
-            <label class="switch-row compact-switch"><input id="dmSecret" type="checkbox" /><span>Secret</span></label>
             <button id="sendDmButton" class="primary-button" type="submit">Send</button>
           </form>
         </section>
@@ -378,9 +415,9 @@
             <label>Grade<select id="profileGrade"><option value="">Choose grade</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
             <label>Email<input id="profileEmail" type="email" maxlength="120" autocomplete="email" /></label>
             <label>Phone<input id="profilePhone" maxlength="40" autocomplete="tel" /></label>
-            <label>Theme<select id="profileTheme"><option value="system">Light</option><option value="connectifi">Connectifi</option><option value="dark">Dark</option><option value="bd-somani">BD Somani</option><option value="midnight">Night</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="custom">Custom</option></select></label>
-            <label>Visual style<select id="profileVisualStyle"><option value="forest">Forest</option><option value="ocean">Ocean</option><option value="mountains">Mountains</option><option value="space">Space</option><option value="city">City</option><option value="abstract">Abstract</option><option value="nature">Nature</option></select></label>
-            <label>Theme image<input id="profileThemeImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label>
+            <label>Chat theme<select id="profileTheme"><option value="system">Light</option><option value="connectifi">Connectifi</option><option value="dark">Dark</option><option value="bd-somani">BD Somani</option><option value="midnight">Night</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="custom">Custom</option></select></label>
+            <label>Chat visual style<select id="profileVisualStyle"><option value="forest">Forest</option><option value="ocean">Ocean</option><option value="mountains">Mountains</option><option value="space">Space</option><option value="city">City</option><option value="abstract">Abstract</option><option value="nature">Nature</option></select></label>
+            <label>Chat theme image<input id="profileThemeImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label>
             <input id="profileThemeImageUrl" type="hidden" />
             <div class="button-row profile-photo-actions">
               <button id="clearProfileThemeImageButton" class="secondary-button compact-button" type="button">Remove theme image</button>
@@ -637,18 +674,26 @@
               <div class="panel-title-row"><div><h3>Rooms</h3><p class="panel-note">Moderators can enter every room, including restricted rooms.</p></div></div>
               <div id="moderatorRoomList" class="account-list"></div>
             </aside>
-            <div class="moderator-workbench">
+            <div id="moderatorRoomControlsPanel" class="moderator-workbench">
               <div class="moderator-workbench-heading"><div><span class="eyebrow">Member access</span><h3>Screen-time controls</h3></div><p>Set room limits or temporarily allow a class without removing the rule for everyone else.</p></div>
               <div id="moderatorFeatureLockSlot"></div>
               <div id="moderatorFeatureLockPanelSlot"></div>
             </div>
-            <section class="status-panel moderator-reports-panel">
+            <section id="moderatorReportsPanel" class="status-panel moderator-reports-panel">
               <div class="panel-title-row"><div><h3>Reports</h3><p class="panel-note">Review member reports and keep the queue moving.</p></div></div>
               <div id="moderatorReportList" class="account-list"></div>
             </section>
             <section id="moderatorAuditPanel" class="status-panel moderator-audit-panel hidden">
               <div class="panel-title-row"><div><h3>Audit logs</h3><p class="panel-note">Recent system and moderation activity for selected moderators.</p></div><button id="moderatorExportLogsButton" class="secondary-button compact-button" type="button">Export</button></div>
               <div id="moderatorAuditList" class="account-list compact-list"></div>
+            </section>
+            <section id="moderatorStrikesPanel" class="status-panel moderator-strikes-panel">
+              <div class="panel-title-row"><div><h3>Account controls</h3><p class="panel-note">Search an account, then use only the controls granted by the owner admin.</p></div></div>
+              <form id="moderatorAccountSearchForm" class="upload-bar">
+                <input id="moderatorAccountSearch" maxlength="120" placeholder="Search username, display name, or email" autocomplete="off" />
+                <button id="moderatorAccountSearchButton" class="secondary-button" type="submit">Search</button>
+              </form>
+              <div id="moderatorAccountList" class="account-list compact-list"></div>
             </section>
           </div>
         </section>
@@ -693,6 +738,7 @@
               <label>Account request/signup emails<input id="emailAccounts" maxlength="500" placeholder="accounts@school.com, admissions@school.com" /></label>
               <label>Announcement emails<input id="emailAnnouncements" maxlength="500" placeholder="announcements@school.com" /></label>
               <label>Security/admin fallback emails<input id="emailLoginFailures" maxlength="500" placeholder="security@school.com" /></label>
+              <label>Three-strike alert emails<input id="strikeEmails" maxlength="500" placeholder="discipline@school.com, admin@school.com" /></label>
               <label>Selected moderator log access<input id="moderatorLogAccessUsers" maxlength="500" placeholder="moderator usernames, comma separated" /></label>
               <label>Admin test/general emails<input id="emailGeneral" maxlength="500" placeholder="admin@school.com" /></label>
               <div class="email-contact-grid">
@@ -776,8 +822,12 @@
               </form>
               <div class="owner-checkin-card">
                 <h4>Owner operational check-in</h4>
-                <p id="ownerCheckinStatus" class="panel-note">Weekly owner check-ins are scheduled for Sunday at 12:00 PM IST.</p>
+                <p id="ownerCheckinStatus" class="panel-note">Choose the Sunday delivery time for your owner check-in email.</p>
                 <p class="panel-note">100: normal operations. 101: restrict Browser, Store, and Games. 102: activate the recovery lock. 103: use a monthly Sunday check-in. 104: moderator continuity mode.</p>
+                <form id="ownerCheckinScheduleForm" class="stack-form">
+                  <label>Delivery time (IST)<input id="ownerCheckinTime" type="time" value="12:00" /></label>
+                  <button id="saveOwnerCheckinScheduleButton" class="secondary-button" type="submit">Save delivery time</button>
+                </form>
                 <form id="ownerCheckinForm" class="stack-form">
                   <label>Check-in code<input id="ownerCheckinCode" inputmode="numeric" pattern="10[0-4]" maxlength="3" autocomplete="one-time-code" /></label>
                   <button id="submitOwnerCheckinButton" class="secondary-button" type="submit">Submit check-in</button>
@@ -790,9 +840,46 @@
               <h3>Create account</h3>
               <label>Username<input id="newAccountUsername" autocomplete="off" placeholder="letters, numbers, dot, dash, underscore" /></label>
               <label>Password<input id="newAccountPassword" type="password" autocomplete="new-password" /></label>
-              <label>Access<select id="newAccountRole"><option value="member">Member</option><option value="moderator">Moderator</option><option value="hmd">HMD</option><option value="dev">Dev</option></select></label>
+              <label>Access<select id="newAccountRole"><option value="member">Member</option><option value="moderator">Moderator</option><option value="admin">Admin (non-owner)</option><option value="hmd">HMD</option><option value="dev">Dev</option></select></label>
               <label class="switch-row"><input id="newAccountPersistent" type="checkbox" /><span>Allow persistent login</span></label>
               <button id="createAccountButton" class="primary-button" type="submit">Create account</button>
+            </form>
+
+            <form id="promoteExistingAdminForm" class="panel-form owner-only hidden promote-admin-form">
+              <div><p class="section-kicker">Owner controls</p><h3>Promote existing account</h3><p class="panel-note">Make an existing account a non-owner admin. Their allowed tools are chosen in the access panel below.</p></div>
+              <label>Account<select id="promoteExistingAdminUser"></select></label>
+              <button id="promoteExistingAdminButton" class="secondary-button" type="submit">Make admin</button>
+            </form>
+
+            <form id="delegatedAdminFeaturesForm" class="panel-form owner-only hidden" data-default-expanded="true">
+              <div class="delegated-access-heading">
+                <div><p class="section-kicker">Owner controls</p><h3>Non-owner admin access</h3><p class="panel-note">Choose the tools this admin can use. Owner security, private files, secret DMs, backups, and the owner admin panel remain unavailable.</p></div>
+                <label class="delegated-admin-picker"><span>Admin account</span><select id="delegatedAdminUser"></select></label>
+              </div>
+              <div class="delegated-access-grid">
+                <fieldset class="delegated-access-group">
+                  <legend>Moderation and people</legend>
+                  <label><input id="delegatedAdminStrikes" data-admin-capability="strikes" type="checkbox" /><span>Account strikes</span></label>
+                  <label><input id="delegatedAdminMemberActions" data-admin-capability="member-actions" type="checkbox" /><span>Member actions</span><small>Mute, ban, and kick</small></label>
+                  <label><input id="delegatedAdminContentModeration" data-admin-capability="content-moderation" type="checkbox" /><span>Content moderation</span><small>Remove messages and unpin</small></label>
+                  <label><input id="delegatedAdminReports" data-admin-capability="reports" type="checkbox" /><span>Reports</span><small>Review and resolve reports</small></label>
+                  <label><input id="delegatedAdminAuditLogs" data-admin-capability="audit-logs" type="checkbox" /><span>Audit logs</span><small>View and export audit activity</small></label>
+                  <label><input data-admin-capability="account-requests" type="checkbox" /><span>Account requests</span></label>
+                  <label><input data-admin-capability="account-management" type="checkbox" /><span>Member account management</span></label>
+                  <label><input data-admin-capability="live-ip-tracking" type="checkbox" /><span>Live IP tracking</span></label>
+                </fieldset>
+                <fieldset class="delegated-access-group">
+                  <legend>Workspace operations</legend>
+                  <label><input id="delegatedAdminRoomControls" data-admin-capability="room-controls" type="checkbox" /><span>Room controls and screen time</span></label>
+                  <label><input data-admin-capability="announcements" type="checkbox" /><span>Announcements</span></label>
+                  <label><input data-admin-capability="store-management" type="checkbox" /><span>Store management</span></label>
+                  <label><input data-admin-capability="auto-moderation" type="checkbox" /><span>Auto moderation</span></label>
+                  <label><input data-admin-capability="voice-management" type="checkbox" /><span>Voice room management</span></label>
+                  <label><input data-admin-capability="service-scaling" type="checkbox" /><span>Service scaling</span></label>
+                  <label><input data-admin-capability="system-logs" type="checkbox" /><span>System logs</span></label>
+                </fieldset>
+              </div>
+              <div class="delegated-access-footer"><p>Changes apply when this admin next refreshes their workspace.</p><button id="saveDelegatedAdminFeaturesButton" class="primary-button" type="submit">Save access</button></div>
             </form>
 
             <div id="adminFeatureLockSlot"></div>
@@ -930,13 +1017,17 @@
 
             <form id="aiKeyForm" class="panel-form owner-only hidden">
               <h3>AI connection</h3>
-              <label>API key<input id="aiApiKey" type="password" autocomplete="off" placeholder="any compatible API key" /></label>
-              <label>Base URL<input id="aiBaseUrl" autocomplete="off" placeholder="https://api.openai.com/v1" /></label>
-              <label>Model<input id="aiModel" autocomplete="off" placeholder="gpt-5.2 or provider model name" /></label>
-              <button id="saveAiKeyButton" class="primary-button" type="submit">Save key</button>
+              <label>API key<input id="aiApiKey" type="password" autocomplete="off" placeholder="Paste your AI API key" /></label>
+              <p class="panel-note">Paste only your key. Connectifi uses the standard OpenAI API settings automatically and enables login anomaly review.</p>
+              <details class="ai-provider-options"><summary>Provider options</summary><label>Base URL<input id="aiBaseUrl" autocomplete="off" placeholder="https://api.openai.com/v1" /></label><label>Model<input id="aiModel" autocomplete="off" placeholder="Provider default" /></label></details>
+              <button id="saveAiKeyButton" class="primary-button" type="submit">Save API key</button>
               <button id="clearAiKeyButton" class="secondary-button" type="button">Clear saved key</button>
               <p class="panel-note">The key is saved only on the server in the data folder and is never shown back in the browser.</p>
             </form>
+            <section id="aiSecurityPanel" class="status-panel owner-only hidden wide-panel">
+              <div class="panel-title-row"><div><h3>AI login security</h3><p id="aiSecurityStatus" class="panel-note">Add an API key to automatically review unusual login changes.</p></div><button id="refreshAiSecurityFlagsButton" class="secondary-button compact-button" type="button">Refresh</button></div>
+              <div id="aiSecurityFlagList" class="account-list compact-list"></div>
+            </section>
 
             <form id="adminAutomodForm" class="panel-form owner-only hidden">
               <h3>AI moderator</h3>
@@ -961,7 +1052,7 @@
             <div class="status-panel owner-only hidden wide-panel"><h3>AI requests</h3><div id="aiResponseList" class="account-list"></div></div>
             <div id="adminBackupsPanel" class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><h3>Backups</h3><button id="createBackupButton" class="secondary-button compact-button" type="button">Create backup</button></div><p class="panel-note">Backups save account data, messages, DMs, settings, and file records. Uploaded file contents stay in the data/uploads folder.</p><div id="backupList" class="account-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Account requests</h3><p class="panel-note">Requests include browser location because users must turn on location for server allocation.</p><div id="accountRequestList" class="account-list"></div></div>
-            <div id="accountManager" class="status-panel account-manager owner-only hidden"><div class="panel-title-row account-search-row"><h3>Accounts</h3><button id="showAllAccountsButton" class="secondary-button compact-button" type="button">Show all</button><select id="accountGradeFilter" class="compact-search" aria-label="Filter accounts by grade"><option value="">All grades</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option><option value="none">No grade</option></select><input id="accountSearchInput" class="compact-search" maxlength="120" placeholder="Search username, display name, email, phone, IP, device, role" autocomplete="off" /></div><p class="panel-note">Admin/HMD/dev accounts show by default. Use grade filter, search, or Show all to display member accounts.</p><div id="accountList" class="account-list compact-account-list"></div></div>
+            <div id="accountManager" class="status-panel account-manager owner-only hidden"><div class="panel-title-row account-search-row"><h3>Accounts</h3><button id="showAllAccountsButton" class="secondary-button compact-button" type="button">Show all members</button><button id="toggleAccountListButton" class="ghost-light-button compact-button" type="button" aria-expanded="true">Collapse list</button><select id="accountSort" class="compact-search" aria-label="Sort accounts"><option value="alphabetical">Alphabetical</option><option value="class">Class / grade</option></select><select id="accountGradeFilter" class="compact-search" aria-label="Filter accounts by grade"><option value="">All grades</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option><option value="none">No grade</option></select><input id="accountSearchInput" class="compact-search" maxlength="120" placeholder="Search username, display name, email, phone, IP, device, role" autocomplete="off" /></div><p class="panel-note">Search any account, filter by class, or choose Show all members when you need the full list.</p><div id="accountListWrap"><div id="accountList" class="account-list compact-account-list"></div></div></div>
             <div id="accountDetailPanel" class="status-panel owner-only hidden wide-panel"><div class="panel-title-row"><div><h3 id="accountDetailTitle">Account details</h3><p id="accountDetailSubtitle" class="panel-note">Search and select a user to inspect account and browser activity.</p></div><div class="button-row"><button id="openAccountDetailTabButton" class="secondary-button compact-button" type="button">Open detail tab</button><button id="wipeAccountBrowserHistoryButton" class="danger-button compact-button" type="button">Wipe browser history</button><button id="closeAccountDetailButton" class="ghost-light-button compact-button" type="button">Close</button></div></div><div id="accountDetailBody" class="account-list compact-list"></div></div>
             <div class="status-panel owner-only hidden wide-panel"><h3>Live IP tracking</h3><p class="panel-note">Shows active sessions first, then latest login/IP data for accounts.</p><div id="liveIpList" class="account-list compact-list"></div></div>
             <div id="adminReportsPanel" class="status-panel owner-only hidden wide-panel"><h3>Reports</h3><div id="reportList" class="account-list"></div></div>
@@ -1058,11 +1149,11 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=connectifi-137-ui-polish" defer></script>
-    <script src="/status-guard.js?v=connectifi-137-ui-polish" defer></script>
-    <script src="/ui-boot.js?v=connectifi-137-ui-polish" defer></script>
-    <script src="/app.js?v=connectifi-171-moderation-fix" defer></script>
-    <script src="/force-logout.js?v=connectifi-137-ui-polish" defer></script>
+    <script src="/session-guard.js?v=connectifi-210-dm-recovery" defer></script>
+    <script src="/status-guard.js?v=connectifi-210-dm-recovery" defer></script>
+    <script src="/ui-boot.js?v=connectifi-210-dm-recovery" defer></script>
+    <script src="/app.js?v=connectifi-210-dm-recovery" defer></script>
+    <script src="/force-logout.js?v=connectifi-210-dm-recovery" defer></script>
   </body>
 </html>
 

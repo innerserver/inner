@@ -1716,6 +1716,7 @@ async function routeApi(req, res, requestUrl) {
       : dms.filter((entry) => Array.isArray(entry.participants) && entry.participants.includes(user.username)))
       .filter((entry) => !entry.secret)
       .map((entry) => safeDm(entry, user));
+    const visiblePeople = statePeopleForUser(users, profiles, user, friends, normalizedMessages, visibleDms);
     return json(res, 200, {
       user: safeUser(user, user),
       settings: safeSettings(settings, user),
@@ -1737,16 +1738,16 @@ async function routeApi(req, res, requestUrl) {
       vpn: canOwn(user) ? safeVpn(vpn) : { enabled: Boolean(vpn.enabled), location: String(vpn.location || "") },
       locations: canOwn(user) ? vpnLocations : [],
       users: canManage(user) ? users.map((entry) => safeUser(entry, user)) : [],
-      people: users.map((entry) => publicUser(entry, profiles[entry.username])),
+      people: visiblePeople,
       backups: fastState ? [] : backups,
-      profiles: safeProfiles(profiles, users, user),
+      profiles: safeProfiles(profiles, visiblePeople, user),
       friends: safeFriendState(friends, user),
       invites: canManage(user) && !fastState ? invites.slice(-100) : safeInvitesForUser(invites, user),
       reports: fastState ? [] : safeActiveReports(visibleReports, settings),
       liveIpTracking: canOwn(user) ? liveIpTracking(users) : [],
       readReceipts: safeReadReceipts(readReceipts, user, { messages: normalizedMessages, dms: visibleDms, dmGroups }),
-      moderationLogs: !fastState && canViewAuditLogs(user, settings) ? moderationLogs.slice(-Math.min(STATE_LOG_LIMIT, 250)) : [],
-      logs: canViewAuditLogs(user, settings) && !fastState ? logs.slice(0, STATE_LOG_LIMIT) : [],
+      moderationLogs: !fastState && canViewAuditLogs(user, settings) ? safeLogEntries(moderationLogs.slice(-Math.min(STATE_LOG_LIMIT, 250)), user) : [],
+      logs: canViewAuditLogs(user, settings) && !fastState ? safeLogEntries(logs.slice(0, STATE_LOG_LIMIT), user) : [],
       dev: canDev(user) && !fastState
         ? await buildDevState({ settings, rooms, messages, dms, dmGroups, files, accountRequests, users, store, reports, moderationLogs, logs, devConfig, bots, plugins, automod })
         : null,
@@ -1808,8 +1809,8 @@ async function routeApi(req, res, requestUrl) {
     messages.push(message);
     await writeJson(FILES.messages, messages.slice(-MESSAGE_STORE_LIMIT));
     await addSystemLog("message.sent", user.username, { roomId, hasAttachment: Boolean(attachment), mentions: message.mentions }, req);
-    broadcast({ type: "message:new", message });
-    return json(res, 201, { message });
+    await broadcastRoomMessage(message, rooms);
+    return json(res, 201, { message: safeRoomMessage(message, user) });
   }
 
   if (req.method === "GET" && pathname === "/api/secret-messages") {
@@ -2058,7 +2059,7 @@ async function routeApi(req, res, requestUrl) {
       broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     }
     await writeJson(FILES.profiles, profiles);
-    broadcast({ type: "profiles:update", profiles: safeProfiles(profiles, users, user) });
+    await broadcastProfileUpdate(profiles, users);
     return json(res, 200, { profile: next, profiles: safeProfiles(profiles, users, user), user: safeUser(users[userIndex] || user, user) });
   }
 
@@ -2230,9 +2231,8 @@ async function routeApi(req, res, requestUrl) {
     };
     await writeJson(FILES.readReceipts, receipts);
     const payload = { type: "read-receipts:update", context, targetId, receipts: { [key]: receipts[key] } };
-    if (context === "messages") broadcast(payload);
-    else broadcastReceiptContext(payload, context, targetId, user);
-    return json(res, 200, { readReceipts: safeReadReceipts(receipts, user) });
+    await broadcastReceiptContext(payload, context, targetId, user);
+    return json(res, 200, { readReceipts: { [key]: receipts[key] } });
   }
 
   if (req.method === "POST" && pathname === "/api/logs/wipe") {
@@ -2244,9 +2244,9 @@ async function routeApi(req, res, requestUrl) {
     await Promise.all([writeJson(FILES.logs, []), writeJson(FILES.moderationLogs, [])]);
     await addSystemLog("logs.wiped", user.username, { note: String(body.note || "").slice(0, 160) }, req);
     const logs = await readJson(FILES.logs, []);
-    broadcastManagers({ type: "logs:update", logs });
-    broadcastManagers({ type: "moderation:update", moderationLogs: [] });
-    return json(res, 200, { logs, moderationLogs: [] });
+    broadcastManagerLogs("logs:update", "logs", logs);
+    broadcastManagerLogs("moderation:update", "moderationLogs", []);
+    return json(res, 200, { logs: safeLogEntries(logs, user), moderationLogs: [] });
   }
 
   if (req.method === "POST" && pathname === "/api/browser/history/wipe") {
@@ -2261,8 +2261,8 @@ async function routeApi(req, res, requestUrl) {
     await writeJson(FILES.logs, next);
     await addSystemLog("browser.history.wiped", user.username, { username: targetUsername }, req);
     const updated = await readJson(FILES.logs, []);
-    broadcastManagers({ type: "logs:update", logs: updated.slice(0, 300) });
-    return json(res, 200, { logs: updated.slice(0, 300) });
+    broadcastManagerLogs("logs:update", "logs", updated.slice(0, 300));
+    return json(res, 200, { logs: safeLogEntries(updated.slice(0, 300), user) });
   }
 
   if (req.method === "POST" && pathname === "/api/wipe/reports") {
@@ -3377,7 +3377,7 @@ async function routeApi(req, res, requestUrl) {
     if (previous.role !== users[index].role || previous.allowPersistentLogin !== users[index].allowPersistentLogin || tempAdminMinutes || clearTempAdmin) {
       expireUserSessions(username);
     }
-    broadcast({ type: "profiles:update", profiles: safeProfiles(profiles, users, user) });
+    await broadcastProfileUpdate(profiles, users);
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     if (permanentPromotion) broadcastSettings(nextSettings);
     return json(res, 200, { users: users.map((entry) => safeUser(entry, user)), profiles: safeProfiles(profiles, users, user) });
@@ -3581,9 +3581,11 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     const emoji = normalizeReaction(body.emoji);
     if (!emoji) return json(res, 400, { error: "Unsupported reaction" });
-    const messages = await readJson(FILES.messages, []);
+    const [messages, rooms] = await Promise.all([readJson(FILES.messages, []), readJson(FILES.rooms, [])]);
     const index = messages.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "Message not found" });
+    const room = rooms.find((entry) => entry.id === (messages[index].roomId || "main")) || { id: messages[index].roomId || "main" };
+    if (!canAccessRoom(room, user)) return json(res, 403, { error: "You do not have access to this message" });
     const reactions = messages[index].reactions && typeof messages[index].reactions === "object" ? messages[index].reactions : {};
     const usersForEmoji = new Set(Array.isArray(reactions[emoji]) ? reactions[emoji] : []);
     if (usersForEmoji.has(user.username)) {
@@ -3594,8 +3596,8 @@ async function routeApi(req, res, requestUrl) {
     reactions[emoji] = Array.from(usersForEmoji);
     messages[index] = { ...messages[index], reactions };
     await writeJson(FILES.messages, messages);
-    broadcast({ type: "message:update", message: messages[index] });
-    return json(res, 200, { message: messages[index] });
+    await broadcastRoomPayload({ type: "message:update", message: messages[index] }, messages[index].roomId || "main", rooms, user);
+    return json(res, 200, { message: safeRoomMessage(messages[index], user) });
   }
 
   if (req.method === "POST" && pathname.startsWith("/api/messages/") && pathname.endsWith("/pin")) {
@@ -3617,8 +3619,8 @@ async function routeApi(req, res, requestUrl) {
     };
     await writeJson(FILES.messages, messages);
     await addSystemLog(unpin ? "message.unpinned" : "message.pinned", user.username, { id, roomId: messages[index].roomId || "main" }, req);
-    broadcast({ type: "message:update", message: messages[index] });
-    return json(res, 200, { message: messages[index] });
+    await broadcastRoomPayload({ type: "message:update", message: messages[index] }, messages[index].roomId || "main", rooms, user);
+    return json(res, 200, { message: safeRoomMessage(messages[index], user) });
   }
 
   if (req.method === "POST" && pathname.startsWith("/api/dms/") && pathname.endsWith("/pin")) {
@@ -3648,9 +3650,11 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     const textValue = String(body.text || "").trim().slice(0, 2000);
     if (!textValue) return json(res, 400, { error: "Message cannot be empty" });
-    const messages = await readJson(FILES.messages, []);
+    const [messages, rooms] = await Promise.all([readJson(FILES.messages, []), readJson(FILES.rooms, [])]);
     const index = messages.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "Message not found" });
+    const room = rooms.find((entry) => entry.id === (messages[index].roomId || "main")) || { id: messages[index].roomId || "main" };
+    if (!canAccessRoom(room, user)) return json(res, 403, { error: "You do not have access to this message" });
     if (messages[index].user !== user.username && !canModerate(user)) return json(res, 403, { error: "You can edit only your messages" });
     const automodError = await checkAutomod(textValue, user, req);
     if (automodError) return json(res, 400, { error: automodError });
@@ -3662,19 +3666,23 @@ async function routeApi(req, res, requestUrl) {
     };
     await writeJson(FILES.messages, messages);
     await addSystemLog("message.edited", user.username, { id }, req);
-    broadcast({ type: "message:update", message: messages[index] });
-    return json(res, 200, { message: messages[index] });
+    await broadcastRoomPayload({ type: "message:update", message: messages[index] }, messages[index].roomId || "main", rooms, user);
+    return json(res, 200, { message: safeRoomMessage(messages[index], user) });
   }
 
   if (req.method === "DELETE" && pathname.startsWith("/api/messages/")) {
     const settings = await readJson(FILES.settings, {});
     if (!canUseModerationCapability(user, settings, "content-moderation")) return json(res, 403, { error: "Owner admin has not granted content-moderation access" });
     const id = pathname.split("/").pop();
-    const messages = await readJson(FILES.messages, []);
+    const [messages, rooms] = await Promise.all([readJson(FILES.messages, []), readJson(FILES.rooms, [])]);
+    const removed = messages.find((entry) => entry.id === id);
+    if (!removed) return json(res, 404, { error: "Message not found" });
+    const room = rooms.find((entry) => entry.id === (removed.roomId || "main")) || { id: removed.roomId || "main" };
+    if (!canAccessRoom(room, user)) return json(res, 403, { error: "You do not have access to this message" });
     const next = messages.filter((entry) => entry.id !== id);
     if (next.length === messages.length) return json(res, 404, { error: "Message not found" });
     await writeJson(FILES.messages, next);
-    broadcast({ type: "message:delete", id });
+    await broadcastRoomPayload({ type: "message:delete", id }, removed.roomId || "main", rooms, user);
     return json(res, 200, { ok: true });
   }
 
@@ -4855,12 +4863,12 @@ async function handleWsMessage(client, message) {
 
   if (message.type === "typing") {
     client.typingRoomId = message.active ? String(message.roomId || "main").slice(0, 80) : "";
-    return broadcast({
+    return broadcastRoomPayload({
       type: "typing",
       roomId: client.typingRoomId,
       username: client.username,
       active: Boolean(message.active),
-    }, client.id);
+    }, client.typingRoomId || "main", await readJson(FILES.rooms, []), client, client.id);
   }
 
   const settings = await readJson(FILES.settings, {});
@@ -5076,12 +5084,12 @@ async function handleHttpRealtimeMessage(client, message) {
 
   if (message.type === "typing") {
     client.typingRoomId = message.active ? String(message.roomId || "main").slice(0, 80) : "";
-    return broadcast({
+    return broadcastRoomPayload({
       type: "typing",
       roomId: client.typingRoomId,
       username: client.username,
       active: Boolean(message.active),
-    }, client.id);
+    }, client.typingRoomId || "main", await readJson(FILES.rooms, []), client, client.id);
   }
 
   const settings = await readJson(FILES.settings, {});
@@ -5452,6 +5460,26 @@ function broadcast(payload, exceptId) {
   }
 }
 
+async function broadcastRoomMessage(message, rooms = []) {
+  const roomId = String(message && message.roomId || "main");
+  await broadcastRoomPayload({ type: "message:new", message }, roomId, rooms);
+}
+
+async function broadcastRoomPayload(payload, roomId, rooms = [], actor = null, exceptId = "") {
+  const cleanRoomId = String(roomId || "main");
+  const room = (rooms || []).find((entry) => String(entry.id || "main") === cleanRoomId) || { id: cleanRoomId };
+  if (actor && !canManage(actor) && !canAccessRoom(room, actor)) return;
+  pruneHttpRealtime();
+  for (const client of realtimeClients()) {
+    if (client.id === exceptId) continue;
+    if (!canManage(client) && !canAccessRoom(room, client)) continue;
+    const safePayload = payload && payload.message
+      ? { ...payload, message: safeRoomMessage(payload.message, client) }
+      : payload;
+    deliverRealtime(client, safePayload);
+  }
+}
+
 async function broadcastPeerJoined(joinedClient, exceptId) {
   const [users, friends] = await Promise.all([
     readJson(FILES.users, []),
@@ -5472,6 +5500,29 @@ async function broadcastPresenceUpdate(profiles) {
   ]);
   for (const client of realtimeClients()) {
     deliverRealtime(client, { type: "presence:update", presence: presenceList(profiles, client, users, friends) });
+  }
+}
+
+async function broadcastProfileUpdate(profiles, users) {
+  const [friends, rooms, messages, dms] = await Promise.all([
+    readJson(FILES.friends, { requests: [], friendships: [] }),
+    readJson(FILES.rooms, []),
+    readJson(FILES.messages, []),
+    readJson(FILES.dms, []),
+  ]);
+  for (const client of realtimeClients()) {
+    const accessibleRoomIds = new Set((rooms || []).filter((room) => canAccessRoom(room, client)).map((room) => room.id || "main"));
+    const visibleMessages = (messages || [])
+      .map((message) => ({ ...message, roomId: message.roomId || "main" }))
+      .filter((message) => canManage(client) || accessibleRoomIds.has(message.roomId || "main"))
+      .map((message) => safeRoomMessage(message, client));
+    const visibleDms = (canManage(client)
+      ? dms
+      : (dms || []).filter((entry) => Array.isArray(entry.participants) && entry.participants.includes(client.username)))
+      .filter((entry) => !entry.secret)
+      .map((entry) => safeDm(entry, client));
+    const visiblePeople = statePeopleForUser(users, profiles, client, friends, visibleMessages, visibleDms);
+    deliverRealtime(client, { type: "profiles:update", profiles: safeProfiles(profiles, visiblePeople, client) });
   }
 }
 
@@ -5508,6 +5559,12 @@ function broadcastManagers(payload) {
   }
 }
 
+function broadcastManagerLogs(type, field, entries) {
+  for (const client of wsClients.values()) {
+    if (canManage(client)) sendWs(client, { type, [field]: safeLogEntries(entries, client) });
+  }
+}
+
 function broadcastSettings(settings) {
   pruneHttpRealtime();
   for (const client of realtimeClients()) {
@@ -5537,6 +5594,11 @@ function broadcastDm(payload, dm) {
 }
 
 async function broadcastReceiptContext(payload, context, targetId, user) {
+  if (context === "messages") {
+    const rooms = await readJson(FILES.rooms, []);
+    await broadcastRoomPayload(payload, targetId || "main", rooms, user);
+    return;
+  }
   if (context === "dm") {
     const participants = new Set(targetId.split("|").map(normalizeUsername).filter(Boolean));
     for (const client of wsClients.values()) {
@@ -5897,6 +5959,31 @@ function publicUser(user, profile = {}) {
   };
 }
 
+function statePeopleForUser(users, profiles, viewer, friends = { friendships: [] }, messages = [], dms = []) {
+  if (canOwn(viewer)) return (users || []).map((entry) => publicUser(entry, profiles[entry.username]));
+  const visible = new Set([normalizeUsername(viewer && viewer.username)]);
+  for (const friendship of friends.friendships || []) {
+    if (friendPair(friendship, viewer.username, friendship.from)) visible.add(normalizeUsername(friendship.from));
+    if (friendPair(friendship, viewer.username, friendship.to)) visible.add(normalizeUsername(friendship.to));
+  }
+  for (const message of messages || []) {
+    visible.add(normalizeUsername(message.user));
+  }
+  for (const dm of dms || []) {
+    for (const participant of dm.participants || []) visible.add(normalizeUsername(participant));
+    visible.add(normalizeUsername(dm.from));
+    visible.add(normalizeUsername(dm.to));
+  }
+  return (users || [])
+    .filter((entry) => {
+      const username = normalizeUsername(entry && entry.username);
+      if (!username) return false;
+      if (visible.has(username)) return true;
+      return friendCandidateAllowed(viewer, entry, "", profiles[entry.username]);
+    })
+    .map((entry) => publicUser(entry, profiles[entry.username]));
+}
+
 function defaultProfile(username) {
   return {
     displayName: username,
@@ -5970,6 +6057,46 @@ function safeProfiles(profiles, users, viewer) {
     };
   }
   return result;
+}
+
+function safeLogEntries(entries, viewer) {
+  if (canOwn(viewer)) return Array.isArray(entries) ? entries : [];
+  return (Array.isArray(entries) ? entries : []).map((entry) => safeLogEntry(entry));
+}
+
+function safeLogEntry(entry = {}) {
+  const safe = {};
+  for (const field of ["id", "actor", "action", "target", "note", "createdAt"]) {
+    if (entry[field] !== undefined) safe[field] = entry[field];
+  }
+  if (entry.details && typeof entry.details === "object") {
+    const details = {};
+    for (const [key, value] of Object.entries(entry.details)) {
+      const lower = String(key || "").toLowerCase();
+      if (
+        lower.includes("email") ||
+        lower.includes("phone") ||
+        lower.includes("ip") ||
+        lower.includes("device") ||
+        lower.includes("token") ||
+        lower.includes("password") ||
+        lower.includes("secret") ||
+        lower.includes("authorization") ||
+        lower.includes("cookie") ||
+        lower.includes("location")
+      ) {
+        details[key] = "[redacted]";
+      } else if (Array.isArray(value)) {
+        details[key] = value.slice(0, 20).map((item) => typeof item === "string" ? item.slice(0, 120) : item);
+      } else if (value && typeof value === "object") {
+        details[key] = "[object]";
+      } else {
+        details[key] = typeof value === "string" ? value.slice(0, 180) : value;
+      }
+    }
+    safe.details = details;
+  }
+  return safe;
 }
 
 function presenceList(profiles, viewer, users = [], friends = { friendships: [] }) {
@@ -6828,14 +6955,19 @@ function safeReadReceipts(receipts, user, options = {}) {
   if (canManage(user)) return receipts;
   const result = {};
   const groups = Array.isArray(options.dmGroups) ? options.dmGroups.map(sanitizeDmGroup) : [];
+  const messageTargets = new Set(
+    (Array.isArray(options.messages) ? options.messages : [])
+      .map((message) => String(message && message.roomId || "main"))
+      .filter(Boolean)
+  );
   for (const [key, value] of Object.entries(receipts)) {
     const [context, ...rest] = key.split(":");
     const targetId = rest.join(":");
     if (context === "messages") {
-      result[key] = value;
+      if (messageTargets.has(targetId || "main")) result[key] = value;
     } else if (context === "dm") {
       const participants = targetId.split("|").map(normalizeUsername).filter(Boolean);
-      if (participants.includes(user.username)) result[key] = value;
+      if (participants.includes(normalizeUsername(user && user.username))) result[key] = value;
     } else if (context === "group") {
       const group = groups.find((entry) => entry.id === targetId);
       if (group && group.participants.includes(user.username)) result[key] = value;
@@ -8055,7 +8187,7 @@ async function addModerationLog(actor, action, target, note) {
     createdAt: new Date().toISOString(),
   });
   await writeJson(FILES.moderationLogs, logs.slice(0, 2000));
-  broadcastManagers({ type: "moderation:update", moderationLogs: logs.slice(0, 250) });
+  broadcastManagerLogs("moderation:update", "moderationLogs", logs.slice(0, 250));
 }
 
 async function addSystemLog(action, actor, details = {}, req = null) {
@@ -8072,7 +8204,7 @@ async function addSystemLog(action, actor, details = {}, req = null) {
   logs.unshift(entry);
   const next = logs.slice(0, 3000);
   await writeJson(FILES.logs, next);
-  broadcastManagers({ type: "logs:update", logs: next.slice(0, 300) });
+  broadcastManagerLogs("logs:update", "logs", next.slice(0, 300));
 }
 
 async function ownerFailsafeTriggeredResponse(req, res, actor, trigger) {

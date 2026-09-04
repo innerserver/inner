@@ -1906,8 +1906,6 @@ body[data-theme="glass"] .file-card {
 /* v212 final DM/message layout recovery layer. This is intentionally last:
    older compatibility blocks above redefine chat rows for the compact header.
    Keep every list as the only scrolling region and keep composers in-flow. */
-#appView.app:not(.hidden),
-#appView.app:not(.hidden) > .workspace,
 #messagesView.view.active,
 #dmsView.view.active {
   min-height: 0 !important;
@@ -1962,20 +1960,129 @@ body[data-theme="glass"] .file-card {
   box-sizing: border-box !important;
 }
 
-@media (min-width: 861px) {
-  #appView.app:not(.hidden) > .workspace {
-    display: grid !important;
-    grid-template-rows: minmax(0, 1fr) !important;
-  }
-}
-
 @media (max-width: 860px) {
-  #appView.app:not(.hidden),
-  #appView.app:not(.hidden) > .workspace,
   #messagesView.view.active,
   #dmsView.view.active {
     height: 100dvh !important;
     min-height: 0 !important;
     overflow: hidden !important;
+  }
+}
+
+/* v212 DM top-bar polish: keep the selected chat, call buttons, and + menu
+   behaving like one compact messaging header instead of a crowded form row. */
+#dmsView > .section-header {
+  grid-template-columns: minmax(0, 1fr) minmax(520px, max-content) !important;
+  align-items: center !important;
+  gap: 16px !important;
+}
+
+#dmsView .message-header-controls {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: end !important;
+  justify-content: flex-end !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+#dmsView .message-header-controls > .compact-label {
+  flex: 1 1 260px !important;
+  min-width: 220px !important;
+}
+
+#dmsView .dm-quick-actions {
+  flex: 0 0 auto !important;
+  display: grid !important;
+  grid-template-columns: repeat(3, max-content) !important;
+  gap: 6px !important;
+}
+
+#dmsView .dm-quick-actions > button.compact-button,
+#dmsView #dmShareScreenButton {
+  inline-size: auto !important;
+  min-inline-size: 0 !important;
+  min-width: 0 !important;
+  height: 40px !important;
+  padding-inline: 13px !important;
+  white-space: nowrap !important;
+}
+
+#dmsView .message-more-menu {
+  flex: 0 0 40px !important;
+}
+
+#dmsView .message-more-menu[open] .message-more-menu-content {
+  right: 0 !important;
+  left: auto !important;
+  width: min(430px, calc(100vw - 72px)) !important;
+  max-height: min(70dvh, 560px) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+
+#dmsView .dm-tools-panel,
+#dmsView .dm-tool-card,
+#dmsView .dm-tool-card > form {
+  min-width: 0 !important;
+}
+
+@media (max-width: 980px) {
+  #dmsView > .section-header {
+    grid-template-columns: 1fr !important;
+  }
+
+  #dmsView .message-header-controls {
+    justify-content: stretch !important;
+  }
+
+  #dmsView .message-header-controls > .compact-label {
+    flex: 1 1 260px !important;
+  }
+}
+
+@media (max-width: 560px) {
+  #dmsView .section-header {
+    align-items: stretch !important;
+  }
+
+  #dmsView .message-header-controls {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 40px !important;
+    gap: 10px !important;
+  }
+
+  #dmsView .message-header-controls > .compact-label {
+    grid-column: 1 / -1 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  #dmsView .dm-quick-actions {
+    grid-column: 1 !important;
+    grid-template-columns: repeat(3, minmax(0, max-content)) !important;
+    justify-content: start !important;
+  }
+
+  #dmsView .dm-quick-actions > button.compact-button,
+  #dmsView #dmShareScreenButton {
+    height: 40px !important;
+    padding-inline: 10px !important;
+    font-size: 0.82rem !important;
+  }
+
+  #dmsView .message-more-menu {
+    grid-column: 2 !important;
+    justify-self: end !important;
+    align-self: end !important;
+  }
+
+  #dmsView .message-more-menu[open] .message-more-menu-content {
+    position: fixed !important;
+    top: 338px !important;
+    right: 14px !important;
+    left: 14px !important;
+    width: auto !important;
+    max-height: calc(100dvh - 368px) !important;
   }
 }

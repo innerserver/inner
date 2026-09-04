@@ -3,6 +3,7 @@ Released: 2026-09-04
 
 Changes in this package:
 - Added a final message/DM layout recovery layer so message lists scroll independently and composers stay inside the active view on desktop and mobile.
+- Polished the DM top bar into a compact WhatsApp-style header so Chat, Call, Video, Share screen, and the + menu do not collide.
 - Fixed server-side browser SSRF exposure by blocking local/private addresses, embedded credentials, unsafe redirects, oversized responses, and long-running fetches.
 - Added same-origin protection for authenticated WebSocket upgrades.
 - Extended the reusable UI audit script with CSRF and private browser target checks.

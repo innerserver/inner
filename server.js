@@ -7941,7 +7941,7 @@ async function issueMutedWordStrike(user, req) {
     readJson(FILES.users, []),
   ]);
   const index = users.findIndex((entry) => String(entry.username || "").toLowerCase() === String(user.username || "").toLowerCase());
-  if (index === -1 || canModerate(users[index])) return { thresholdReset: false, strikeCount: 0 };
+  if (index === -1 || canOwn(users[index])) return { thresholdReset: false, strikeCount: 0 };
 
   const issuedAt = new Date().toISOString();
   const reason = "Muted word used";
@@ -7980,7 +7980,10 @@ async function issueMutedWordStrike(user, req) {
 }
 
 async function checkAutomod(textValue, user, req) {
-  if (canModerate(user)) return "";
+  // The two owner-admin accounts remain protected from automated enforcement.
+  // Moderators and non-owner admins are intentionally subject to the same
+  // muted-word rules as members.
+  if (canOwn(user)) return "";
   const automod = await readJson(FILES.automod, {});
   if (!automod.enabled) return "";
   const lower = String(textValue || "").toLowerCase();

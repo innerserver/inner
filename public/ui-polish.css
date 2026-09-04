@@ -1270,7 +1270,7 @@ body[data-theme="glass"] .file-card {
 }
 
 #messagesView > .section-header { grid-row: 1; }
-#messagesView > .invite-join-bar { grid-row: 2; }
+#messagesView > .message-tools-panel { grid-row: 2; }
 #messagesView > .message-list { grid-row: 3; }
 #messagesView > .jump-bottom-button { grid-row: 4; }
 #messagesView > .composer { grid-row: 5; }
@@ -1295,13 +1295,85 @@ body[data-theme="glass"] .file-card {
   height: auto !important;
   overflow-y: auto !important;
   overscroll-behavior: contain;
+  padding-bottom: 24px !important;
+  scroll-padding-bottom: 24px;
 }
 
 #messagesView > .composer,
 #dmsView > .composer {
-  position: relative !important;
+  position: static !important;
   inset: auto !important;
   z-index: 1 !important;
+}
+
+.message-tools-panel,
+#dmsView > .dm-call-panel {
+  border: 1px solid var(--ui-card-line) !important;
+  border-radius: 8px !important;
+  background: var(--surface) !important;
+  box-shadow: var(--ui-shadow-sm);
+  overflow: hidden;
+}
+
+.message-tools-panel > summary,
+#dmsView > .dm-call-panel > summary {
+  display: flex;
+  align-items: center;
+  min-height: 46px;
+  padding: 0 16px;
+  color: var(--ink);
+  font-weight: 790;
+  cursor: pointer;
+  list-style: none;
+}
+
+.message-tools-panel > summary::-webkit-details-marker,
+#dmsView > .dm-call-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.message-tools-panel > summary::after,
+#dmsView > .dm-call-panel > summary::after {
+  content: "+";
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 1.2rem;
+}
+
+.message-tools-panel[open] > summary::after,
+#dmsView > .dm-call-panel[open] > summary::after {
+  content: "-";
+}
+
+.message-tools-panel[open] > summary,
+#dmsView > .dm-call-panel[open] > summary {
+  border-bottom: 1px solid var(--ui-card-line);
+  background: var(--surface-muted);
+}
+
+.message-tools-panel .invite-join-bar {
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+#dmsView > .dm-call-panel > .panel-title-row,
+#dmsView > .dm-call-panel > .dm-call-grid {
+  margin-inline: 12px;
+}
+
+#dmsView > .dm-call-panel[open] {
+  display: block !important;
+  padding: 0 0 12px !important;
+}
+
+#dmsView > .dm-call-panel[open] > .panel-title-row {
+  margin-top: 12px;
+}
+
+#dmsView > .dm-call-panel[open] > .dm-call-grid {
+  margin-bottom: 0;
 }
 
 /* Messaging layout contract: cards remain normal flex children, all controls

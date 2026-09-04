@@ -1,7 +1,7 @@
-Connectifi build v202
+Connectifi build v203
 Released: 2026-09-03
 
 Changes in this package:
-- Issued automatic strikes for muted-word matches in room messages, secret messages, DMs, and edits.
-- Preserved the existing third-strike email and active-strike reset behavior.
-- Kept the v201 messaging layout repair and refreshed client asset cache tokens.
+- Collapsed room invite and DM call controls until they are needed, while active calls still open automatically.
+- Made message and DM composers static grid rows with dedicated scroll clearance so they cannot cover the latest message.
+- Applied muted-word strikes to moderators and non-owner admins; Admin and Admin2 remain exempt.

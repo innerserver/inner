@@ -5711,6 +5711,7 @@ function renderDmCall() {
   const online = Array.from(state.peers.values()).filter((peer) => people.includes(peer.username)).length;
   const callExpanded = Boolean(inThisCall || sharingHere || remoteShareHere || incomingHere);
   els.dmCallPanel.classList.toggle("call-expanded", callExpanded);
+  if (callExpanded && "open" in els.dmCallPanel) els.dmCallPanel.open = true;
 
   els.dmCallState.textContent = incomingHere
     ? `${state.incomingCall.fromUser} is ringing ${state.incomingCall.roomLabel || callRoomLabel(state.incomingCall.roomId)}`

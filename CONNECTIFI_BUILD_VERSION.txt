@@ -1,7 +1,6 @@
-Connectifi build v203
+Connectifi build v204
 Released: 2026-09-03
 
 Changes in this package:
-- Collapsed room invite and DM call controls until they are needed, while active calls still open automatically.
-- Made message and DM composers static grid rows with dedicated scroll clearance so they cannot cover the latest message.
-- Applied muted-word strikes to moderators and non-owner admins; Admin and Admin2 remain exempt.
+- Enforced one active workspace view at a time so Room messages and DMs cannot appear in the same page flow.
+- Retained the collapsed message tools, static composers, and muted-word automatic-strike policy from v203.

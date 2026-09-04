@@ -1262,6 +1262,10 @@ body[data-theme="glass"] .file-card {
 /* Keep messaging controls in explicit grid rows.  Earlier compatibility rules
    target these views several times; without explicit placement the composer
    can land in an implicit row and overlap the scroller. */
+.view:not(.active) {
+  display: none !important;
+}
+
 #messagesView.view.active {
   display: grid !important;
   grid-template-rows: auto auto minmax(0, 1fr) auto auto !important;

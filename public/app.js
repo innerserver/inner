@@ -1,3 +1,5 @@
+const CONNECTIFI_BUILD_LABEL = "v208 UI audit";
+
 const state = {
   user: null,
   settings: { serverEnabled: true, roomName: "Connectifi" },
@@ -850,6 +852,9 @@ function bindEvents() {
       state.friendGradeFilter = els.friendGradeSearch.value || "";
     });
   }
+  document.querySelectorAll("[data-chat-theme-link]").forEach((button) => {
+    button.addEventListener("click", openChatThemeEditor);
+  });
   els.profileForm.addEventListener("submit", saveProfile);
   els.profileTheme.addEventListener("change", () => {
     applyProfileTheme(els.profileTheme.value);
@@ -4917,8 +4922,8 @@ function renderShell() {
   els.serverPill.classList.toggle("on", enabled);
   els.serverPill.classList.toggle("off", !enabled);
   if (els.buildBadge) {
-    els.buildBadge.textContent = custom.versionLabel || "";
-    els.buildBadge.classList.toggle("hidden", !custom.versionLabel);
+    els.buildBadge.textContent = custom.versionLabel || CONNECTIFI_BUILD_LABEL;
+    els.buildBadge.classList.remove("hidden");
   }
   els.currentUser.textContent = state.user ? `${state.user.username} (${state.user.role})` : "-";
   els.messageCount.textContent = String(state.messages.length);
@@ -5125,7 +5130,7 @@ function onboardingGuideForRole(role) {
     subtitle: "Start here if you are using Inner for chats, files, friends, and docs.",
     steps: [
       { title: "Set up your profile", detail: "Add display name, grade, status, profile picture, and theme.", view: "profile", action: "Edit profile" },
-      { title: "Add friends", detail: "Same-grade users show by default. Search exact username to find someone outside your grade.", view: "friends", action: "Find friends" },
+      { title: "Add friends", detail: "Same-grade users show by default. Search exact username to find someone outside your grade.", view: "friends", action: "Open friends" },
       { title: "Use messages and DMs", detail: "Use Messages for rooms and DMs for private or group conversations with accepted friends.", view: "messages", action: "Open messages" },
       { title: "Upload and share files", detail: "Use Files for photos, videos, audio, and documents. Turn on Private if only you and admins should see it.", view: "files", action: "Open files" },
       { title: "Use Docs, Slides, and Sheets", detail: "Use the Google Workspace tab for school work directly inside Inner.", view: "googleWorkspace", action: "Open Workspace" },
@@ -5861,8 +5866,11 @@ function renderFriends() {
   if (!els.friendList) return;
   const friendNames = new Set((state.friends.friends || []).map((entry) => entry.username));
   const candidates = friendCandidatePeople().filter((person) => !friendNames.has(person.username));
+  const search = String(state.friendSearch || "").trim();
+  const grade = String(state.friendGradeFilter || "").trim();
+  const emptyCandidateLabel = search || grade ? "No new matches found" : "Search exact username";
   els.friendUserSelect.replaceChildren(
-    optionElement("", candidates.length ? "Choose a person" : "Search exact username"),
+    optionElement("", candidates.length ? "Choose a person" : emptyCandidateLabel),
     ...candidates
       .map((person) => {
         const option = document.createElement("option");
@@ -5871,9 +5879,10 @@ function renderFriends() {
         return option;
       })
   );
+  if (els.sendFriendRequestButton) {
+    els.sendFriendRequestButton.disabled = !featureAvailable("friends") || !candidates.length;
+  }
   if (els.friendState) {
-    const search = String(state.friendSearch || "").trim();
-    const grade = String(state.friendGradeFilter || "").trim();
     const letter = String(state.friendAlphaFilter || "").trim();
     els.friendState.textContent = search
       ? "Exact username search can find people outside your grade."
@@ -6253,8 +6262,8 @@ function applyCustomizations() {
   if (els.roomName) els.roomName.textContent = appName;
   document.title = appName;
   if (els.buildBadge) {
-    els.buildBadge.textContent = custom.versionLabel || "";
-    els.buildBadge.classList.toggle("hidden", !custom.versionLabel);
+    els.buildBadge.textContent = custom.versionLabel || CONNECTIFI_BUILD_LABEL;
+    els.buildBadge.classList.remove("hidden");
   }
   if (els.siteNotice) {
     els.siteNotice.textContent = custom.notice || "";
@@ -6726,7 +6735,9 @@ function renderVoice() {
   els.joinVideoButton.disabled = joined || !featureAvailable("voice");
   els.leaveVoiceButton.disabled = !joined;
   els.muteVoiceButton.textContent = state.voiceMuted ? "Unmute" : "Mute";
+  els.muteVoiceButton.disabled = !joined || !featureAvailable("voice");
   els.deafenVoiceButton.textContent = state.voiceDeafened ? "Undeafen" : "Deafen";
+  els.deafenVoiceButton.disabled = !joined || !featureAvailable("voice");
   els.cameraVoiceButton.textContent = state.voiceCameraOff ? "Camera on" : "Camera off";
   els.cameraVoiceButton.disabled = !joined || !state.voiceVideoEnabled;
   document.querySelectorAll("[data-soundboard]").forEach((button) => {
@@ -10053,6 +10064,15 @@ async function sendFriendRequest(event) {
   } catch (error) {
     notify(error.message);
   }
+}
+
+function openChatThemeEditor() {
+  showView("profile");
+  window.setTimeout(() => {
+    if (!els.profileTheme) return;
+    els.profileTheme.focus();
+    els.profileTheme.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, 0);
 }
 
 async function respondFriendRequest(id, action) {

@@ -2069,7 +2069,7 @@ async function routeApi(req, res, requestUrl) {
     if (featureError) return json(res, 423, { error: featureError });
     const body = await readJsonBody(req);
     const to = String(body.to || "").trim();
-    const searchProof = String(body.search || body.to || "").trim();
+    const searchProof = String(body.search || "").trim();
     if (!to || to.toLowerCase() === user.username.toLowerCase()) return json(res, 400, { error: "Choose another user" });
     const users = await readJson(FILES.users, []);
     const recipient = users.find((entry) => entry.username.toLowerCase() === to.toLowerCase());

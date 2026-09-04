@@ -2,7 +2,7 @@
   "name": "Connectifi",
   "short_name": "Connectifi",
   "description": "Private workspace for rooms, DMs, files, screen sharing, admin controls, backups, and contact settings.",
-  "start_url": "/?v=connectifi-207-dm-calls",
+  "start_url": "/?v=connectifi-208-ui-audit",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f7f7f4",

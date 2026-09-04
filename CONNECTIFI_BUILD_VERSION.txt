@@ -1,7 +1,9 @@
-Connectifi build v207
+Connectifi build v208
 Released: 2026-09-04
 
 Changes in this package:
+- Stamped the login screen and in-app build badge as v208 UI audit so this package is visually distinguishable from older v207 builds.
+- Added the UI/functionality audit fixes: safer friend-add proof, clearer friend search states, chat-theme shortcuts from Messages/DMs, stronger call-control disabled states, and DM call/screen realtime smoke coverage.
 - Contained the sidebar and workspace in separate desktop grid cells so chat cannot render beneath navigation.
 - Kept the DM call, video, and share actions directly in the chat header; the live call stage appears only while active.
 - Replaced permanent room and DM tool rows with a compact + action menu and renamed Selfie to Photo.

@@ -1,1 +1,1 @@
-importScripts("/service-worker.js?v=connectifi-207-dm-calls");
+importScripts("/service-worker.js?v=connectifi-208-ui-audit");

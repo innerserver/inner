@@ -1512,6 +1512,80 @@ body[data-theme="glass"] .file-card {
   }
 }
 
+/* The live-call stage is part of the DM conversation, not a permanent tool
+   card. It appears only for an active call, incoming call, or screen share. */
+#dmsView .dm-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+#dmsView .dm-quick-actions > button {
+  min-height: 40px;
+  padding-inline: 10px;
+  white-space: nowrap;
+}
+
+#dmsView > .dm-call-panel:not([open]) {
+  display: none !important;
+}
+
+#dmsView > .dm-call-panel[open] {
+  display: block !important;
+  grid-row: auto;
+  min-height: 0;
+  max-height: min(48dvh, 520px);
+  padding: 12px !important;
+  overflow: auto !important;
+}
+
+#dmsView > .dm-call-panel > summary {
+  display: none !important;
+}
+
+#dmsView > .dm-call-panel > .panel-title-row,
+#dmsView > .dm-call-panel > .dm-call-grid {
+  margin: 0 !important;
+}
+
+#dmsView > .dm-call-panel > .dm-call-grid {
+  margin-top: 10px !important;
+}
+
+#dmsView > .composer {
+  position: static !important;
+  bottom: auto !important;
+  z-index: 1 !important;
+}
+
+@media (max-width: 860px) {
+  #dmsView .section-header {
+    gap: 12px;
+  }
+
+  #dmsView .message-header-controls {
+    flex-wrap: wrap;
+    justify-content: stretch;
+  }
+
+  #dmsView .message-header-controls > .compact-label {
+    flex: 1 1 180px;
+  }
+
+  #dmsView .dm-quick-actions {
+    flex: 1 1 auto;
+  }
+}
+
+@media (max-width: 560px) {
+  #dmsView .dm-quick-actions > button {
+    min-width: 0;
+    padding-inline: 8px;
+    font-size: 0.8rem;
+  }
+}
+
 @media (max-width: 860px) {
   #messagesView.view.active,
   #dmsView.view.active {
@@ -1570,5 +1644,242 @@ body[data-theme="glass"] .file-card {
   #messagesView > .composer button,
   #dmsView > .composer button {
     width: auto !important;
+  }
+}
+
+/* v206: compact WhatsApp-style chat chrome. The sidebar and workspace own
+   separate grid cells, while optional chat actions live behind one + menu. */
+@media (min-width: 861px) {
+  #appView.app:not(.hidden) {
+    display: grid !important;
+    grid-template-columns: 272px minmax(0, 1fr) !important;
+    grid-template-rows: minmax(0, 1fr) !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  #appView.app:not(.hidden).sidebar-closed {
+    grid-template-columns: 0 minmax(0, 1fr) !important;
+  }
+
+  #appView.app:not(.hidden) > .sidebar {
+    grid-column: 1;
+    grid-row: 1;
+    width: 272px !important;
+    max-width: 272px !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: 100dvh !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  #appView.app:not(.hidden) > .workspace {
+    grid-column: 2;
+    grid-row: 1;
+    width: auto !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: 100dvh !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    isolation: isolate;
+  }
+
+  #appView.app:not(.hidden).sidebar-closed > .sidebar {
+    width: 0 !important;
+    max-width: 0 !important;
+  }
+}
+
+#messagesView.view.active,
+#dmsView.view.active {
+  grid-template-rows: auto minmax(0, 1fr) auto auto !important;
+}
+
+#messagesView > .section-header,
+#dmsView > .section-header {
+  grid-row: 1;
+  position: relative;
+}
+
+#messagesView > .message-list,
+#dmsView > .message-list { grid-row: 2; }
+
+#messagesView > .jump-bottom-button,
+#dmsView > .jump-bottom-button { grid-row: 3; }
+
+#messagesView > .composer,
+#dmsView > .composer { grid-row: 4; }
+
+#messagesView .message-header-controls,
+#dmsView .message-header-controls {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+#messagesView .message-header-controls > .compact-label,
+#dmsView .message-header-controls > .compact-label {
+  min-width: min(260px, 42vw);
+}
+
+#messagesView .message-more-menu,
+#dmsView .message-more-menu {
+  position: relative;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+#messagesView .message-more-menu > summary,
+#dmsView .message-more-menu > summary {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--ui-card-line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 1.35rem;
+  font-weight: 720;
+  line-height: 1;
+  list-style: none;
+  cursor: pointer;
+}
+
+#messagesView .message-more-menu > summary::-webkit-details-marker,
+#dmsView .message-more-menu > summary::-webkit-details-marker { display: none; }
+
+#messagesView .message-more-menu > summary:hover,
+#dmsView .message-more-menu > summary:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+#messagesView .message-more-menu-content,
+#dmsView .message-more-menu-content {
+  display: none;
+}
+
+#messagesView .message-more-menu[open] .message-more-menu-content,
+#dmsView .message-more-menu[open] .message-more-menu-content {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 32;
+  display: grid;
+  gap: 8px;
+  width: min(440px, calc(100vw - 64px));
+  padding: 10px;
+  border: 1px solid var(--ui-card-line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--ui-shadow-md);
+}
+
+#messagesView .more-menu-action,
+#dmsView .more-menu-action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 40px;
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--ui-card-line);
+  border-radius: 7px;
+  background: var(--surface-muted);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 720;
+  cursor: pointer;
+}
+
+#messagesView .more-menu-action:hover,
+#dmsView .more-menu-action:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+#messagesView .menu-file-input,
+#dmsView .menu-file-input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#messagesView .message-tools-panel,
+#dmsView .dm-tools-panel,
+#dmsView .dm-call-panel {
+  margin: 0 !important;
+  border: 1px solid var(--ui-card-line) !important;
+  border-radius: 7px !important;
+  background: var(--surface) !important;
+  box-shadow: none !important;
+}
+
+#messagesView .message-tools-panel > summary,
+#dmsView .dm-tool-card > summary,
+#dmsView .dm-call-panel > summary {
+  min-height: 40px;
+  padding: 0 11px;
+  font-size: 0.86rem;
+}
+
+#messagesView .invite-join-bar {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  padding: 10px !important;
+}
+
+#dmsView .dm-tools-panel {
+  display: grid;
+  gap: 8px;
+  padding: 8px !important;
+}
+
+#dmsView .dm-call-panel[open] {
+  display: block !important;
+  padding-bottom: 10px !important;
+}
+
+#dmsView .more-menu-secret {
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+#messagesView > .composer,
+#dmsView > .composer {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  padding: 8px !important;
+}
+
+#messagesView > .composer > input:first-child,
+#dmsView > .composer > input:first-child {
+  grid-column: auto !important;
+}
+
+@media (max-width: 700px) {
+  #messagesView .message-header-controls,
+  #dmsView .message-header-controls {
+    align-items: stretch;
+  }
+
+  #messagesView .message-header-controls > .compact-label,
+  #dmsView .message-header-controls > .compact-label {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  #messagesView .message-more-menu[open] .message-more-menu-content,
+  #dmsView .message-more-menu[open] .message-more-menu-content {
+    width: min(420px, calc(100vw - 40px));
   }
 }

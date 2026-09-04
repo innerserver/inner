@@ -10,9 +10,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-205-dm-composer" />
-    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-205-dm-composer" />
-    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-205-dm-composer" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-207-dm-calls" />
+    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-207-dm-calls" />
+    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-207-dm-calls" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -227,25 +227,33 @@
               <h2>Messages</h2>
               <p id="messageState">Live room</p>
             </div>
-            <label class="compact-label">
-              Room
-              <select id="roomSelect"></select>
-            </label>
+            <div class="message-header-controls">
+              <label class="compact-label">
+                Room
+                <select id="roomSelect"></select>
+              </label>
+              <details class="message-more-menu">
+                <summary aria-label="More room actions">+</summary>
+                <div class="message-more-menu-content">
+                  <label class="more-menu-action" for="messageAttachment">Attach file</label>
+                  <input id="messageAttachment" class="menu-file-input" type="file" accept="image/*,video/*,audio/*" form="messageForm" />
+                  <input id="messageSelfieInput" class="hidden" type="file" accept="image/*" capture="user" form="messageForm" />
+                  <button id="messageSelfieButton" class="secondary-button more-menu-action" type="button">Photo</button>
+                  <details class="message-tools-panel">
+                    <summary>Join room</summary>
+                    <form id="inviteJoinForm" class="upload-bar invite-join-bar">
+                      <input id="inviteCodeInput" maxlength="80" placeholder="Paste room invite code" autocomplete="off" />
+                      <button id="joinInviteButton" class="secondary-button" type="submit">Join</button>
+                    </form>
+                  </details>
+                </div>
+              </details>
+            </div>
           </div>
-          <details class="message-tools-panel">
-            <summary>Join a room</summary>
-            <form id="inviteJoinForm" class="upload-bar invite-join-bar">
-              <input id="inviteCodeInput" maxlength="80" placeholder="Paste room invite code" autocomplete="off" />
-              <button id="joinInviteButton" class="secondary-button" type="submit">Join invite</button>
-            </form>
-          </details>
           <div id="messageList" class="message-list" aria-live="polite"></div>
           <button id="messageJumpBottomButton" class="jump-bottom-button hidden" type="button">Jump to bottom</button>
           <form id="messageForm" class="composer">
             <input id="messageInput" maxlength="2000" placeholder="Write a message" autocomplete="off" />
-            <input id="messageAttachment" type="file" accept="image/*,video/*,audio/*" />
-            <input id="messageSelfieInput" class="hidden" type="file" accept="image/*" capture="user" />
-            <button id="messageSelfieButton" class="secondary-button" type="button">Selfie</button>
             <button id="sendMessageButton" class="primary-button" type="submit">Send</button>
           </form>
         </section>
@@ -256,49 +264,62 @@
               <h2>DMs</h2>
               <p id="dmState">Direct messages are not visible to anyone but you</p>
             </div>
-            <label class="compact-label">
-              Account
-              <select id="dmPeerSelect"></select>
-            </label>
-          </div>
-          <div class="dm-tools-panel">
-            <details class="dm-tool-card">
-              <summary>Create group DM</summary>
-              <form id="dmGroupForm" class="upload-bar">
-                <input id="dmGroupName" maxlength="80" placeholder="Group name" autocomplete="off" />
-                <div id="dmGroupMembers" class="member-picker" role="group" aria-label="Group members"></div>
-                <button id="createDmGroupButton" class="secondary-button" type="submit">Create group</button>
-                <button id="deleteDmGroupButton" class="danger-button hidden" type="button">Delete group</button>
-              </form>
-            </details>
-            <details class="dm-tool-card">
-              <summary>Share link/doc</summary>
-              <form id="shareLinkForm" class="upload-bar share-link-form">
-                <input id="shareLinkTitle" maxlength="120" placeholder="Title, doc name, or slide name" autocomplete="off" />
-                <input id="shareLinkUrl" maxlength="700" placeholder="Paste a link to share with friends" autocomplete="off" />
-                <select id="shareLinkType" aria-label="Share type">
-                  <option value="link">Link</option>
-                  <option value="doc">Doc</option>
-                  <option value="slides">Slides</option>
-                  <option value="sheet">Sheet</option>
-                  <option value="app">App</option>
-                </select>
-                <select id="shareLinkTarget" aria-label="Share target"></select>
-                <button id="shareLinkButton" class="primary-button" type="submit">Share</button>
-              </form>
-            </details>
+            <div class="message-header-controls">
+              <label class="compact-label">
+                Account
+                <select id="dmPeerSelect"></select>
+              </label>
+              <div class="dm-quick-actions" aria-label="Call actions">
+                <button id="dmVoiceCallButton" class="secondary-button compact-button" type="button">Call</button>
+                <button id="dmVideoCallButton" class="secondary-button compact-button" type="button">Video</button>
+                <button id="dmShareScreenButton" class="secondary-button compact-button" type="button">Share</button>
+              </div>
+              <details class="message-more-menu dm-more-menu">
+                <summary aria-label="More direct message actions">+</summary>
+                <div class="message-more-menu-content">
+                  <label class="more-menu-action" for="dmAttachment">Attach file</label>
+                  <input id="dmAttachment" class="menu-file-input" type="file" accept="image/*,video/*,audio/*" form="dmForm" />
+                  <input id="dmSelfieInput" class="hidden" type="file" accept="image/*" capture="user" form="dmForm" />
+                  <button id="dmSelfieButton" class="secondary-button more-menu-action" type="button">Photo</button>
+                  <label class="switch-row compact-switch more-menu-secret"><input id="dmSecret" type="checkbox" form="dmForm" /><span>Secret message</span></label>
+                  <div class="dm-tools-panel">
+                    <details class="dm-tool-card">
+                      <summary>Create group DM</summary>
+                      <form id="dmGroupForm" class="upload-bar">
+                        <input id="dmGroupName" maxlength="80" placeholder="Group name" autocomplete="off" />
+                        <div id="dmGroupMembers" class="member-picker" role="group" aria-label="Group members"></div>
+                        <button id="createDmGroupButton" class="secondary-button" type="submit">Create group</button>
+                        <button id="deleteDmGroupButton" class="danger-button hidden" type="button">Delete group</button>
+                      </form>
+                    </details>
+                    <details class="dm-tool-card">
+                      <summary>Share link/doc</summary>
+                      <form id="shareLinkForm" class="upload-bar share-link-form">
+                        <input id="shareLinkTitle" maxlength="120" placeholder="Title, doc name, or slide name" autocomplete="off" />
+                        <input id="shareLinkUrl" maxlength="700" placeholder="Paste a link to share with friends" autocomplete="off" />
+                        <select id="shareLinkType" aria-label="Share type">
+                          <option value="link">Link</option>
+                          <option value="doc">Doc</option>
+                          <option value="slides">Slides</option>
+                          <option value="sheet">Sheet</option>
+                          <option value="app">App</option>
+                        </select>
+                        <select id="shareLinkTarget" aria-label="Share target"></select>
+                        <button id="shareLinkButton" class="primary-button" type="submit">Share</button>
+                      </form>
+                    </details>
+                  </div>
+                </div>
+              </details>
+            </div>
           </div>
           <details id="dmCallPanel" class="dm-call-panel">
-            <summary>DM call</summary>
             <div class="panel-title-row">
               <div>
-                <h3>DM call</h3>
+                <h3>Live call</h3>
                 <p id="dmCallState" class="panel-note">Choose a DM or group to start a call</p>
               </div>
               <div class="button-row">
-                <button id="dmVoiceCallButton" class="primary-button" type="button">Voice call</button>
-                <button id="dmVideoCallButton" class="secondary-button" type="button">Video call</button>
-                <button id="dmShareScreenButton" class="secondary-button" type="button">Share screen</button>
                 <button id="dmStopScreenButton" class="danger-button" type="button" disabled>Stop share</button>
                 <button id="dmLeaveCallButton" class="danger-button" type="button" disabled>Leave</button>
                 <button id="dmAnswerCallButton" class="primary-button hidden" type="button">Answer</button>
@@ -317,15 +338,11 @@
                 <strong>Screen</strong>
               </article>
             </div>
-          </div>
+          </details>
           <div id="dmList" class="message-list" aria-live="polite"></div>
           <button id="dmJumpBottomButton" class="jump-bottom-button hidden" type="button">Jump to bottom</button>
           <form id="dmForm" class="composer">
             <input id="dmInput" maxlength="2000" placeholder="Write a direct message" autocomplete="off" />
-            <input id="dmAttachment" type="file" accept="image/*,video/*,audio/*" />
-            <input id="dmSelfieInput" class="hidden" type="file" accept="image/*" capture="user" />
-            <button id="dmSelfieButton" class="secondary-button" type="button">Selfie</button>
-            <label class="switch-row compact-switch"><input id="dmSecret" type="checkbox" /><span>Secret</span></label>
             <button id="sendDmButton" class="primary-button" type="submit">Send</button>
           </form>
         </section>
@@ -638,7 +655,7 @@
               <h2>Moderation</h2>
               <p>Open any room, set member screen-time rules, and resolve reports.</p>
             </div>
-          </details>
+          </div>
           <div class="moderator-intro">
             <div>
               <span class="eyebrow">Room controls</span>
@@ -1131,11 +1148,11 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=connectifi-205-dm-composer" defer></script>
-    <script src="/status-guard.js?v=connectifi-205-dm-composer" defer></script>
-    <script src="/ui-boot.js?v=connectifi-205-dm-composer" defer></script>
-    <script src="/app.js?v=connectifi-205-dm-composer" defer></script>
-    <script src="/force-logout.js?v=connectifi-205-dm-composer" defer></script>
+    <script src="/session-guard.js?v=connectifi-207-dm-calls" defer></script>
+    <script src="/status-guard.js?v=connectifi-207-dm-calls" defer></script>
+    <script src="/ui-boot.js?v=connectifi-207-dm-calls" defer></script>
+    <script src="/app.js?v=connectifi-207-dm-calls" defer></script>
+    <script src="/force-logout.js?v=connectifi-207-dm-calls" defer></script>
   </body>
 </html>
 

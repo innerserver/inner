@@ -3829,8 +3829,18 @@ function handleSocketMessage(message) {
     if (message.sharing && isDmCallRoom(message.roomId) && message.from !== state.clientId) {
       showLiveAlert(`${peer.username || "Someone"} is sharing a screen in ${callRoomLabel(message.roomId)}`);
     }
+    if (message.sharing && message.from && message.from !== state.clientId) {
+      sendWs({ type: "screen:viewer-ready", target: message.from, roomId: message.roomId || "screen:global" });
+    }
     renderPeers();
     renderDmCall();
+    return;
+  }
+
+  if (message.type === "screen:viewer-ready") {
+    if (state.localStream && message.from && message.from !== state.clientId) {
+      makeOffer(message.from, message.roomId || state.screenRoomId || "screen:global").catch(() => {});
+    }
     return;
   }
 
@@ -4644,7 +4654,7 @@ function sendHttpRealtime(payload) {
 }
 
 function queueRealtimePayload(payload) {
-  if (!payload || !["presence:update", "typing", "voice:state", "screen:status", "voice:join", "signal", "voice:signal"].includes(payload.type)) return;
+  if (!payload || !["presence:update", "typing", "voice:state", "screen:status", "screen:viewer-ready", "voice:join", "signal", "voice:signal"].includes(payload.type)) return;
   state.wsOutbox.push({ ...payload, queuedAt: Date.now() });
   state.wsOutbox = state.wsOutbox.filter((entry) => Date.now() - entry.queuedAt < 15000).slice(-20);
 }
@@ -5711,7 +5721,7 @@ function renderDmCall() {
   const online = Array.from(state.peers.values()).filter((peer) => people.includes(peer.username)).length;
   const callExpanded = Boolean(inThisCall || sharingHere || remoteShareHere || incomingHere);
   els.dmCallPanel.classList.toggle("call-expanded", callExpanded);
-  if (callExpanded && "open" in els.dmCallPanel) els.dmCallPanel.open = true;
+  if ("open" in els.dmCallPanel) els.dmCallPanel.open = callExpanded;
 
   els.dmCallState.textContent = incomingHere
     ? `${state.incomingCall.fromUser} is ringing ${state.incomingCall.roomLabel || callRoomLabel(state.incomingCall.roomId)}`

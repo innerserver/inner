@@ -1525,3 +1525,50 @@ body[data-theme="glass"] .file-card {
     max-height: min(52dvh, 520px) !important;
   }
 }
+
+/* At high desktop zoom and on phones the old single-column fallback made the
+   DM composer needlessly tall. Keep content fields full width, but retain a
+   compact final control row. */
+@media (max-width: 480px) {
+  #messagesView > .composer {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  #dmsView > .composer {
+    grid-template-columns: minmax(0, 1fr) auto auto !important;
+  }
+
+  #messagesView > .composer > input:first-child,
+  #messagesView > .composer > input[type="file"],
+  #dmsView > .composer > input:first-child,
+  #dmsView > .composer > input[type="file"] {
+    grid-column: 1 / -1 !important;
+  }
+
+  #messageSelfieButton {
+    grid-column: 1;
+  }
+
+  #sendMessageButton {
+    grid-column: 2;
+  }
+
+  #dmSelfieButton {
+    grid-column: 1;
+  }
+
+  #dmsView > .composer .compact-switch {
+    grid-column: 2;
+    justify-self: center;
+    min-height: 42px;
+  }
+
+  #sendDmButton {
+    grid-column: 3;
+  }
+
+  #messagesView > .composer button,
+  #dmsView > .composer button {
+    width: auto !important;
+  }
+}

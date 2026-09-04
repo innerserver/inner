@@ -1,6 +1,7 @@
-Connectifi build v204
+Connectifi build v205
 Released: 2026-09-03
 
 Changes in this package:
 - Enforced one active workspace view at a time so Room messages and DMs cannot appear in the same page flow.
-- Retained the collapsed message tools, static composers, and muted-word automatic-strike policy from v203.
+- Rebuilt only the narrow DM and room composer fallback to keep controls compact at high browser zoom and phone widths.
+- Retained the collapsed message tools and muted-word automatic-strike policy.

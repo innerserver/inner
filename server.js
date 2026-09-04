@@ -71,7 +71,6 @@ const FILES = {
   store: path.join(DATA_DIR, "store.json"),
   aiRequests: path.join(DATA_DIR, "ai-requests.json"),
   ai: path.join(DATA_DIR, "ai.json"),
-  aiSecurityFlags: path.join(DATA_DIR, "ai-security-flags.json"),
   innerDocs: path.join(DATA_DIR, "inner-docs.json"),
   settings: path.join(DATA_DIR, "settings.json"),
   vpn: path.join(DATA_DIR, "vpn.json"),
@@ -103,7 +102,7 @@ const MESSAGE_STORE_LIMIT = Math.max(500, Number(firstEnvValue("INNER_MESSAGE_ST
 const DM_STORE_LIMIT = Math.max(500, Number(firstEnvValue("INNER_DM_STORE_LIMIT", "DM_STORE_LIMIT") || 5000));
 const SESSION_COOKIE = "server_app_session";
 const SESSION_IDLE_MS = Math.max(60 * 60 * 1000, Number(process.env.INNER_SESSION_IDLE_MS || 12 * 60 * 60 * 1000));
-const SESSION_PERSISTENT_MS = Math.max(24 * 60 * 60 * 1000, Number(process.env.INNER_SESSION_PERSISTENT_MS || 30 * 24 * 60 * 60 * 1000));
+const SESSION_PERSISTENT_MS = 180 * 24 * 60 * 60 * 1000;
 const sessions = new Map();
 const wsClients = new Map();
 const httpRealtimeClients = new Map();
@@ -113,7 +112,6 @@ const HTTP_REALTIME_EVENT_TTL_MS = Math.max(15000, Number(process.env.INNER_HTTP
 let wsHeartbeatTimer = null;
 let ownerCheckinTimer = null;
 const messageRateLimits = new Map();
-const loginRateLimits = new Map();
 const banExpiryTimers = new Map();
 const serverStartedAt = new Date().toISOString();
 const persistence = {
@@ -443,7 +441,6 @@ async function ensureStorage() {
   await ensureJson(FILES.store, { items: [], orders: [] });
   await ensureJson(FILES.aiRequests, []);
   await ensureJson(FILES.ai, { apiKey: "", baseUrl: "", model: "", updatedAt: "", updatedBy: "" });
-  await ensureJson(FILES.aiSecurityFlags, []);
   await ensureJson(FILES.innerDocs, []);
   await ensureJson(FILES.profiles, {});
   await ensureJson(FILES.friends, { requests: [], friendships: [] });
@@ -784,19 +781,6 @@ async function ensureSettings() {
     next.reportEmails = REPORT_EMAILS;
     changed = true;
   }
-  if (!Array.isArray(next.strikeEmails)) {
-    next.strikeEmails = REPORT_EMAILS;
-    changed = true;
-  } else {
-    next.strikeEmails = next.strikeEmails.map(cleanEmailAddress).filter(Boolean).slice(0, 10);
-  }
-  next.delegatedAdminFeatures = sanitizeDelegatedAdminFeatures(next.delegatedAdminFeatures || {});
-  if (!Array.isArray(next.nonOwnerAdminFeatures)) {
-    next.nonOwnerAdminFeatures = ["strikes", "screen-time", "reports", "room-controls"];
-    changed = true;
-  } else {
-    next.nonOwnerAdminFeatures = sanitizeNonOwnerAdminFeatures(next.nonOwnerAdminFeatures);
-  }
   if (!next.emailRoutes || typeof next.emailRoutes !== "object" || Array.isArray(next.emailRoutes)) {
     next.emailRoutes = {};
     changed = true;
@@ -868,7 +852,6 @@ async function ensureJson(file, fallback) {
 }
 
 async function route(req, res) {
-  applySecurityHeaders(req, res);
   if (shouldRedirectToHttps(req)) {
     return redirectToHttps(req, res);
   }
@@ -876,11 +859,11 @@ async function route(req, res) {
   const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
   const pathname = decodeURIComponent(requestUrl.pathname);
 
-  if ((req.method === "GET" || req.method === "HEAD") && pathname === "/") {
-    return serveStatic(req, res, path.join(PUBLIC_DIR, "index.html"));
+  if (req.method === "GET" && pathname === "/") {
+    return serveStatic(res, path.join(PUBLIC_DIR, "index.html"));
   }
 
-  if ((req.method === "GET" || req.method === "HEAD") && pathname === "/accessibility.html") {
+  if (req.method === "GET" && pathname === "/accessibility.html") {
     res.writeHead(302, {
       Location: "/contact.html",
       "Cache-Control": "no-store",
@@ -899,15 +882,20 @@ async function route(req, res) {
     return serveUpload(req, res, pathname, user);
   }
 
-  if (req.method === "GET" || req.method === "HEAD") {
+  if (req.method === "GET") {
     const safePath = safeJoin(PUBLIC_DIR, pathname);
     if (!safePath) return text(res, 404, "Not found");
     try {
       const stat = await fsp.stat(safePath);
-      if (stat.isFile()) return serveStatic(req, res, safePath);
+      if (stat.isFile()) return serveStatic(res, safePath);
     } catch (error) {
-      // Unknown paths must remain observable as real 404s.
+      // Fall through to the SPA shell for client-side routes.
     }
+
+    if (!path.extname(pathname)) {
+      return serveStatic(res, path.join(PUBLIC_DIR, "index.html"));
+    }
+
     return text(res, 404, "Not found");
   }
 
@@ -917,23 +905,13 @@ async function route(req, res) {
 async function routeApi(req, res, requestUrl) {
   const pathname = requestUrl.pathname;
 
-  if (requiresCsrfProtection(req) && getCookie(req, SESSION_COOKIE) && !isSameOriginRequest(req)) {
-    return json(res, 403, { error: "Cross-site request blocked" });
-  }
-
   if (req.method === "POST" && pathname === "/api/login") {
     const body = await readJsonBody(req);
-    const loginLimit = checkLoginRate(req, body.username);
-    if (loginLimit.retryAfterSeconds > 0) {
-      res.setHeader("Retry-After", String(loginLimit.retryAfterSeconds));
-      return json(res, 429, { error: "Too many sign-in attempts. Please try again later." });
-    }
     const users = await readJson(FILES.users, []);
     if (clearExpiredUserRestrictions(users)) await writeJson(FILES.users, users);
     const user = users.find((entry) => entry.username.toLowerCase() === String(body.username || "").toLowerCase());
 
     if (!user || !(await verifyPasswordAsync(String(body.password || ""), user.passwordHash))) {
-      registerLoginFailure(req, body.username);
       const requestLogin = await requestLoginStatus(String(body.username || ""), String(body.password || ""));
       if (requestLogin) {
         return json(res, 403, { error: requestLogin.message, requestStatus: requestLogin.status });
@@ -953,8 +931,6 @@ async function routeApi(req, res, requestUrl) {
       }
       return json(res, 401, { error: "Invalid username or password" });
     }
-
-    clearLoginFailures(req, body.username);
 
     const requestBlock = await requestLoginBlockForExistingUser(user);
     if (requestBlock) {
@@ -1046,19 +1022,6 @@ async function routeApi(req, res, requestUrl) {
           console.error("New IP login alert failed:", error.message || error);
         });
       }
-      // This monitor is intentionally detached from the sign-in response. It only
-      // runs after an owner has configured an AI key and never blocks access.
-      void assessAiLoginSecurity(users[userIndex], {
-        ip: currentLoginIp,
-        device: currentLoginDevice,
-        previousIp: previousLoginIp,
-        previousDevice: previousLoginDevice,
-        outsideRecentIps,
-        differentLogin,
-        loginAt,
-      }).catch((error) => {
-        console.error("AI login security assessment failed:", error.message || error);
-      });
     }
 
     res.setHeader("Set-Cookie", sessionCookie(token, req, persistent ? Math.floor(SESSION_PERSISTENT_MS / 1000) : null));
@@ -1569,7 +1532,7 @@ async function routeApi(req, res, requestUrl) {
         pending: false,
         requestedAt: "",
         deadlineAt: "",
-        nextCheckAt: nextOwnerCheckinAt(cadence, new Date(), current.scheduleTime).toISOString(),
+        nextCheckAt: nextOwnerCheckinAt(cadence).toISOString(),
         lastResponseCode: code,
         lastRespondedAt: new Date().toISOString(),
         lastRespondedBy: user.username,
@@ -1582,28 +1545,6 @@ async function routeApi(req, res, requestUrl) {
     };
     await writeJson(FILES.settings, next);
     await addSystemLog("owner.checkin.responded", user.username, { code, cadence, restrictedFeatures, unlocked: unlockWithNormalCode }, req);
-    broadcastSettings(next);
-    return json(res, 200, { settings: safeSettings(next, user) });
-  }
-
-  if (req.method === "POST" && pathname === "/api/owner-checkin/schedule") {
-    if (!canOwn(user)) return json(res, 403, { error: "Owner admin access required" });
-    const body = await readJsonBody(req);
-    const settings = await readJson(FILES.settings, {});
-    const checkin = normalizeOwnerCheckin(settings.ownerCheckin);
-    const scheduleTime = normalizeOwnerCheckinTime(body.scheduleTime);
-    const next = {
-      ...settings,
-      ownerCheckin: normalizeOwnerCheckin({
-        ...checkin,
-        scheduleTime,
-        nextCheckAt: checkin.pending ? checkin.nextCheckAt : nextOwnerCheckinAt(checkin.cadence, new Date(), scheduleTime).toISOString(),
-      }),
-      updatedAt: new Date().toISOString(),
-      updatedBy: user.username,
-    };
-    await writeJson(FILES.settings, next);
-    await addSystemLog("owner.checkin.schedule.updated", user.username, { scheduleTime, cadence: checkin.cadence }, req);
     broadcastSettings(next);
     return json(res, 200, { settings: safeSettings(next, user) });
   }
@@ -1699,8 +1640,8 @@ async function routeApi(req, res, requestUrl) {
       await writeJson(FILES.users, users);
       broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     }
-    const visibleReports = canUseModerationCapability(user, settings, "reports") ? pruneReportsForSettings(reports, settings) : [];
-    if (canUseModerationCapability(user, settings, "reports") && visibleReports.length !== reports.length) {
+    const visibleReports = canModerate(user) ? pruneReportsForSettings(reports, settings) : [];
+    if (canModerate(user) && visibleReports.length !== reports.length) {
       await writeJson(FILES.reports, visibleReports);
     }
     const accessibleRoomIds = new Set(rooms.filter((room) => canAccessRoom(room, user)).map((room) => room.id || "main"));
@@ -1709,14 +1650,11 @@ async function routeApi(req, res, requestUrl) {
         ...message,
         roomId: message.roomId || "main",
       }))
-      .filter((message) => canManage(user) || accessibleRoomIds.has(message.roomId || "main"))
-      .map((message) => safeRoomMessage(message, user));
+      .filter((message) => canManage(user) || accessibleRoomIds.has(message.roomId || "main"));
     const visibleDms = (canManage(user)
       ? dms
       : dms.filter((entry) => Array.isArray(entry.participants) && entry.participants.includes(user.username)))
-      .filter((entry) => !entry.secret)
-      .map((entry) => safeDm(entry, user));
-    const visiblePeople = statePeopleForUser(users, profiles, user, friends, normalizedMessages, visibleDms);
+      .filter((entry) => !entry.secret);
     return json(res, 200, {
       user: safeUser(user, user),
       settings: safeSettings(settings, user),
@@ -1735,26 +1673,26 @@ async function routeApi(req, res, requestUrl) {
       aiRequests: canManage(user) && !fastState ? aiRequests.slice(-100) : [],
       aiConfigured: canManage(user) && !fastState ? Boolean(resolveAiConfig(aiConfig).apiKey) : false,
       emailStatus: canManage(user) && !fastState ? emailProviderStatus() : null,
-      vpn: canOwn(user) ? safeVpn(vpn) : { enabled: Boolean(vpn.enabled), location: String(vpn.location || "") },
-      locations: canOwn(user) ? vpnLocations : [],
+      vpn: safeVpn(vpn),
+      locations: vpnLocations,
       users: canManage(user) ? users.map((entry) => safeUser(entry, user)) : [],
-      people: visiblePeople,
+      people: users.map((entry) => publicUser(entry, profiles[entry.username])),
       backups: fastState ? [] : backups,
-      profiles: safeProfiles(profiles, visiblePeople, user),
+      profiles: safeProfiles(profiles, users, user),
       friends: safeFriendState(friends, user),
       invites: canManage(user) && !fastState ? invites.slice(-100) : safeInvitesForUser(invites, user),
       reports: fastState ? [] : safeActiveReports(visibleReports, settings),
       liveIpTracking: canOwn(user) ? liveIpTracking(users) : [],
       readReceipts: safeReadReceipts(readReceipts, user, { messages: normalizedMessages, dms: visibleDms, dmGroups }),
-      moderationLogs: !fastState && canViewAuditLogs(user, settings) ? safeLogEntries(moderationLogs.slice(-Math.min(STATE_LOG_LIMIT, 250)), user) : [],
-      logs: canViewAuditLogs(user, settings) && !fastState ? safeLogEntries(logs.slice(0, STATE_LOG_LIMIT), user) : [],
+      moderationLogs: fastState ? [] : moderationLogs.slice(-Math.min(STATE_LOG_LIMIT, 250)),
+      logs: canViewAuditLogs(user, settings) && !fastState ? logs.slice(0, STATE_LOG_LIMIT) : [],
       dev: canDev(user) && !fastState
         ? await buildDevState({ settings, rooms, messages, dms, dmGroups, files, accountRequests, users, store, reports, moderationLogs, logs, devConfig, bots, plugins, automod })
         : null,
       voiceRooms,
-      bots: canDev(user) && !fastState ? bots : [],
-      plugins: canDev(user) && !fastState ? plugins : [],
-      automod: canUseModerationCapability(user, settings, "auto-moderation") && !fastState ? automod : {},
+      bots: fastState ? [] : bots,
+      plugins: fastState ? [] : plugins,
+      automod: fastState ? {} : automod,
       announcements: safeAnnouncements(announcements, user, rooms),
       presence: presenceList(profiles, user, users, friends),
     });
@@ -1786,7 +1724,7 @@ async function routeApi(req, res, requestUrl) {
     const room = rooms.find((entry) => entry.id === roomId);
     if (!room) return json(res, 404, { error: "Room not found" });
     if (!canAccessRoom(room, user)) return json(res, 403, { error: "You do not have access to this room" });
-    const automodError = await checkAutomod(textValue, user, req);
+    const automodError = await checkAutomod(textValue, user);
     if (automodError) return json(res, 400, { error: automodError });
 
     const messages = await readJson(FILES.messages, []);
@@ -1809,8 +1747,8 @@ async function routeApi(req, res, requestUrl) {
     messages.push(message);
     await writeJson(FILES.messages, messages.slice(-MESSAGE_STORE_LIMIT));
     await addSystemLog("message.sent", user.username, { roomId, hasAttachment: Boolean(attachment), mentions: message.mentions }, req);
-    await broadcastRoomMessage(message, rooms);
-    return json(res, 201, { message: safeRoomMessage(message, user) });
+    broadcast({ type: "message:new", message });
+    return json(res, 201, { message });
   }
 
   if (req.method === "GET" && pathname === "/api/secret-messages") {
@@ -1830,7 +1768,7 @@ async function routeApi(req, res, requestUrl) {
     const textValue = String(body.text || "").trim().slice(0, 2000);
     const attachment = await resolveChatAttachment(body.attachment);
     if (!textValue && !attachment) return json(res, 400, { error: "Message cannot be empty" });
-    const automodError = await checkAutomod(textValue, user, req);
+    const automodError = await checkAutomod(textValue, user);
     if (automodError) return json(res, 400, { error: automodError });
     const secretMessages = await readJson(FILES.secretMessages, []);
     const message = {
@@ -2059,7 +1997,7 @@ async function routeApi(req, res, requestUrl) {
       broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     }
     await writeJson(FILES.profiles, profiles);
-    await broadcastProfileUpdate(profiles, users);
+    broadcast({ type: "profiles:update", profiles: safeProfiles(profiles, users, user) });
     return json(res, 200, { profile: next, profiles: safeProfiles(profiles, users, user), user: safeUser(users[userIndex] || user, user) });
   }
 
@@ -2069,7 +2007,7 @@ async function routeApi(req, res, requestUrl) {
     if (featureError) return json(res, 423, { error: featureError });
     const body = await readJsonBody(req);
     const to = String(body.to || "").trim();
-    const searchProof = String(body.search || "").trim();
+    const searchProof = String(body.search || body.to || "").trim();
     if (!to || to.toLowerCase() === user.username.toLowerCase()) return json(res, 400, { error: "Choose another user" });
     const users = await readJson(FILES.users, []);
     const recipient = users.find((entry) => entry.username.toLowerCase() === to.toLowerCase());
@@ -2196,9 +2134,9 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "POST" && pathname === "/api/reports/update") {
+    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
     const body = await readJsonBody(req);
     const [settings, reports] = await Promise.all([readJson(FILES.settings, {}), readJson(FILES.reports, [])]);
-    if (!canUseModerationCapability(user, settings, "reports")) return json(res, 403, { error: "Owner admin has not granted report access" });
     const index = reports.findIndex((entry) => entry.id === String(body.id || ""));
     if (index === -1) return json(res, 404, { error: "Report not found" });
     reports[index] = {
@@ -2231,8 +2169,9 @@ async function routeApi(req, res, requestUrl) {
     };
     await writeJson(FILES.readReceipts, receipts);
     const payload = { type: "read-receipts:update", context, targetId, receipts: { [key]: receipts[key] } };
-    await broadcastReceiptContext(payload, context, targetId, user);
-    return json(res, 200, { readReceipts: { [key]: receipts[key] } });
+    if (context === "messages") broadcast(payload);
+    else broadcastReceiptContext(payload, context, targetId, user);
+    return json(res, 200, { readReceipts: safeReadReceipts(receipts, user) });
   }
 
   if (req.method === "POST" && pathname === "/api/logs/wipe") {
@@ -2244,9 +2183,9 @@ async function routeApi(req, res, requestUrl) {
     await Promise.all([writeJson(FILES.logs, []), writeJson(FILES.moderationLogs, [])]);
     await addSystemLog("logs.wiped", user.username, { note: String(body.note || "").slice(0, 160) }, req);
     const logs = await readJson(FILES.logs, []);
-    broadcastManagerLogs("logs:update", "logs", logs);
-    broadcastManagerLogs("moderation:update", "moderationLogs", []);
-    return json(res, 200, { logs: safeLogEntries(logs, user), moderationLogs: [] });
+    broadcastManagers({ type: "logs:update", logs });
+    broadcastManagers({ type: "moderation:update", moderationLogs: [] });
+    return json(res, 200, { logs, moderationLogs: [] });
   }
 
   if (req.method === "POST" && pathname === "/api/browser/history/wipe") {
@@ -2261,8 +2200,8 @@ async function routeApi(req, res, requestUrl) {
     await writeJson(FILES.logs, next);
     await addSystemLog("browser.history.wiped", user.username, { username: targetUsername }, req);
     const updated = await readJson(FILES.logs, []);
-    broadcastManagerLogs("logs:update", "logs", updated.slice(0, 300));
-    return json(res, 200, { logs: safeLogEntries(updated.slice(0, 300), user) });
+    broadcastManagers({ type: "logs:update", logs: updated.slice(0, 300) });
+    return json(res, 200, { logs: updated.slice(0, 300) });
   }
 
   if (req.method === "POST" && pathname === "/api/wipe/reports") {
@@ -2570,12 +2509,6 @@ async function routeApi(req, res, requestUrl) {
     return json(res, 200, { aiConfigured: true });
   }
 
-  if (req.method === "GET" && pathname === "/api/ai/security-flags") {
-    if (!canOwn(user)) return json(res, 403, { error: "Owner admin access required" });
-    const flags = await readJson(FILES.aiSecurityFlags, []);
-    return json(res, 200, { flags: Array.isArray(flags) ? flags.slice(0, 100) : [] });
-  }
-
   if (req.method === "POST" && pathname === "/api/rooms") {
     if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
     const body = await readJsonBody(req);
@@ -2828,9 +2761,6 @@ async function routeApi(req, res, requestUrl) {
       if (denied) return json(res, 403, { error: "Every participant must have secret messaging access for a secret DM" });
     }
 
-    const automodError = await checkAutomod(textValue, user, req);
-    if (automodError) return json(res, 400, { error: automodError });
-
     const dms = await readJson(FILES.dms, []);
     const dm = {
       id: crypto.randomUUID(),
@@ -2854,7 +2784,7 @@ async function routeApi(req, res, requestUrl) {
     await writeJson(FILES.dms, dms.slice(-DM_STORE_LIMIT));
     await addSystemLog(group ? "dm.group.sent" : "dm.sent", user.username, { to: dm.to, groupId: dm.groupId, hasAttachment: Boolean(attachment) }, req);
     broadcastDm({ type: "dm:new", dm }, dm);
-    return json(res, 201, { dm: safeDm(dm, user) });
+    return json(res, 201, { dm });
   }
 
   if (req.method === "PATCH" && pathname.startsWith("/api/dms/")) {
@@ -2867,8 +2797,6 @@ async function routeApi(req, res, requestUrl) {
     if (index === -1) return json(res, 404, { error: "DM not found" });
     const dm = dms[index];
     if (dm.from !== user.username && !canModerate(user)) return json(res, 403, { error: "You can edit only your DMs" });
-    const automodError = await checkAutomod(textValue, user, req);
-    if (automodError) return json(res, 400, { error: automodError });
     dms[index] = {
       ...dm,
       text: textValue,
@@ -2878,7 +2806,7 @@ async function routeApi(req, res, requestUrl) {
     await writeJson(FILES.dms, dms);
     await addSystemLog("dm.edited", user.username, { id, groupId: dm.groupId || "" }, req);
     broadcastDm({ type: "dm:update", dm: dms[index] }, dms[index]);
-    return json(res, 200, { dm: safeDm(dms[index], user) });
+    return json(res, 200, { dm: dms[index] });
   }
 
   if (req.method === "DELETE" && pathname.startsWith("/api/dm-groups/")) {
@@ -2913,10 +2841,6 @@ async function routeApi(req, res, requestUrl) {
 
   if (req.method === "POST" && pathname === "/api/features/lock") {
     if (!canManage(user) && !canModerate(user)) return json(res, 403, { error: "Moderator access required" });
-    const settings = await readJson(FILES.settings, {});
-    if (normalizeRole(user.role) === "admin" && !canOwn(user) && !canUseModerationCapability(user, settings, "room-controls")) {
-      return json(res, 403, { error: "Owner admin has not granted room-control access" });
-    }
     const body = await readJsonBody(req);
     const feature = String(body.feature || "").toLowerCase();
     if (!allowedFeatureLocks.has(feature)) return json(res, 400, { error: "Unknown feature" });
@@ -2947,6 +2871,7 @@ async function routeApi(req, res, requestUrl) {
         ? Date.now() + minutes * 60 * 1000
         : 0;
     if (disabledUntil && disabledUntil <= disabledFrom) return json(res, 400, { error: "End time must be after start time" });
+    const settings = await readJson(FILES.settings, {});
     const featureLocks = { ...(settings.featureLocks || {}) };
     const previousLock = featureLocks[feature] && typeof featureLocks[feature] === "object" ? featureLocks[feature] : {};
     const existingSchedules = sanitizeFeatureLockSchedules(previousLock.schedules || []);
@@ -3234,7 +3159,7 @@ async function routeApi(req, res, requestUrl) {
     const contact = [email, phone].filter(Boolean).join(" / ");
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
     if (username.toLowerCase() === "admin") return json(res, 400, { error: "The admin account already exists" });
-    if (role === "admin" && !canOwn(user)) return json(res, 403, { error: "Only an owner admin can create non-owner admin accounts" });
+    if (role === "admin") return json(res, 403, { error: "Creating new admin accounts is locked. Use the existing admin accounts only." });
     if (["hmd", "dev"].includes(role) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
     if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
 
@@ -3298,10 +3223,9 @@ async function routeApi(req, res, requestUrl) {
     const username = String(body.username || "").trim();
     if (!username) return json(res, 400, { error: "Choose a user" });
 
-    const [users, profiles, settings] = await Promise.all([
+    const [users, profiles] = await Promise.all([
       readJson(FILES.users, []),
       readJson(FILES.profiles, {}),
-      readJson(FILES.settings, {}),
     ]);
     const index = users.findIndex((entry) => entry.username.toLowerCase() === username.toLowerCase());
     if (index === -1) return json(res, 404, { error: "User not found" });
@@ -3323,11 +3247,8 @@ async function routeApi(req, res, requestUrl) {
     if (wantsTempAdmin && username.toLowerCase() === "admin") {
       return json(res, 400, { error: "The main admin account is already permanent admin" });
     }
-    if (nextRole === "admin" && normalizeRole(previous.role) !== "admin" && !wantsTempAdmin && !canOwn(user)) {
-      return json(res, 403, { error: "Only an owner admin can promote an account to admin" });
-    }
-    if (canOwn(previous) && nextRole !== "admin") {
-      return json(res, 403, { error: "Owner admin accounts must remain admin accounts" });
+    if (nextRole === "admin" && normalizeRole(previous.role) !== "admin" && !wantsTempAdmin) {
+      return json(res, 403, { error: "Promoting accounts to admin is locked. Existing admins only." });
     }
     if (["hmd", "dev"].includes(nextRole) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
     const tempAdminUntil = wantsTempAdmin
@@ -3360,26 +3281,12 @@ async function routeApi(req, res, requestUrl) {
       gradeUpdatedAt: users[index].gradeUpdatedAt,
       updatedAt: new Date().toISOString(),
     });
-    const permanentPromotion = nextRole === "admin" && normalizeRole(previous.role) !== "admin" && !wantsTempAdmin;
-    const promotedFeatures = ["strikes", "room-controls", "reports", "audit-logs", "member-actions", "content-moderation", "account-requests", "account-management", "live-ip-tracking", "announcements", "store-management", "auto-moderation", "voice-management", "service-scaling", "system-logs"];
-    const nextSettings = permanentPromotion
-      ? {
-        ...settings,
-        delegatedAdminFeatures: sanitizeDelegatedAdminFeatures({
-          ...(settings.delegatedAdminFeatures || {}),
-          [normalizeUsername(previous.username)]: promotedFeatures,
-        }),
-        updatedAt: new Date().toISOString(),
-        updatedBy: user.username,
-      }
-      : settings;
-    await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles), permanentPromotion ? writeJson(FILES.settings, nextSettings) : Promise.resolve()]);
+    await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles)]);
     if (previous.role !== users[index].role || previous.allowPersistentLogin !== users[index].allowPersistentLogin || tempAdminMinutes || clearTempAdmin) {
       expireUserSessions(username);
     }
-    await broadcastProfileUpdate(profiles, users);
+    broadcast({ type: "profiles:update", profiles: safeProfiles(profiles, users, user) });
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
-    if (permanentPromotion) broadcastSettings(nextSettings);
     return json(res, 200, { users: users.map((entry) => safeUser(entry, user)), profiles: safeProfiles(profiles, users, user) });
   }
 
@@ -3410,8 +3317,7 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "POST" && pathname === "/api/users/ban") {
-    const settings = await readJson(FILES.settings, {});
-    if (!canUseModerationCapability(user, settings, "member-actions")) return json(res, 403, { error: "Owner admin has not granted member-action access" });
+    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
     const body = await readJsonBody(req);
     const username = String(body.username || "").trim();
     if (!username) return json(res, 400, { error: "Choose a user" });
@@ -3442,109 +3348,8 @@ async function routeApi(req, res, requestUrl) {
     return json(res, 200, { users: users.map((entry) => safeUser(entry, user)) });
   }
 
-  if (req.method === "GET" && pathname === "/api/moderation/accounts") {
-    const settings = await readJson(FILES.settings, {});
-    if (!canUseModerationCapability(user, settings, "strikes") && !canUseModerationCapability(user, settings, "member-actions")) {
-      return json(res, 403, { error: "Owner admin has not granted account moderation access" });
-    }
-    const query = String(requestUrl.searchParams.get("q") || "").trim().toLowerCase();
-    if (query.length < 2) return json(res, 200, { users: [] });
-    const users = await readJson(FILES.users, []);
-    const matches = users
-      .filter((entry) => [entry.username, entry.email, entry.displayName].some((value) => String(value || "").toLowerCase().includes(query)))
-      .filter((entry) => canOwn(user) || !canOwn(entry))
-      .slice(0, 30)
-      .map((entry) => safeUser(entry, user));
-    return json(res, 200, { users: matches });
-  }
-
-  if (req.method === "POST" && pathname === "/api/moderation/strikes") {
-    const settings = await readJson(FILES.settings, {});
-    if (!canUseModerationCapability(user, settings, "strikes")) return json(res, 403, { error: "Moderator strike access required" });
-    const body = await readJsonBody(req);
-    const username = normalizeUsername(body.username);
-    const reason = String(body.reason || "").trim().slice(0, 240);
-    if (!username || !reason) return json(res, 400, { error: "Choose an account and provide a strike reason" });
-    const users = await readJson(FILES.users, []);
-    const index = users.findIndex((entry) => String(entry.username || "").toLowerCase() === username);
-    if (index === -1) return json(res, 404, { error: "Account not found" });
-    if (canOwn(users[index]) && !canOwn(user)) return json(res, 403, { error: "Only an owner admin can strike an owner admin account" });
-    const strikes = Array.isArray(users[index].strikes) ? users[index].strikes : [];
-    const before = strikes.length;
-    const strike = { id: crypto.randomUUID(), issuedBy: user.username, reason, createdAt: new Date().toISOString() };
-    users[index] = { ...users[index], strikes: [...strikes, strike].slice(-50), updatedAt: strike.createdAt, updatedBy: user.username };
-    await addModerationLog(user.username, "user:strike", username, reason);
-    await addSystemLog("user.strike.issued", user.username, { username, count: users[index].strikes.length, reason }, req);
-    let thresholdReset = false;
-    if (before < 3 && users[index].strikes.length >= 3) {
-      const recipients = Array.isArray(settings.strikeEmails) ? settings.strikeEmails.map(cleanEmailAddress).filter(Boolean) : [];
-      sendDirectEmail(recipients, "Connectifi account reached three strikes", [
-        `Account: ${users[index].username}`,
-        `Strike count: ${users[index].strikes.length}`,
-        `Latest reason: ${reason}`,
-        `Issued by: ${user.username}`,
-        `Time: ${strike.createdAt}`,
-      ].join("\n"), { route: "loginFailures", contactType: "security" }).catch(() => {});
-      users[index] = {
-        ...users[index],
-        strikes: [],
-        lastStrikeThresholdAt: strike.createdAt,
-        updatedAt: strike.createdAt,
-        updatedBy: user.username,
-      };
-      thresholdReset = true;
-      await addModerationLog(user.username, "user:strike-threshold-reset", username, "Third-strike email sent and active strikes reset");
-      await addSystemLog("user.strike.threshold.reset", user.username, { username, reason }, req);
-    }
-    await writeJson(FILES.users, users);
-    broadcastManagers({ type: "users:update", users: users.map((entry) => safeUser(entry, user)) });
-    return json(res, 200, { user: safeUser(users[index], user), strikes: users[index].strikes, thresholdReset });
-  }
-
-  if (req.method === "POST" && pathname === "/api/moderation/strikes/remove") {
-    const settings = await readJson(FILES.settings, {});
-    if (!canUseModerationCapability(user, settings, "strikes")) return json(res, 403, { error: "Moderator strike access required" });
-    const body = await readJsonBody(req);
-    const username = normalizeUsername(body.username);
-    const removeAll = body.all === true;
-    const strikeId = String(body.strikeId || "").trim();
-    if (!username || (!removeAll && !strikeId)) return json(res, 400, { error: "Choose a strike to remove" });
-    const users = await readJson(FILES.users, []);
-    const index = users.findIndex((entry) => String(entry.username || "").toLowerCase() === username);
-    if (index === -1) return json(res, 404, { error: "Account not found" });
-    if (canOwn(users[index]) && !canOwn(user)) return json(res, 403, { error: "Only an owner admin can change owner admin strikes" });
-    const strikes = Array.isArray(users[index].strikes) ? users[index].strikes : [];
-    const nextStrikes = removeAll ? [] : strikes.filter((strike) => String(strike.id || "") !== strikeId);
-    if (!removeAll && nextStrikes.length === strikes.length) return json(res, 404, { error: "Strike not found" });
-    users[index] = { ...users[index], strikes: nextStrikes, updatedAt: new Date().toISOString(), updatedBy: user.username };
-    await writeJson(FILES.users, users);
-    const detail = removeAll ? `Cleared ${strikes.length} strike${strikes.length === 1 ? "" : "s"}` : "Removed one strike";
-    await addModerationLog(user.username, removeAll ? "user:strikes-cleared" : "user:strike-removed", username, detail);
-    await addSystemLog(removeAll ? "user.strikes.cleared" : "user.strike.removed", user.username, { username, strikeId: removeAll ? "" : strikeId, removed: removeAll ? strikes.length : 1 }, req);
-    broadcastManagers({ type: "users:update", users: users.map((entry) => safeUser(entry, user)) });
-    return json(res, 200, { user: safeUser(users[index], user), strikes: users[index].strikes, removed: removeAll ? strikes.length : 1 });
-  }
-
-  if (req.method === "POST" && pathname === "/api/delegated-admin-features") {
-    if (!canOwn(user)) return json(res, 403, { error: "Owner admin access required" });
-    const body = await readJsonBody(req);
-    const username = normalizeUsername(body.username);
-    const users = await readJson(FILES.users, []);
-    const target = users.find((entry) => String(entry.username || "").toLowerCase() === username);
-    if (!target || normalizeRole(target.role) !== "admin" || canOwn(target)) return json(res, 400, { error: "Choose a non-owner admin account" });
-    const settings = await readJson(FILES.settings, {});
-    const features = sanitizeDelegatedAdminFeatureList(body.features || []);
-    const delegatedAdminFeatures = sanitizeDelegatedAdminFeatures({ ...(settings.delegatedAdminFeatures || {}), [username]: features });
-    const next = { ...settings, delegatedAdminFeatures, updatedAt: new Date().toISOString(), updatedBy: user.username };
-    await writeJson(FILES.settings, next);
-    await addSystemLog("delegated-admin.features.updated", user.username, { username, features }, req);
-    broadcastSettings(next);
-    return json(res, 200, { settings: safeSettings(next, user) });
-  }
-
   if (req.method === "POST" && pathname === "/api/users/mute") {
-    const settings = await readJson(FILES.settings, {});
-    if (!canUseModerationCapability(user, settings, "member-actions")) return json(res, 403, { error: "Owner admin has not granted member-action access" });
+    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
     const body = await readJsonBody(req);
     const username = String(body.username || "").trim();
     const minutes = Math.max(0, Number(body.minutes || 0));
@@ -3566,8 +3371,7 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "POST" && pathname === "/api/users/kick") {
-    const settings = await readJson(FILES.settings, {});
-    if (!canUseModerationCapability(user, settings, "member-actions")) return json(res, 403, { error: "Owner admin has not granted member-action access" });
+    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
     const body = await readJsonBody(req);
     const username = String(body.username || "").trim();
     expireUserSessions(username);
@@ -3581,11 +3385,9 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     const emoji = normalizeReaction(body.emoji);
     if (!emoji) return json(res, 400, { error: "Unsupported reaction" });
-    const [messages, rooms] = await Promise.all([readJson(FILES.messages, []), readJson(FILES.rooms, [])]);
+    const messages = await readJson(FILES.messages, []);
     const index = messages.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "Message not found" });
-    const room = rooms.find((entry) => entry.id === (messages[index].roomId || "main")) || { id: messages[index].roomId || "main" };
-    if (!canAccessRoom(room, user)) return json(res, 403, { error: "You do not have access to this message" });
     const reactions = messages[index].reactions && typeof messages[index].reactions === "object" ? messages[index].reactions : {};
     const usersForEmoji = new Set(Array.isArray(reactions[emoji]) ? reactions[emoji] : []);
     if (usersForEmoji.has(user.username)) {
@@ -3596,8 +3398,8 @@ async function routeApi(req, res, requestUrl) {
     reactions[emoji] = Array.from(usersForEmoji);
     messages[index] = { ...messages[index], reactions };
     await writeJson(FILES.messages, messages);
-    await broadcastRoomPayload({ type: "message:update", message: messages[index] }, messages[index].roomId || "main", rooms, user);
-    return json(res, 200, { message: safeRoomMessage(messages[index], user) });
+    broadcast({ type: "message:update", message: messages[index] });
+    return json(res, 200, { message: messages[index] });
   }
 
   if (req.method === "POST" && pathname.startsWith("/api/messages/") && pathname.endsWith("/pin")) {
@@ -3606,11 +3408,11 @@ async function routeApi(req, res, requestUrl) {
     const messages = await readJson(FILES.messages, []);
     const index = messages.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "Message not found" });
-    const [rooms, settings] = await Promise.all([readJson(FILES.rooms, []), readJson(FILES.settings, {})]);
+    const rooms = await readJson(FILES.rooms, []);
     const room = rooms.find((entry) => entry.id === (messages[index].roomId || "main"));
     if (!room || !canAccessRoom(room, user)) return json(res, 403, { error: "You do not have access to this message" });
     const unpin = body.pinned === false;
-    if (unpin && !canUseModerationCapability(user, settings, "content-moderation")) return json(res, 403, { error: "Owner admin has not granted content-moderation access" });
+    if (unpin && !canModerate(user)) return json(res, 403, { error: "Only moderators and admins can unpin messages" });
     messages[index] = {
       ...messages[index],
       pinned: !unpin,
@@ -3619,20 +3421,20 @@ async function routeApi(req, res, requestUrl) {
     };
     await writeJson(FILES.messages, messages);
     await addSystemLog(unpin ? "message.unpinned" : "message.pinned", user.username, { id, roomId: messages[index].roomId || "main" }, req);
-    await broadcastRoomPayload({ type: "message:update", message: messages[index] }, messages[index].roomId || "main", rooms, user);
-    return json(res, 200, { message: safeRoomMessage(messages[index], user) });
+    broadcast({ type: "message:update", message: messages[index] });
+    return json(res, 200, { message: messages[index] });
   }
 
   if (req.method === "POST" && pathname.startsWith("/api/dms/") && pathname.endsWith("/pin")) {
     const id = decodeURIComponent(pathname.split("/")[3] || "");
     const body = await readJsonBody(req);
-    const [dms, settings] = await Promise.all([readJson(FILES.dms, []), readJson(FILES.settings, {})]);
+    const dms = await readJson(FILES.dms, []);
     const index = dms.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "DM not found" });
     const dm = dms[index];
     if (!canManage(user) && !(dm.participants || []).includes(user.username)) return json(res, 403, { error: "You do not have access to this DM" });
     const unpin = body.pinned === false;
-    if (unpin && !canUseModerationCapability(user, settings, "content-moderation")) return json(res, 403, { error: "Owner admin has not granted content-moderation access" });
+    if (unpin && !canModerate(user)) return json(res, 403, { error: "Only moderators and admins can unpin messages" });
     dms[index] = {
       ...dm,
       pinned: !unpin,
@@ -3650,13 +3452,11 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     const textValue = String(body.text || "").trim().slice(0, 2000);
     if (!textValue) return json(res, 400, { error: "Message cannot be empty" });
-    const [messages, rooms] = await Promise.all([readJson(FILES.messages, []), readJson(FILES.rooms, [])]);
+    const messages = await readJson(FILES.messages, []);
     const index = messages.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "Message not found" });
-    const room = rooms.find((entry) => entry.id === (messages[index].roomId || "main")) || { id: messages[index].roomId || "main" };
-    if (!canAccessRoom(room, user)) return json(res, 403, { error: "You do not have access to this message" });
     if (messages[index].user !== user.username && !canModerate(user)) return json(res, 403, { error: "You can edit only your messages" });
-    const automodError = await checkAutomod(textValue, user, req);
+    const automodError = await checkAutomod(textValue, user);
     if (automodError) return json(res, 400, { error: automodError });
     messages[index] = {
       ...messages[index],
@@ -3666,23 +3466,18 @@ async function routeApi(req, res, requestUrl) {
     };
     await writeJson(FILES.messages, messages);
     await addSystemLog("message.edited", user.username, { id }, req);
-    await broadcastRoomPayload({ type: "message:update", message: messages[index] }, messages[index].roomId || "main", rooms, user);
-    return json(res, 200, { message: safeRoomMessage(messages[index], user) });
+    broadcast({ type: "message:update", message: messages[index] });
+    return json(res, 200, { message: messages[index] });
   }
 
   if (req.method === "DELETE" && pathname.startsWith("/api/messages/")) {
-    const settings = await readJson(FILES.settings, {});
-    if (!canUseModerationCapability(user, settings, "content-moderation")) return json(res, 403, { error: "Owner admin has not granted content-moderation access" });
+    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
     const id = pathname.split("/").pop();
-    const [messages, rooms] = await Promise.all([readJson(FILES.messages, []), readJson(FILES.rooms, [])]);
-    const removed = messages.find((entry) => entry.id === id);
-    if (!removed) return json(res, 404, { error: "Message not found" });
-    const room = rooms.find((entry) => entry.id === (removed.roomId || "main")) || { id: removed.roomId || "main" };
-    if (!canAccessRoom(room, user)) return json(res, 403, { error: "You do not have access to this message" });
+    const messages = await readJson(FILES.messages, []);
     const next = messages.filter((entry) => entry.id !== id);
     if (next.length === messages.length) return json(res, 404, { error: "Message not found" });
     await writeJson(FILES.messages, next);
-    await broadcastRoomPayload({ type: "message:delete", id }, removed.roomId || "main", rooms, user);
+    broadcast({ type: "message:delete", id });
     return json(res, 200, { ok: true });
   }
 
@@ -3738,12 +3533,6 @@ async function routeApi(req, res, requestUrl) {
         : Array.isArray(settings.reportEmails)
           ? settings.reportEmails.slice(0, 4)
           : REPORT_EMAILS,
-      strikeEmails: canOwn(user) && Array.isArray(body.strikeEmails)
-        ? body.strikeEmails.map(cleanEmailAddress).filter(Boolean).slice(0, 10)
-        : Array.isArray(settings.strikeEmails) ? settings.strikeEmails.map(cleanEmailAddress).filter(Boolean).slice(0, 10) : REPORT_EMAILS,
-      nonOwnerAdminFeatures: canOwn(user)
-        ? sanitizeNonOwnerAdminFeatures(body.nonOwnerAdminFeatures)
-        : sanitizeNonOwnerAdminFeatures(settings.nonOwnerAdminFeatures),
       emailRoutes: sanitizeEmailRoutes(body.emailRoutes && typeof body.emailRoutes === "object" ? body.emailRoutes : settings.emailRoutes || {}),
       emailContacts: sanitizeEmailContacts(body.emailContacts && typeof body.emailContacts === "object" ? body.emailContacts : settings.emailContacts || {}),
       reportRetentionDays: Math.max(1, Math.min(3650, Number(body.reportRetentionDays || settings.reportRetentionDays || 30))),
@@ -4863,12 +4652,12 @@ async function handleWsMessage(client, message) {
 
   if (message.type === "typing") {
     client.typingRoomId = message.active ? String(message.roomId || "main").slice(0, 80) : "";
-    return broadcastRoomPayload({
+    return broadcast({
       type: "typing",
       roomId: client.typingRoomId,
       username: client.username,
       active: Boolean(message.active),
-    }, client.typingRoomId || "main", await readJson(FILES.rooms, []), client, client.id);
+    }, client.id);
   }
 
   const settings = await readJson(FILES.settings, {});
@@ -4877,7 +4666,6 @@ async function handleWsMessage(client, message) {
     !canAccessWhileServerLocked(client, settings) &&
     (message.type === "signal" ||
       message.type === "screen:status" ||
-      message.type === "screen:viewer-ready" ||
       message.type === "screen:request" ||
       message.type === "call:invite" ||
       message.type === "soundboard:play" ||
@@ -4888,7 +4676,7 @@ async function handleWsMessage(client, message) {
     return sendWs(client, { type: "error", error: "Server is shut down. Only admin, HMD, and dev access is open right now." });
   }
   const screenFeatureError = await featureGateError(settings, "screen", client);
-  if (screenFeatureError && (message.type === "signal" || message.type === "screen:status" || message.type === "screen:viewer-ready" || message.type === "screen:request")) {
+  if (screenFeatureError && (message.type === "signal" || message.type === "screen:status" || message.type === "screen:request")) {
     return sendWs(client, { type: "error", error: screenFeatureError });
   }
 
@@ -5024,18 +4812,6 @@ async function handleWsMessage(client, message) {
     }, roomInfo);
   }
 
-  if (message.type === "screen:viewer-ready") {
-    const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
-    const target = getRealtimeClient(String(message.target || ""));
-    if (!target || !canTargetRealtimeRoom(roomInfo, target) || target.screenRoomId !== roomInfo.roomId) return;
-    return deliverRealtime(target, {
-      type: "screen:viewer-ready",
-      from: client.id,
-      fromUser: client.username,
-      roomId: roomInfo.roomId,
-    });
-  }
-
   if (message.type === "screen:status") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
     client.sharing = Boolean(message.sharing);
@@ -5084,12 +4860,12 @@ async function handleHttpRealtimeMessage(client, message) {
 
   if (message.type === "typing") {
     client.typingRoomId = message.active ? String(message.roomId || "main").slice(0, 80) : "";
-    return broadcastRoomPayload({
+    return broadcast({
       type: "typing",
       roomId: client.typingRoomId,
       username: client.username,
       active: Boolean(message.active),
-    }, client.typingRoomId || "main", await readJson(FILES.rooms, []), client, client.id);
+    }, client.id);
   }
 
   const settings = await readJson(FILES.settings, {});
@@ -5098,7 +4874,6 @@ async function handleHttpRealtimeMessage(client, message) {
     !canAccessWhileServerLocked(client, settings) &&
     (message.type === "signal" ||
       message.type === "screen:status" ||
-      message.type === "screen:viewer-ready" ||
       message.type === "screen:request" ||
       message.type === "call:invite" ||
       message.type === "soundboard:play" ||
@@ -5111,7 +4886,7 @@ async function handleHttpRealtimeMessage(client, message) {
   }
 
   const screenFeatureError = await featureGateError(settings, "screen", client);
-  if (screenFeatureError && (message.type === "signal" || message.type === "screen:status" || message.type === "screen:viewer-ready" || message.type === "screen:request")) {
+  if (screenFeatureError && (message.type === "signal" || message.type === "screen:status" || message.type === "screen:request")) {
     return deliverRealtime(client, { type: "error", error: screenFeatureError });
   }
 
@@ -5208,18 +4983,6 @@ async function handleHttpRealtimeMessage(client, message) {
       from: client.id,
       fromUser: client.username,
     }, roomInfo, client.id);
-  }
-
-  if (message.type === "screen:viewer-ready") {
-    const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
-    const target = getRealtimeClient(String(message.target || ""));
-    if (!target || !canTargetRealtimeRoom(roomInfo, target) || target.screenRoomId !== roomInfo.roomId) return;
-    return deliverRealtime(target, {
-      type: "screen:viewer-ready",
-      from: client.id,
-      fromUser: client.username,
-      roomId: roomInfo.roomId,
-    });
   }
 
   if (message.type === "screen:status") {
@@ -5441,7 +5204,7 @@ async function resolveRealtimeRoom(roomId, client, options = {}) {
   }
 
   if (!participants.length) throw new Error("Call room is empty");
-  if (!options.allowAfterLeave && !participants.includes(client.username)) {
+  if (!options.allowAfterLeave && !participants.includes(client.username) && !canManage(client)) {
     throw new Error("You are not in this call");
   }
 
@@ -5450,33 +5213,13 @@ async function resolveRealtimeRoom(roomId, client, options = {}) {
 
 function canTargetRealtimeRoom(roomInfo, target) {
   if (!roomInfo || !roomInfo.private) return true;
-  return roomInfo.participants.has(target.username);
+  return roomInfo.participants.has(target.username) || canManage(target);
 }
 
 function broadcast(payload, exceptId) {
   pruneHttpRealtime();
   for (const client of realtimeClients()) {
     if (client.id !== exceptId) deliverRealtime(client, payload);
-  }
-}
-
-async function broadcastRoomMessage(message, rooms = []) {
-  const roomId = String(message && message.roomId || "main");
-  await broadcastRoomPayload({ type: "message:new", message }, roomId, rooms);
-}
-
-async function broadcastRoomPayload(payload, roomId, rooms = [], actor = null, exceptId = "") {
-  const cleanRoomId = String(roomId || "main");
-  const room = (rooms || []).find((entry) => String(entry.id || "main") === cleanRoomId) || { id: cleanRoomId };
-  if (actor && !canManage(actor) && !canAccessRoom(room, actor)) return;
-  pruneHttpRealtime();
-  for (const client of realtimeClients()) {
-    if (client.id === exceptId) continue;
-    if (!canManage(client) && !canAccessRoom(room, client)) continue;
-    const safePayload = payload && payload.message
-      ? { ...payload, message: safeRoomMessage(payload.message, client) }
-      : payload;
-    deliverRealtime(client, safePayload);
   }
 }
 
@@ -5503,29 +5246,6 @@ async function broadcastPresenceUpdate(profiles) {
   }
 }
 
-async function broadcastProfileUpdate(profiles, users) {
-  const [friends, rooms, messages, dms] = await Promise.all([
-    readJson(FILES.friends, { requests: [], friendships: [] }),
-    readJson(FILES.rooms, []),
-    readJson(FILES.messages, []),
-    readJson(FILES.dms, []),
-  ]);
-  for (const client of realtimeClients()) {
-    const accessibleRoomIds = new Set((rooms || []).filter((room) => canAccessRoom(room, client)).map((room) => room.id || "main"));
-    const visibleMessages = (messages || [])
-      .map((message) => ({ ...message, roomId: message.roomId || "main" }))
-      .filter((message) => canManage(client) || accessibleRoomIds.has(message.roomId || "main"))
-      .map((message) => safeRoomMessage(message, client));
-    const visibleDms = (canManage(client)
-      ? dms
-      : (dms || []).filter((entry) => Array.isArray(entry.participants) && entry.participants.includes(client.username)))
-      .filter((entry) => !entry.secret)
-      .map((entry) => safeDm(entry, client));
-    const visiblePeople = statePeopleForUser(users, profiles, client, friends, visibleMessages, visibleDms);
-    deliverRealtime(client, { type: "profiles:update", profiles: safeProfiles(profiles, visiblePeople, client) });
-  }
-}
-
 function broadcastRoomsUpdate(rooms) {
   for (const client of wsClients.values()) {
     sendWs(client, {
@@ -5549,19 +5269,13 @@ function broadcastRealtimeRoom(payload, roomInfo, exceptId) {
   pruneHttpRealtime();
   for (const client of realtimeClients()) {
     if (client.id === exceptId) continue;
-    if (roomInfo.participants.has(client.username)) deliverRealtime(client, payload);
+    if (roomInfo.participants.has(client.username) || canManage(client)) deliverRealtime(client, payload);
   }
 }
 
 function broadcastManagers(payload) {
   for (const client of wsClients.values()) {
     if (canManage(client)) sendWs(client, payload);
-  }
-}
-
-function broadcastManagerLogs(type, field, entries) {
-  for (const client of realtimeClients()) {
-    if (canManage(client)) deliverRealtime(client, { type, [field]: safeLogEntries(entries, client) });
   }
 }
 
@@ -5588,23 +5302,16 @@ function broadcastSecretMessage(payload, settings) {
 
 function broadcastDm(payload, dm) {
   const participants = new Set(Array.isArray(dm.participants) ? dm.participants : [dm.from, dm.to]);
-  for (const client of realtimeClients()) {
-    if (!participants.has(client.username)) continue;
-    const safePayload = payload && payload.dm ? { ...payload, dm: safeDm(payload.dm, client) } : payload;
-    deliverRealtime(client, safePayload);
+  for (const client of wsClients.values()) {
+    if ((dm.secret ? canOwn(client) : canManage(client)) || participants.has(client.username)) sendWs(client, payload);
   }
 }
 
 async function broadcastReceiptContext(payload, context, targetId, user) {
-  if (context === "messages") {
-    const rooms = await readJson(FILES.rooms, []);
-    await broadcastRoomPayload(payload, targetId || "main", rooms, user);
-    return;
-  }
   if (context === "dm") {
     const participants = new Set(targetId.split("|").map(normalizeUsername).filter(Boolean));
-    for (const client of realtimeClients()) {
-      if (participants.has(client.username)) deliverRealtime(client, payload);
+    for (const client of wsClients.values()) {
+      if (canManage(client) || participants.has(client.username)) sendWs(client, payload);
     }
     return;
   }
@@ -5612,8 +5319,8 @@ async function broadcastReceiptContext(payload, context, targetId, user) {
     const groups = await readJson(FILES.dmGroups, []);
     const group = groups.map(sanitizeDmGroup).find((entry) => entry.id === targetId);
     const participants = new Set(group ? group.participants : []);
-    for (const client of realtimeClients()) {
-      if (participants.has(client.username) || client.username === user.username) deliverRealtime(client, payload);
+    for (const client of wsClients.values()) {
+      if (canManage(client) || participants.has(client.username) || client.username === user.username) sendWs(client, payload);
     }
   }
 }
@@ -5800,55 +5507,6 @@ function getCookie(req, name) {
   return "";
 }
 
-function applySecurityHeaders(req, res) {
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.setHeader("Permissions-Policy", "geolocation=(self), camera=(self), microphone=(self), display-capture=(self), payment=()");
-  res.setHeader("X-Frame-Options", "SAMEORIGIN");
-  res.setHeader("Content-Security-Policy", "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' ws: wss: https:; frame-src 'self' https: http:");
-  if (isHttpsRequest(req)) res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-}
-
-function requiresCsrfProtection(req) {
-  return !["GET", "HEAD", "OPTIONS"].includes(String(req.method || "").toUpperCase());
-}
-
-function isSameOriginRequest(req) {
-  const requestHost = String(req.headers.host || "").toLowerCase();
-  const source = String(req.headers.origin || req.headers.referer || "").trim();
-  if (!source) return true;
-  try {
-    return new URL(source).host.toLowerCase() === requestHost;
-  } catch (error) {
-    return false;
-  }
-}
-
-function loginRateKey(req, username) {
-  return `${normalizeIpAddress(getClientIp(req)) || "unknown"}:${normalizeUsername(username) || "unknown"}`;
-}
-
-function checkLoginRate(req, username) {
-  const entry = loginRateLimits.get(loginRateKey(req, username));
-  const now = Date.now();
-  if (!entry || entry.blockedUntil <= now) return { retryAfterSeconds: 0 };
-  return { retryAfterSeconds: Math.max(1, Math.ceil((entry.blockedUntil - now) / 1000)) };
-}
-
-function registerLoginFailure(req, username) {
-  const key = loginRateKey(req, username);
-  const now = Date.now();
-  const previous = loginRateLimits.get(key);
-  const withinWindow = previous && now - previous.firstAttemptAt <= 15 * 60 * 1000;
-  const failures = (withinWindow ? previous.failures : 0) + 1;
-  const cooldownMs = failures >= 8 ? 15 * 60 * 1000 : failures >= 5 ? 60 * 1000 : 0;
-  loginRateLimits.set(key, { firstAttemptAt: withinWindow ? previous.firstAttemptAt : now, failures, blockedUntil: now + cooldownMs });
-}
-
-function clearLoginFailures(req, username) {
-  loginRateLimits.delete(loginRateKey(req, username));
-}
-
 function sessionCookie(value, req, maxAgeSeconds = null) {
   const parts = [`${SESSION_COOKIE}=${encodeURIComponent(value)}`, "HttpOnly", "SameSite=Lax", "Path=/"];
   if (maxAgeSeconds !== null) parts.push(`Max-Age=${Math.max(0, Number(maxAgeSeconds) || 0)}`);
@@ -5889,7 +5547,6 @@ function firstForwardedValue(value) {
 
 function safeUser(user, viewer = null) {
   const ownerView = canOwn(viewer);
-  const selfView = Boolean(viewer && String(viewer.username || "").toLowerCase() === String(user.username || "").toLowerCase());
   const safe = {
     username: user.username,
     role: effectiveRole(user),
@@ -5903,24 +5560,15 @@ function safeUser(user, viewer = null) {
     banned: isUserBanned(user),
     allowPersistentLogin: Boolean(user.allowPersistentLogin),
     locked: Boolean(user.locked),
-    contact: ownerView || selfView ? user.contact || "" : "",
-    email: ownerView || selfView ? user.email || "" : "",
-    phone: ownerView || selfView ? user.phone || "" : "",
+    contact: user.contact || "",
+    email: user.email || "",
+    phone: user.phone || "",
     grade: normalizeGrade(user.grade || ""),
     gradeUpdatedAt: user.gradeUpdatedAt || "",
     contactUpdatedAt: user.contactUpdatedAt || "",
     mutedUntil: user.mutedUntil || "",
     muted: isUserMuted(user),
     shadowMuted: Boolean(user.shadowMuted),
-    strikeCount: Array.isArray(user.strikes) ? user.strikes.length : 0,
-    strikes: canModerate(viewer) || ownerView
-      ? (Array.isArray(user.strikes) ? user.strikes.slice(-20).map((strike) => ({
-        id: String(strike.id || ""),
-        issuedBy: String(strike.issuedBy || ""),
-        reason: String(strike.reason || ""),
-        createdAt: String(strike.createdAt || ""),
-      })) : [])
-      : [],
     tempAdminUntil: user.tempAdminUntil || "",
     tempAdminPreviousRole: user.tempAdminPreviousRole || "",
   };
@@ -5959,30 +5607,6 @@ function publicUser(user, profile = {}) {
     status: profile.invisible ? "offline" : normalizePresenceStatus(profile.status || "offline"),
     grade: normalizeGrade(user.grade || profile.grade || ""),
   };
-}
-
-function statePeopleForUser(users, profiles, viewer, friends = { friendships: [] }, messages = [], dms = []) {
-  if (canOwn(viewer)) return (users || []).map((entry) => publicUser(entry, profiles[entry.username]));
-  const viewerName = normalizeUsername(viewer && viewer.username);
-  const visible = new Set([viewerName]);
-  for (const friendship of friends.friendships || []) {
-    const members = Array.isArray(friendship.users) ? friendship.users.map(normalizeUsername) : [];
-    if (!members.includes(viewerName)) continue;
-    members.filter(Boolean).forEach((username) => visible.add(username));
-  }
-  for (const message of messages || []) visible.add(normalizeUsername(message.user));
-  for (const dm of dms || []) {
-    for (const participant of dm.participants || []) visible.add(normalizeUsername(participant));
-    visible.add(normalizeUsername(dm.from));
-    visible.add(normalizeUsername(dm.to));
-  }
-  return (users || [])
-    .filter((entry) => {
-      const username = normalizeUsername(entry && entry.username);
-      if (!username) return false;
-      return visible.has(username) || friendCandidateAllowed(viewer, entry, "", profiles[entry.username]);
-    })
-    .map((entry) => publicUser(entry, profiles[entry.username]));
 }
 
 function defaultProfile(username) {
@@ -6038,55 +5662,13 @@ function safeProfiles(profiles, users, viewer) {
       ...defaultProfile(user.username),
       ...(profiles[user.username] || {}),
     });
-    const ownProfile = viewer && viewer.username === user.username;
-    if (ownProfile || canOwn(viewer)) {
-      result[user.username] = {
-        ...profile,
-        status: profile.invisible && !ownProfile ? "offline" : profile.status,
-        invisible: ownProfile ? profile.invisible : false,
-      };
-      continue;
-    }
     result[user.username] = {
-      displayName: profile.displayName,
-      avatarUrl: profile.avatarUrl,
-      bannerUrl: profile.bannerUrl,
-      badges: profile.badges,
-      customStatus: profile.customStatus,
-      status: profile.invisible ? "offline" : profile.status,
-      grade: profile.grade,
+      ...profile,
+      status: profile.invisible && (!viewer || viewer.username !== user.username) ? "offline" : profile.status,
+      invisible: viewer && viewer.username === user.username ? profile.invisible : false,
     };
   }
   return result;
-}
-
-function safeLogEntries(entries, viewer) {
-  if (canOwn(viewer)) return Array.isArray(entries) ? entries : [];
-  return (Array.isArray(entries) ? entries : []).map((entry) => safeLogEntry(entry));
-}
-
-function safeLogEntry(entry = {}) {
-  const safe = {};
-  for (const field of ["id", "actor", "action", "target", "note", "createdAt"]) {
-    if (entry[field] !== undefined) safe[field] = entry[field];
-  }
-  if (entry.details && typeof entry.details === "object") {
-    const details = {};
-    for (const [key, value] of Object.entries(entry.details)) {
-      const lower = String(key || "").toLowerCase();
-      if (["email", "phone", "ip", "device", "token", "password", "secret", "authorization", "cookie", "location"].some((term) => lower.includes(term))) {
-        details[key] = "[redacted]";
-      } else if (Array.isArray(value)) {
-        details[key] = value.slice(0, 20).map((item) => typeof item === "string" ? item.slice(0, 120) : item);
-      } else if (value && typeof value === "object") {
-        details[key] = "[object]";
-      } else {
-        details[key] = typeof value === "string" ? value.slice(0, 180) : value;
-      }
-    }
-    safe.details = details;
-  }
-  return safe;
 }
 
 function presenceList(profiles, viewer, users = [], friends = { friendships: [] }) {
@@ -6372,8 +5954,9 @@ function safeSecretMessages(messages, user, settings = {}) {
       user: message.user,
       attachment: message.attachment || null,
       reactions: message.reactions || {},
+      sourceIp: canOwn(user) ? message.sourceIp || "" : "",
+      sourceAgent: canOwn(user) ? message.sourceAgent || "" : "",
       createdAt: message.createdAt || "",
-      ...(canOwn(user) ? { sourceIp: message.sourceIp || "", sourceAgent: message.sourceAgent || "" } : {}),
     }));
 }
 
@@ -6382,72 +5965,29 @@ function safeSecretDms(dms, user, settings = {}) {
   return (dms || [])
     .filter((dm) => Boolean(dm && dm.secret))
     .filter((dm) => canOwn(user) || (Array.isArray(dm.participants) && dm.participants.includes(user.username)))
-    .map((dm) => safeDm(dm, user));
-}
-
-function safeDm(dm, viewer) {
-  const safe = {
-    id: String(dm.id || ""),
-    kind: String(dm.kind || "direct"),
-    from: String(dm.from || ""),
-    to: String(dm.to || ""),
-    groupId: String(dm.groupId || ""),
-    groupName: String(dm.groupName || ""),
-    participants: Array.isArray(dm.participants) ? dm.participants.map((entry) => String(entry || "")).filter(Boolean).slice(0, 100) : [],
-    text: String(dm.text || ""),
-    attachment: dm.attachment || null,
-    reactions: dm.reactions && typeof dm.reactions === "object" ? dm.reactions : {},
-    pinned: Boolean(dm.pinned),
-    pinnedAt: String(dm.pinnedAt || ""),
-    pinnedBy: String(dm.pinnedBy || ""),
-    createdAt: String(dm.createdAt || ""),
-    editedAt: String(dm.editedAt || ""),
-    status: String(dm.status || ""),
-    localId: String(dm.localId || ""),
-    secret: Boolean(dm.secret),
-  };
-  if (canOwn(viewer)) {
-    safe.sourceIp = String(dm.sourceIp || "");
-    safe.sourceHost = String(dm.sourceHost || "");
-    safe.sourceAgent = String(dm.sourceAgent || "");
-    safe.sourceDevice = String(dm.sourceDevice || "");
-    safe.approximateLocation = dm.approximateLocation || null;
-  }
-  return safe;
+    .map((dm) => ({
+      id: dm.id,
+      kind: dm.kind || "direct",
+      from: dm.from || "",
+      to: dm.to || "",
+      groupId: dm.groupId || "",
+      groupName: dm.groupName || "",
+      participants: Array.isArray(dm.participants) ? dm.participants : [],
+      text: dm.text || "",
+      attachment: dm.attachment || null,
+      pinned: Boolean(dm.pinned),
+      pinnedAt: dm.pinnedAt || "",
+      pinnedBy: dm.pinnedBy || "",
+      sourceIp: canOwn(user) ? dm.sourceIp || "" : "",
+      sourceAgent: canOwn(user) ? dm.sourceAgent || "" : "",
+      createdAt: dm.createdAt || "",
+    }));
 }
 
 function safeFileRecords(files, user, rooms = []) {
   return (files || [])
     .filter((file) => canAccessFileRecord(file, user, rooms))
     .map((file) => safeFileRecord(file, user));
-}
-
-function safeRoomMessage(message, viewer) {
-  const safe = {
-    id: String(message.id || ""),
-    roomId: String(message.roomId || "main"),
-    parentId: String(message.parentId || ""),
-    text: String(message.text || ""),
-    attachment: message.attachment || null,
-    mentions: Array.isArray(message.mentions) ? message.mentions.map((entry) => String(entry || "")).filter(Boolean).slice(0, 50) : [],
-    reactions: message.reactions && typeof message.reactions === "object" ? message.reactions : {},
-    user: String(message.user || ""),
-    status: String(message.status || ""),
-    localId: String(message.localId || ""),
-    pinned: Boolean(message.pinned),
-    pinnedAt: String(message.pinnedAt || ""),
-    pinnedBy: String(message.pinnedBy || ""),
-    createdAt: String(message.createdAt || ""),
-    editedAt: String(message.editedAt || ""),
-  };
-  if (canOwn(viewer)) {
-    safe.sourceIp = String(message.sourceIp || "");
-    safe.sourceHost = String(message.sourceHost || "");
-    safe.sourceAgent = String(message.sourceAgent || "");
-    safe.sourceDevice = String(message.sourceDevice || "");
-    safe.approximateLocation = message.approximateLocation || null;
-  }
-  return safe;
 }
 
 function sanitizeInnerDoc(doc) {
@@ -6550,9 +6090,10 @@ function canAccessInnerDoc(doc, user) {
 
 function safeFileRecord(file, viewer) {
   const showAdminMeta = viewer && canOwn(viewer);
-  const safe = {
+  return {
     id: file.id,
     originalName: file.originalName,
+    storedName: file.storedName,
     category: file.category,
     kind: file.kind,
     mimeType: file.mimeType,
@@ -6561,28 +6102,22 @@ function safeFileRecord(file, viewer) {
     private: Boolean(file.private),
     releaseAt: file.releaseAt || "",
     releaseRoom: file.releaseRoom || "",
+    sourceIp: showAdminMeta ? file.sourceIp : "",
+    sourceHost: showAdminMeta ? file.sourceHost : "",
+    sourceAgent: showAdminMeta ? file.sourceAgent : "",
+    sourceDevice: showAdminMeta ? file.sourceDevice || "" : "",
+    approximateLocation: showAdminMeta ? file.approximateLocation || null : null,
     createdAt: file.createdAt,
     url: `/api/files/${encodeURIComponent(file.id)}/download`,
+    persistence: file.persistence || (file.inlineData ? "disk+inline" : "disk"),
+    cloudStorage: file.cloudStorage || "",
+    externalBacked: Boolean(file.cloudinarySecureUrl || file.cloudFileId || file.b2FileId),
+    cloudinaryPublicId: showAdminMeta ? file.cloudinaryPublicId || "" : "",
+    b2FileId: showAdminMeta ? file.b2FileId || "" : "",
+    b2FileName: showAdminMeta ? file.b2FileName || "" : "",
+    inlineBacked: Boolean(file.inlineData),
+    inlineSize: Number(file.inlineSize || 0),
   };
-  if (showAdminMeta) {
-    Object.assign(safe, {
-      storedName: file.storedName,
-      sourceIp: file.sourceIp || "",
-      sourceHost: file.sourceHost || "",
-      sourceAgent: file.sourceAgent || "",
-      sourceDevice: file.sourceDevice || "",
-      approximateLocation: file.approximateLocation || null,
-      persistence: file.persistence || (file.inlineData ? "disk+inline" : "disk"),
-      cloudStorage: file.cloudStorage || "",
-      externalBacked: Boolean(file.cloudinarySecureUrl || file.cloudFileId || file.b2FileId),
-      cloudinaryPublicId: file.cloudinaryPublicId || "",
-      b2FileId: file.b2FileId || "",
-      b2FileName: file.b2FileName || "",
-      inlineBacked: Boolean(file.inlineData),
-      inlineSize: Number(file.inlineSize || 0),
-    });
-  }
-  return safe;
 }
 
 function sanitizeAccountRequest(request) {
@@ -6945,19 +6480,14 @@ function safeReadReceipts(receipts, user, options = {}) {
   if (canManage(user)) return receipts;
   const result = {};
   const groups = Array.isArray(options.dmGroups) ? options.dmGroups.map(sanitizeDmGroup) : [];
-  const messageTargets = new Set(
-    (Array.isArray(options.messages) ? options.messages : [])
-      .map((message) => String(message && message.roomId || "main"))
-      .filter(Boolean)
-  );
   for (const [key, value] of Object.entries(receipts)) {
     const [context, ...rest] = key.split(":");
     const targetId = rest.join(":");
     if (context === "messages") {
-      if (messageTargets.has(targetId || "main")) result[key] = value;
+      result[key] = value;
     } else if (context === "dm") {
       const participants = targetId.split("|").map(normalizeUsername).filter(Boolean);
-      if (participants.includes(normalizeUsername(user && user.username))) result[key] = value;
+      if (participants.includes(user.username)) result[key] = value;
     } else if (context === "group") {
       const group = groups.find((entry) => entry.id === targetId);
       if (group && group.participants.includes(user.username)) result[key] = value;
@@ -6989,25 +6519,16 @@ function normalizeAccountRequestStatus(status) {
 }
 
 function safeSettings(settings, viewer = null) {
-  const source = { ...(settings || {}) };
-  if (!canOwn(viewer)) {
-    [
-      "ownerFailsafe", "ownerCheckin", "emailRoutes", "emailContacts", "adminContactEmail",
-      "delegatedAdminFeatures", "ai", "aiConfig", "apiKey", "smtp", "smtpConfig",
-      "backup", "backups", "storage", "storageConfig", "serviceScale", "devConfig",
-      "reportEmails", "strikeEmails", "moderationSettings", "nonOwnerAdminFeatures",
-    ].forEach((key) => delete source[key]);
-  }
   return {
-    ...source,
-    ownerFailsafe: canOwn(viewer) ? safeOwnerFailsafe(settings.ownerFailsafe) : undefined,
-    ownerCheckin: canOwn(viewer) ? safeOwnerCheckin(settings.ownerCheckin, viewer) : undefined,
-    emailRoutes: canOwn(viewer) ? sanitizeEmailRoutes(settings.emailRoutes || {}) : undefined,
-    emailContacts: canOwn(viewer) ? sanitizeEmailContacts(settings.emailContacts || {}) : undefined,
+    ...settings,
+    ownerFailsafe: safeOwnerFailsafe(settings.ownerFailsafe),
+    ownerCheckin: safeOwnerCheckin(settings.ownerCheckin, viewer),
+    emailRoutes: sanitizeEmailRoutes(settings.emailRoutes || {}),
+    emailContacts: sanitizeEmailContacts(settings.emailContacts || {}),
     acceptedEmailDomains: sanitizeAcceptedEmailDomains(settings.acceptedEmailDomains || []),
     gameLinks: sanitizeGameLinks(settings.gameLinks || []),
     customizations: sanitizeCustomizations(settings.customizations || {}),
-    serviceScale: canOwn(viewer) ? sanitizeServiceScale(settings.serviceScale || {}) : undefined,
+    serviceScale: sanitizeServiceScale(settings.serviceScale || {}),
     persistentLogin: sanitizePersistentLogin(settings.persistentLogin || {}),
     featureLocks: visibleFeatureLocks(settings.featureLocks || {}),
     featureVisibility: sanitizeFeatureVisibility(settings.featureVisibility || {}),
@@ -7019,18 +6540,13 @@ function safeSettings(settings, viewer = null) {
     shutdownAt: settings.serverEnabled === false ? String(settings.shutdownAt || "") : "",
     shutdownBy: settings.serverEnabled === false ? String(settings.shutdownBy || "") : "",
     shutdownReason: settings.serverEnabled === false ? String(settings.shutdownReason || "") : "",
-    delegatedAdminFeatures: canOwn(viewer) ? sanitizeDelegatedAdminFeatures(settings.delegatedAdminFeatures || {}) : undefined,
-    moderationCapabilities: canModerate(viewer)
-      ? ["strikes", "room-controls", "reports", "audit-logs", "member-actions", "content-moderation", "account-requests", "account-management", "live-ip-tracking", "announcements", "store-management", "auto-moderation", "voice-management", "service-scaling", "system-logs"].filter((capability) => canUseModerationCapability(viewer, settings, capability))
-      : [],
   };
 }
 
 function defaultOwnerCheckin() {
   return normalizeOwnerCheckin({
     cadence: "weekly",
-    scheduleTime: "12:00",
-    nextCheckAt: nextOwnerCheckinAt("weekly", new Date(), "12:00").toISOString(),
+    nextCheckAt: nextOwnerCheckinAt("weekly").toISOString(),
     recipients: [OWNER_CHECKIN_EMAIL],
   });
 }
@@ -7038,14 +6554,12 @@ function defaultOwnerCheckin() {
 function normalizeOwnerCheckin(source = {}) {
   const value = source && typeof source === "object" && !Array.isArray(source) ? source : {};
   const cadence = String(value.cadence || "weekly").toLowerCase() === "monthly" ? "monthly" : "weekly";
-  const scheduleTime = normalizeOwnerCheckinTime(value.scheduleTime);
   const restrictedFeatures = Array.from(new Set((Array.isArray(value.restrictedFeatures) ? value.restrictedFeatures : [])
     .map((feature) => String(feature || "").trim().toLowerCase())
     .filter((feature) => ["browser", "store", "chess"].includes(feature))));
-  const nextCheckAt = Date.parse(value.nextCheckAt) ? String(value.nextCheckAt) : nextOwnerCheckinAt(cadence, new Date(), scheduleTime).toISOString();
+  const nextCheckAt = Date.parse(value.nextCheckAt) ? String(value.nextCheckAt) : nextOwnerCheckinAt(cadence).toISOString();
   return {
     cadence,
-    scheduleTime,
     recipients: Array.from(new Set([OWNER_CHECKIN_EMAIL, ...(Array.isArray(value.recipients) ? value.recipients : [])]
       .map(cleanEmailAddress).filter(Boolean))).slice(0, 10),
     nextCheckAt,
@@ -7073,26 +6587,20 @@ function safeOwnerCheckin(source = {}, viewer = null) {
   };
 }
 
-function normalizeOwnerCheckinTime(value) {
-  return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value || "")) ? String(value) : "12:00";
-}
-
-function nextOwnerCheckinAt(cadence, now = new Date(), scheduleTime = "12:00") {
+function nextOwnerCheckinAt(cadence, now = new Date()) {
   const indiaOffsetMs = 5.5 * 60 * 60 * 1000;
   const indiaNow = new Date(now.getTime() + indiaOffsetMs);
-  const [hourText, minuteText] = normalizeOwnerCheckinTime(scheduleTime).split(":");
-  const scheduledMinutes = Number(hourText) * 60 + Number(minuteText);
   let year = indiaNow.getUTCFullYear();
   let month = indiaNow.getUTCMonth();
   let day = indiaNow.getUTCDate();
-  const scheduledTimePassed = (indiaNow.getUTCHours() * 60 + indiaNow.getUTCMinutes()) >= scheduledMinutes;
+  const noonPassed = indiaNow.getUTCHours() > 12 || (indiaNow.getUTCHours() === 12 && indiaNow.getUTCMinutes() >= 0);
   if (cadence === "monthly") {
     const firstSunday = (targetYear, targetMonth) => {
       const first = new Date(Date.UTC(targetYear, targetMonth, 1));
       return 1 + ((7 - first.getUTCDay()) % 7);
     };
     let targetDay = firstSunday(year, month);
-    if (day > targetDay || (day === targetDay && scheduledTimePassed)) {
+    if (day > targetDay || (day === targetDay && noonPassed)) {
       month += 1;
       if (month > 11) { month = 0; year += 1; }
       targetDay = firstSunday(year, month);
@@ -7100,13 +6608,13 @@ function nextOwnerCheckinAt(cadence, now = new Date(), scheduleTime = "12:00") {
     day = targetDay;
   } else {
     const daysUntilSunday = (7 - indiaNow.getUTCDay()) % 7;
-    const addDays = daysUntilSunday || (scheduledTimePassed ? 7 : 0);
+    const addDays = daysUntilSunday || (noonPassed ? 7 : 0);
     const target = new Date(Date.UTC(year, month, day + addDays));
     year = target.getUTCFullYear();
     month = target.getUTCMonth();
     day = target.getUTCDate();
   }
-  return new Date(Date.UTC(year, month, day, Number(hourText), Number(minuteText), 0) - indiaOffsetMs);
+  return new Date(Date.UTC(year, month, day, 6, 30, 0));
 }
 
 function defaultOwnerFailsafe() {
@@ -7804,33 +7312,6 @@ function canModerate(user) {
   return moderatorRoles.has(effectiveRole(user));
 }
 
-function sanitizeDelegatedAdminFeatureList(source) {
-  const values = Array.isArray(source) ? source : String(source || "").split(/[\n,;]/);
-  const allowed = new Set(["strikes", "room-controls", "reports", "audit-logs", "member-actions", "content-moderation", "account-requests", "account-management", "live-ip-tracking", "announcements", "store-management", "auto-moderation", "voice-management", "service-scaling", "system-logs"]);
-  return Array.from(new Set(values.map((value) => String(value || "").trim().toLowerCase()).filter((value) => allowed.has(value))));
-}
-
-function sanitizeNonOwnerAdminFeatures(source) {
-  const values = Array.isArray(source) ? source : String(source || "").split(/[\n,;]/);
-  // Preserve the legacy screen-time name while storing the current room-control capability.
-  return sanitizeDelegatedAdminFeatureList(values.map((value) => String(value || "").trim().toLowerCase() === "screen-time" ? "room-controls" : value));
-}
-
-function sanitizeDelegatedAdminFeatures(source) {
-  const value = source && typeof source === "object" && !Array.isArray(source) ? source : {};
-  return Object.fromEntries(Object.entries(value)
-    .map(([username, features]) => [normalizeUsername(username), sanitizeDelegatedAdminFeatureList(features)])
-    .filter(([username]) => Boolean(username))
-    .slice(0, 100));
-}
-
-function canUseModerationCapability(user, settings, capability) {
-  if (!canModerate(user)) return false;
-  if (normalizeRole(user && user.role) !== "admin" || canOwn(user)) return true;
-  const features = sanitizeDelegatedAdminFeatures(settings && settings.delegatedAdminFeatures)[normalizeUsername(user.username)] || [];
-  return features.includes(capability);
-}
-
 function sanitizeModeratorLogAccessUsers(source) {
   const list = Array.isArray(source) ? source : String(source || "").split(/[\n,;]/);
   return Array.from(new Set(list.map(normalizeUsername).filter(Boolean))).slice(0, 50);
@@ -7839,7 +7320,6 @@ function sanitizeModeratorLogAccessUsers(source) {
 function canViewAuditLogs(user, settings = {}) {
   if (canManage(user)) return true;
   if (!canModerate(user)) return false;
-  if (canUseModerationCapability(user, settings, "audit-logs")) return true;
   const allowed = sanitizeModeratorLogAccessUsers(settings.moderationSettings && settings.moderationSettings.logAccessUsers);
   return allowed.includes(normalizeUsername(user && user.username));
 }
@@ -8083,65 +7563,13 @@ function applySlashCommand(textValue) {
   return textValue;
 }
 
-async function issueMutedWordStrike(user, req) {
-  const [settings, users] = await Promise.all([
-    readJson(FILES.settings, {}),
-    readJson(FILES.users, []),
-  ]);
-  const index = users.findIndex((entry) => String(entry.username || "").toLowerCase() === String(user.username || "").toLowerCase());
-  if (index === -1 || canOwn(users[index])) return { thresholdReset: false, strikeCount: 0 };
-
-  const issuedAt = new Date().toISOString();
-  const reason = "Muted word used";
-  const strikes = Array.isArray(users[index].strikes) ? users[index].strikes : [];
-  const strike = { id: crypto.randomUUID(), issuedBy: "automod", reason, createdAt: issuedAt };
-  const nextStrikes = [...strikes, strike].slice(-50);
-  users[index] = { ...users[index], strikes: nextStrikes, updatedAt: issuedAt, updatedBy: "automod" };
-  await addModerationLog("automod", "user:strike", users[index].username, reason);
-  await addSystemLog("user.strike.issued", "automod", { username: users[index].username, count: nextStrikes.length, reason }, req);
-
-  let thresholdReset = false;
-  if (strikes.length < 3 && nextStrikes.length >= 3) {
-    const recipients = Array.isArray(settings.strikeEmails) ? settings.strikeEmails.map(cleanEmailAddress).filter(Boolean) : [];
-    sendDirectEmail(recipients, "Connectifi account reached three strikes", [
-      `Account: ${users[index].username}`,
-      `Strike count: ${nextStrikes.length}`,
-      `Latest reason: ${reason}`,
-      "Issued by: automod",
-      `Time: ${issuedAt}`,
-    ].join("\n"), { route: "loginFailures", contactType: "security" }).catch(() => {});
-    users[index] = {
-      ...users[index],
-      strikes: [],
-      lastStrikeThresholdAt: issuedAt,
-      updatedAt: issuedAt,
-      updatedBy: "automod",
-    };
-    thresholdReset = true;
-    await addModerationLog("automod", "user:strike-threshold-reset", users[index].username, "Third-strike email sent and active strikes reset");
-    await addSystemLog("user.strike.threshold.reset", "automod", { username: users[index].username, reason }, req);
-  }
-
-  await writeJson(FILES.users, users);
-  broadcastManagers({ type: "users:update", users: users.map((entry) => safeUser(entry, user)) });
-  return { thresholdReset, strikeCount: Array.isArray(users[index].strikes) ? users[index].strikes.length : 0 };
-}
-
-async function checkAutomod(textValue, user, req) {
-  // The two owner-admin accounts remain protected from automated enforcement.
-  // Moderators and non-owner admins are intentionally subject to the same
-  // muted-word rules as members.
-  if (canOwn(user)) return "";
+async function checkAutomod(textValue, user) {
+  if (canModerate(user)) return "";
   const automod = await readJson(FILES.automod, {});
   if (!automod.enabled) return "";
   const lower = String(textValue || "").toLowerCase();
   for (const word of automod.mutedWords || []) {
-    if (word && lower.includes(String(word).toLowerCase())) {
-      const result = await issueMutedWordStrike(user, req);
-      return result.thresholdReset
-        ? "Message blocked by auto moderation. A third strike was issued, the strike email was sent, and active strikes were reset."
-        : "Message blocked by auto moderation. A strike was issued.";
-    }
+    if (word && lower.includes(String(word).toLowerCase())) return "Message blocked by auto moderation";
   }
   return "";
 }
@@ -8177,7 +7605,7 @@ async function addModerationLog(actor, action, target, note) {
     createdAt: new Date().toISOString(),
   });
   await writeJson(FILES.moderationLogs, logs.slice(0, 2000));
-  broadcastManagerLogs("moderation:update", "moderationLogs", logs.slice(0, 250));
+  broadcastManagers({ type: "moderation:update", moderationLogs: logs.slice(0, 250) });
 }
 
 async function addSystemLog(action, actor, details = {}, req = null) {
@@ -8194,7 +7622,7 @@ async function addSystemLog(action, actor, details = {}, req = null) {
   logs.unshift(entry);
   const next = logs.slice(0, 3000);
   await writeJson(FILES.logs, next);
-  broadcastManagerLogs("logs:update", "logs", next.slice(0, 300));
+  broadcastManagers({ type: "logs:update", logs: next.slice(0, 300) });
 }
 
 async function ownerFailsafeTriggeredResponse(req, res, actor, trigger) {
@@ -9650,96 +9078,6 @@ async function generateAiSuggestion(prompt) {
   }
 }
 
-async function assessAiLoginSecurity(user, login) {
-  const aiConfig = await readJson(FILES.ai, {});
-  const config = resolveAiConfig(aiConfig);
-  if (!config.apiKey || !user || !login) return;
-
-  const history = Array.isArray(user.loginHistory) ? user.loginHistory : [];
-  const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-  const recentIps = new Set(history
-    .filter((entry) => Date.parse(entry.loggedInAt || "") >= dayAgo)
-    .map((entry) => String(entry.ip || "").trim())
-    .filter(Boolean));
-  const deviceChanged = Boolean(login.previousDevice && login.device && login.previousDevice !== login.device);
-  const ipChanged = Boolean(login.previousIp && login.ip && login.previousIp !== login.ip);
-  const signalScore = (login.outsideRecentIps ? 1 : 0) + (deviceChanged ? 1 : 0) + (ipChanged ? 1 : 0) + (recentIps.size >= 3 ? 1 : 0);
-  if (signalScore < 2) return;
-
-  const flags = await readJson(FILES.aiSecurityFlags, []);
-  const fingerprint = `${String(user.username || "").toLowerCase()}|${login.ip || ""}|${login.device || ""}`;
-  const recentlyFlagged = Array.isArray(flags) && flags.some((flag) =>
-    flag && flag.fingerprint === fingerprint && Date.now() - Date.parse(flag.createdAt || "") < 6 * 60 * 60 * 1000
-  );
-  if (recentlyFlagged) return;
-
-  const prompt = [
-    "You are a security triage assistant for a private workspace.",
-    "Assess whether this login pattern warrants an owner review. Do not infer identity, location, intent, or wrongdoing.",
-    "Return only JSON in this shape: {\"suspicious\":true|false,\"severity\":\"low\"|\"medium\"|\"high\",\"reason\":\"short factual reason\"}.",
-    `Signals: IP changed=${ipChanged}; device changed=${deviceChanged}; new compared with recent IPs=${Boolean(login.outsideRecentIps)}; distinct IPs in last 24h=${recentIps.size}; combined signal score=${signalScore}.`,
-  ].join("\n");
-  const assessment = await generateAiSecurityAssessment(config, prompt);
-  if (!assessment.suspicious) return;
-
-  const flag = {
-    id: crypto.randomUUID(),
-    fingerprint,
-    username: user.username,
-    severity: assessment.severity,
-    reason: assessment.reason,
-    createdAt: new Date().toISOString(),
-    loginAt: login.loginAt,
-    ip: login.ip || "",
-    device: login.device || "",
-    signals: {
-      ipChanged,
-      deviceChanged,
-      newComparedWithRecentIps: Boolean(login.outsideRecentIps),
-      distinctIpsLast24Hours: recentIps.size,
-    },
-  };
-  const next = [flag, ...(Array.isArray(flags) ? flags : [])].slice(0, 500);
-  await writeJson(FILES.aiSecurityFlags, next);
-  await addSystemLog("security.ai_login_flag", user.username, { severity: flag.severity, reason: flag.reason }, null);
-}
-
-async function generateAiSecurityAssessment(config, prompt) {
-  if (typeof fetch !== "function") return { suspicious: true, severity: "medium", reason: "Multiple login signals need owner review." };
-  try {
-    let response = await fetchAi(config.responsesUrl, config.apiKey, {
-      model: config.model,
-      instructions: "You triage login anomaly signals. Return only the requested JSON. Never claim certainty or wrongdoing.",
-      input: prompt,
-      max_output_tokens: 180,
-      store: false,
-    });
-    let data = await response.json().catch(() => ({}));
-    if (!response.ok && [400, 404, 405].includes(response.status)) {
-      response = await fetchAi(config.chatUrl, config.apiKey, {
-        model: config.model,
-        messages: [{ role: "system", content: "Return only the requested JSON for login anomaly triage." }, { role: "user", content: prompt }],
-        max_tokens: 180,
-      });
-      data = await response.json().catch(() => ({}));
-    }
-    if (!response.ok) return { suspicious: true, severity: "medium", reason: "Multiple login signals need owner review." };
-    const text = extractAiText(data);
-    const match = String(text || "").match(/\{[\s\S]*\}/);
-    const parsed = match ? JSON.parse(match[0]) : {};
-    const severity = ["low", "medium", "high"].includes(String(parsed.severity || "").toLowerCase())
-      ? String(parsed.severity).toLowerCase()
-      : "medium";
-    return {
-      suspicious: parsed.suspicious === true || String(parsed.suspicious).toLowerCase() === "true",
-      severity,
-      reason: String(parsed.reason || "Multiple login signals need owner review.").replace(/\s+/g, " ").trim().slice(0, 280),
-    };
-  } catch (error) {
-    return { suspicious: true, severity: "medium", reason: "Multiple login signals need owner review." };
-  }
-}
-
 function resolveAiConfig(aiConfig = {}) {
   const apiKey = firstEnvValue("INNER_AI_API_KEY", "OPENAI_API_KEY") || aiConfig.apiKey || "";
   const baseUrl = sanitizeAiBaseUrl(firstEnvValue("INNER_AI_BASE_URL", "OPENAI_BASE_URL") || aiConfig.baseUrl || "https://api.openai.com/v1");
@@ -9841,7 +9179,7 @@ function text(res, status, payload) {
   res.end(payload);
 }
 
-async function serveStatic(req, res, filePath) {
+async function serveStatic(res, filePath) {
   const safePath = safeJoin(PUBLIC_DIR, path.relative(PUBLIC_DIR, filePath));
   if (!safePath) return text(res, 404, "Not found");
   try {
@@ -9852,7 +9190,6 @@ async function serveStatic(req, res, filePath) {
       "Content-Type": mimeTypes[extension] || "application/octet-stream",
       "Cache-Control": "no-cache",
     });
-    if (req.method === "HEAD") return res.end();
     fs.createReadStream(safePath).pipe(res);
   } catch (error) {
     text(res, 404, "Not found");

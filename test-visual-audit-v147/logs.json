@@ -1,0 +1,232 @@
+[
+  {
+    "id": "f74c41a6-6701-4f96-9b04-ae6a6164ae95",
+    "action": "client.network",
+    "actor": "admin",
+    "details": {
+      "network": {
+        "effectiveType": "4g",
+        "type": "",
+        "downlink": 1.75,
+        "rtt": 50,
+        "saveData": false,
+        "platform": "Win32",
+        "language": "en-US",
+        "screen": "1280x800"
+      }
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-26T12:12:49.978Z"
+  },
+  {
+    "id": "b02ecd2a-3249-4790-9814-67798012b0b5",
+    "action": "client.network",
+    "actor": "admin",
+    "details": {
+      "network": {
+        "effectiveType": "4g",
+        "type": "",
+        "downlink": 1.75,
+        "rtt": 50,
+        "saveData": false,
+        "platform": "Win32",
+        "language": "en-US",
+        "screen": "1280x800"
+      }
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-26T12:11:41.606Z"
+  },
+  {
+    "id": "aeb4dc31-3675-417c-a724-3c496b1b6337",
+    "action": "client.network",
+    "actor": "admin",
+    "details": {
+      "network": {
+        "effectiveType": "4g",
+        "type": "",
+        "downlink": 1.75,
+        "rtt": 50,
+        "saveData": false,
+        "platform": "Win32",
+        "language": "en-US",
+        "screen": "1280x800"
+      }
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-26T12:10:43.292Z"
+  },
+  {
+    "id": "7c07c177-a6ca-439f-afed-dcf970740782",
+    "action": "client.network",
+    "actor": "admin",
+    "details": {
+      "network": {
+        "effectiveType": "4g",
+        "type": "",
+        "downlink": 1.75,
+        "rtt": 50,
+        "saveData": false,
+        "platform": "Win32",
+        "language": "en-US",
+        "screen": "1280x800"
+      }
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-26T12:10:31.327Z"
+  },
+  {
+    "id": "0da76417-f91d-4a9b-aa44-86fb589e1c41",
+    "action": "client.network",
+    "actor": "admin",
+    "details": {
+      "network": {
+        "effectiveType": "4g",
+        "type": "",
+        "downlink": 1.75,
+        "rtt": 50,
+        "saveData": false,
+        "platform": "Win32",
+        "language": "en-US",
+        "screen": "1280x800"
+      }
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-26T12:09:57.072Z"
+  },
+  {
+    "id": "baa34324-0be8-46fb-adac-2a575c46ad7d",
+    "action": "client.network",
+    "actor": "admin",
+    "details": {
+      "network": {
+        "effectiveType": "4g",
+        "type": "",
+        "downlink": 1.75,
+        "rtt": 50,
+        "saveData": false,
+        "platform": "Win32",
+        "language": "en-US",
+        "screen": "1280x800"
+      }
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-26T12:08:29.787Z"
+  },
+  {
+    "id": "bfcb841f-fdfc-4f0f-8dd5-8e633d857eae",
+    "action": "client.network",
+    "actor": "admin",
+    "details": {
+      "network": {
+        "effectiveType": "4g",
+        "type": "",
+        "downlink": 1.7,
+        "rtt": 50,
+        "saveData": false,
+        "platform": "Win32",
+        "language": "en-US",
+        "screen": "1280x800"
+      }
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-26T12:07:29.908Z"
+  },
+  {
+    "id": "240ce0e4-a1d5-4ca3-a4c8-4b7a49bedea8",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4198",
+    "createdAt": "2026-08-26T12:07:29.790Z"
+  },
+  {
+    "id": "5f13fea9-a50c-4ead-8ff6-e0666e5745cc",
+    "action": "login.failed",
+    "actor": "admin",
+    "details": {
+      "reason": "Invalid username or password"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4198",
+    "createdAt": "2026-08-26T12:07:03.517Z"
+  },
+  {
+    "id": "68bfd3f0-5ed8-4910-bf6b-3aff07e773b7",
+    "action": "login.failed",
+    "actor": "admin",
+    "details": {
+      "reason": "Invalid username or password"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4198",
+    "createdAt": "2026-08-26T12:07:03.339Z"
+  },
+  {
+    "id": "b48b6006-3804-40b8-ac3f-ba7b36ed8e46",
+    "action": "login.failed",
+    "actor": "admin",
+    "details": {
+      "reason": "Invalid username or password"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4198",
+    "createdAt": "2026-08-26T12:07:03.133Z"
+  },
+  {
+    "id": "aeada05d-f80c-47fb-81d8-20d9827d88c1",
+    "action": "login.failed",
+    "actor": "admin",
+    "details": {
+      "reason": "Invalid username or password"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4198",
+    "createdAt": "2026-08-26T12:07:02.572Z"
+  },
+  {
+    "id": "ff428e5e-98bb-42cf-99d0-82928b626c44",
+    "action": "login.failed",
+    "actor": "admin",
+    "details": {
+      "reason": "Invalid username or password"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4198",
+    "createdAt": "2026-08-26T12:06:52.860Z"
+  },
+  {
+    "id": "12fefc1c-b82a-46f0-8431-a5c4a9e2feb2",
+    "action": "login.failed",
+    "actor": "admin",
+    "details": {
+      "reason": "Invalid username or password"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4198",
+    "createdAt": "2026-08-26T12:06:34.357Z"
+  },
+  {
+    "id": "2fec4cfc-4385-480f-a12c-4edf0f5c1d19",
+    "action": "login.failed",
+    "actor": "admin",
+    "details": {
+      "reason": "Invalid username or password"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4198",
+    "createdAt": "2026-08-26T12:06:32.390Z"
+  }
+]

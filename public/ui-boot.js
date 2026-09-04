@@ -1,8 +1,5 @@
 (() => {
-  // Admin panels are managed by app.js because it owns their rich layouts and
-  // expanded state. Keeping this helper to HMD prevents two collapse systems
-  // from competing over the same panel.
-  const PANEL_SELECTOR = "#hmdView .panel-form, #hmdView .status-panel";
+  const PANEL_SELECTOR = "#adminView .panel-form, #adminView .status-panel, #hmdView .panel-form, #hmdView .status-panel";
 
   function storageKey(panel, index) {
     const root = panel.closest("#adminView, #hmdView");

@@ -1,0 +1,10 @@
+[
+  {
+    "id": "f826a8f0-a877-456b-b267-2866f47ae272",
+    "actor": "owner-failsafe",
+    "action": "user:ban",
+    "target": "auditmod",
+    "note": "24 hours: system-and-moderation-logs-wipe",
+    "createdAt": "2026-08-31T16:08:56.552Z"
+  }
+]

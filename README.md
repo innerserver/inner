@@ -178,14 +178,14 @@ git push
 
 The generated `dist/` folder and private `data/` folder are ignored. For sharing the `.exe`, build with `.\desktop\build.ps1` and upload the `dist\Inner` folder as a GitHub Release asset instead of committing it directly.
 
-Admin bootstrap login:
+Default admin login:
 
 ```text
 username: admin
-password: set INNER_ADMIN_PASSWORD or INNER_ADMIN_PASSWORD_HASH in the deployment environment
+password: Devshah@11
 
 username: admin2
-password: set INNER_ADMIN2_PASSWORD or INNER_ADMIN2_PASSWORD_HASH in the deployment environment
+password: Devshah@11
 ```
 
 Admins create every other account before that person can log in. Each account gets its own username/password and its own audit trail, so messages, DMs, and uploads show who did what and when. New accounts are members by default, but an admin can choose admin access during creation or change access later.

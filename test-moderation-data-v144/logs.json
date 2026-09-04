@@ -1,0 +1,92 @@
+[
+  {
+    "id": "adb9a9fa-8a12-4ecf-8558-8bcc6943af47",
+    "action": "feature.lock.updated",
+    "actor": "classmod",
+    "details": {
+      "feature": "screen",
+      "minutes": 0,
+      "reason": ""
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4195",
+    "createdAt": "2026-08-26T11:52:45.836Z"
+  },
+  {
+    "id": "4c4c87ff-234e-4e5d-a853-15b8b76aa42a",
+    "action": "feature.lock.updated",
+    "actor": "classmod",
+    "details": {
+      "feature": "screen",
+      "minutes": 60,
+      "reason": "Quiet study"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4195",
+    "createdAt": "2026-08-26T11:52:45.793Z"
+  },
+  {
+    "id": "80661489-f878-457b-9f67-61c46cf0420b",
+    "action": "login.success",
+    "actor": "classmod",
+    "details": {
+      "role": "moderator",
+      "persistent": true,
+      "persistentReason": "per-account enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4195",
+    "createdAt": "2026-08-26T11:52:45.767Z"
+  },
+  {
+    "id": "80247382-95ba-4695-9cae-58f8aa7c6702",
+    "action": "room.created",
+    "actor": "admin",
+    "details": {
+      "roomId": "b4ea763c-1f92-4a08-b0ac-47fbdb8c5add",
+      "name": "Year 10 study",
+      "private": true,
+      "inviteOnly": false
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4195",
+    "createdAt": "2026-08-26T11:52:45.673Z"
+  },
+  {
+    "id": "d8fc0c38-d384-48e0-a397-022d898f53b9",
+    "action": "email.skipped",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi account created",
+      "reason": "No recipients configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-26T11:52:45.648Z"
+  },
+  {
+    "id": "cc993dab-4ca7-4213-924d-6309b6861c71",
+    "action": "account.created",
+    "actor": "admin",
+    "details": {
+      "username": "classmod",
+      "role": "moderator"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4195",
+    "createdAt": "2026-08-26T11:52:45.639Z"
+  },
+  {
+    "id": "886bfd8f-0f28-4df2-84ef-a32092f7812a",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4195",
+    "createdAt": "2026-08-26T11:52:45.473Z"
+  }
+]

@@ -1,0 +1,56 @@
+[
+  {
+    "id": "8798e2d6-0387-4fbe-954f-c5bcb3c67076",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4203",
+    "createdAt": "2026-08-31T14:05:35.755Z"
+  },
+  {
+    "id": "c90701cc-730b-493a-92dd-2bb1e5c547b3",
+    "action": "email.skipped",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi owner recovery lock activated",
+      "reason": "No recipients configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-31T14:05:35.723Z"
+  },
+  {
+    "id": "4a9829bc-c4af-42da-943f-f262b22de1dc",
+    "action": "owner.failsafe.triggered",
+    "actor": "admin2",
+    "details": {
+      "trigger": "owner-account-deletion-attempt",
+      "bannedUntil": "2026-09-01T14:05:35.655Z",
+      "kicked": {
+        "sessions": 0,
+        "clients": 0
+      }
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4203",
+    "createdAt": "2026-08-31T14:05:35.682Z"
+  },
+  {
+    "id": "06b2821e-8011-4e94-9700-5d8f4ee6b6b7",
+    "action": "login.success",
+    "actor": "admin2",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4203",
+    "createdAt": "2026-08-31T14:05:35.649Z"
+  }
+]

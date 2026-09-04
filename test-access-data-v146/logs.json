@@ -1,0 +1,65 @@
+[
+  {
+    "id": "ea3c84fd-4478-4618-8543-5fbe1e6e36ad",
+    "action": "login.success",
+    "actor": "hmd",
+    "details": {
+      "role": "hmd",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4197",
+    "createdAt": "2026-08-26T12:04:22.666Z"
+  },
+  {
+    "id": "3f7f3c8f-de46-4be3-83af-8c73508e3413",
+    "action": "login.success",
+    "actor": "newhmd",
+    "details": {
+      "role": "hmd",
+      "persistent": true,
+      "persistentReason": "per-account enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4197",
+    "createdAt": "2026-08-26T12:04:22.617Z"
+  },
+  {
+    "id": "1ef3abe3-e200-4116-9a1f-506a398a5a9b",
+    "action": "email.skipped",
+    "actor": "system",
+    "details": {
+      "subject": "Connectifi account created",
+      "reason": "No recipients configured"
+    },
+    "sourceIp": "",
+    "sourceHost": "",
+    "createdAt": "2026-08-26T12:04:22.563Z"
+  },
+  {
+    "id": "428dbb99-a672-490e-94a5-96f6701cedd9",
+    "action": "account.created",
+    "actor": "admin",
+    "details": {
+      "username": "newhmd",
+      "role": "hmd"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4197",
+    "createdAt": "2026-08-26T12:04:22.558Z"
+  },
+  {
+    "id": "4469a736-7070-4162-8d67-43efd31dc4a1",
+    "action": "login.success",
+    "actor": "admin",
+    "details": {
+      "role": "admin",
+      "persistent": true,
+      "persistentReason": "default enabled"
+    },
+    "sourceIp": "127.0.0.1",
+    "sourceHost": "127.0.0.1:4197",
+    "createdAt": "2026-08-26T12:04:22.467Z"
+  }
+]

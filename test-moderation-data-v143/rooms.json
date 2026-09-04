@@ -1,0 +1,23 @@
+[
+  {
+    "id": "main",
+    "name": "Main",
+    "createdAt": "2026-08-26T11:43:53.822Z",
+    "createdBy": "system"
+  },
+  {
+    "id": "e4385299-12d3-41b3-9564-db09e660d6ca",
+    "name": "Restricted study",
+    "icon": "",
+    "banner": "",
+    "theme": "system",
+    "category": "General",
+    "private": true,
+    "inviteOnly": true,
+    "passwordHash": "cda06778499303be9cb382a328ef477c:dc0de8c6cce9d4307de31085e5c54df8716b630e22790934750fbf0f0ff5e5f009a1fafaf79c57687f2235e7881fde0e5e4ab1a872f2d74f6dfd914ba84b6d3c",
+    "allowedUsers": [],
+    "moderators": [],
+    "createdAt": "2026-08-26T11:44:25.065Z",
+    "createdBy": "admin"
+  }
+]

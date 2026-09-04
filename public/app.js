@@ -24,12 +24,9 @@ const state = {
   adminDmFilter: "all",
   accountSearch: "",
   accountGradeFilter: "",
-  accountSort: "alphabetical",
   accountShowAll: false,
-  accountListCollapsed: false,
   selectedAccountDetails: "",
   accountDetailFiles: { username: "", files: [], loading: false, error: "" },
-  moderatorAccounts: [],
   logSearch: "",
   logDate: "",
   files: [],
@@ -75,9 +72,6 @@ const state = {
   store: { items: [], orders: [] },
   aiRequests: [],
   aiConfigured: false,
-  aiSecurityFlags: [],
-  aiSecurityFlagsLoaded: false,
-  aiSecurityFlagsLoading: false,
   adminStateLoaded: false,
   adminStateHydrating: false,
   ws: null,
@@ -335,7 +329,6 @@ function cacheElements() {
     "dmVoiceCallButton",
     "dmVideoCallButton",
     "dmShareScreenButton",
-    "openDmAppearanceButton",
     "dmStopScreenButton",
     "dmLeaveCallButton",
     "dmAnswerCallButton",
@@ -457,7 +450,6 @@ function cacheElements() {
     "emailAccounts",
     "emailAnnouncements",
     "emailLoginFailures",
-    "strikeEmails",
     "moderatorLogAccessUsers",
     "emailGeneral",
     "emailContactNoreply",
@@ -491,31 +483,13 @@ function cacheElements() {
     "ownerFailsafeUnlockCode",
     "unlockOwnerFailsafeButton",
     "ownerCheckinStatus",
-    "ownerCheckinScheduleForm",
-    "ownerCheckinTime",
-    "saveOwnerCheckinScheduleButton",
     "ownerCheckinForm",
     "ownerCheckinCode",
     "submitOwnerCheckinButton",
     "testOwnerCheckinButton",
     "createAccountForm",
-    "promoteExistingAdminForm",
-    "promoteExistingAdminUser",
-    "promoteExistingAdminButton",
-    "delegatedAdminFeaturesForm",
-    "delegatedAdminUser",
-    "delegatedAdminStrikes",
-    "delegatedAdminRoomControls",
-    "delegatedAdminReports",
-    "delegatedAdminAuditLogs",
-    "delegatedAdminMemberActions",
-    "delegatedAdminContentModeration",
-    "saveDelegatedAdminFeaturesButton",
     "accountManager",
     "showAllAccountsButton",
-    "toggleAccountListButton",
-    "accountListWrap",
-    "accountSort",
     "accountGradeFilter",
     "accountSearchInput",
     "accountList",
@@ -543,18 +517,11 @@ function cacheElements() {
     "adminFeatureLockPanelSlot",
     "moderatorFeatureLockPanelSlot",
     "moderatorRoomList",
-    "moderatorRoomControlsPanel",
-    "moderatorReportsPanel",
-    "moderatorStrikesPanel",
     "moderatorReportList",
     "moderatorScope",
     "moderatorRoomCount",
     "moderatorReportCount",
     "moderatorLimitCount",
-    "moderatorAccountSearchForm",
-    "moderatorAccountSearch",
-    "moderatorAccountSearchButton",
-    "moderatorAccountList",
     "featureName",
     "featureMinutes",
     "featureStartAt",
@@ -646,10 +613,6 @@ function cacheElements() {
     "saveAiKeyButton",
     "clearAiKeyButton",
     "aiResponseList",
-    "aiSecurityPanel",
-    "aiSecurityStatus",
-    "aiSecurityFlagList",
-    "refreshAiSecurityFlagsButton",
     "adminAutomodForm",
     "adminAutomodEnabled",
     "adminAutomodWindow",
@@ -822,7 +785,6 @@ function bindEvents() {
   els.dmVoiceCallButton.addEventListener("click", () => startDmCall(false));
   els.dmVideoCallButton.addEventListener("click", () => startDmCall(true));
   els.dmShareScreenButton.addEventListener("click", () => startDmScreenShare());
-  if (els.openDmAppearanceButton) els.openDmAppearanceButton.addEventListener("click", () => showView("profile"));
   els.dmStopScreenButton.addEventListener("click", () => stopShare());
   els.dmLeaveCallButton.addEventListener("click", leaveVoice);
   els.dmAnswerCallButton.addEventListener("click", answerIncomingCall);
@@ -900,18 +862,12 @@ function bindEvents() {
   els.ownerPasswordForm.addEventListener("submit", resetUserPassword);
   els.ownerFailsafeCodeForm.addEventListener("submit", saveOwnerFailsafeCode);
   els.ownerFailsafeUnlockForm.addEventListener("submit", unlockOwnerFailsafe);
-  els.ownerCheckinScheduleForm.addEventListener("submit", saveOwnerCheckinSchedule);
   els.ownerCheckinForm.addEventListener("submit", submitOwnerCheckin);
   els.testOwnerCheckinButton.addEventListener("click", sendTestOwnerCheckin);
   els.createAccountForm.addEventListener("submit", createAccount);
-  els.promoteExistingAdminForm.addEventListener("submit", promoteExistingAdmin);
-  els.delegatedAdminFeaturesForm.addEventListener("submit", saveDelegatedAdminFeatures);
-  els.delegatedAdminUser.addEventListener("change", renderDelegatedAdminFeatures);
-  els.moderatorAccountSearchForm.addEventListener("submit", searchModeratorAccounts);
   els.accountSearchInput.addEventListener("input", () => {
     state.accountSearch = els.accountSearchInput.value.trim().toLowerCase();
     state.accountShowAll = false;
-    state.accountListCollapsed = false;
     state.selectedAccountDetails = "";
     renderUsers();
   });
@@ -919,28 +875,12 @@ function bindEvents() {
     els.accountGradeFilter.addEventListener("change", () => {
       state.accountGradeFilter = els.accountGradeFilter.value || "";
       state.accountShowAll = false;
-      state.accountListCollapsed = false;
-      renderUsers();
-    });
-  }
-  if (els.accountSort) {
-    els.accountSort.addEventListener("change", () => {
-      state.accountSort = els.accountSort.value === "class" ? "class" : "alphabetical";
-      try { localStorage.setItem("innerAccountSort", state.accountSort); } catch (error) {}
       renderUsers();
     });
   }
   if (els.showAllAccountsButton) {
     els.showAllAccountsButton.addEventListener("click", () => {
       state.accountShowAll = !state.accountShowAll;
-      try { localStorage.setItem("innerAccountShowAllV194", state.accountShowAll ? "1" : "0"); } catch (error) {}
-      renderUsers();
-    });
-  }
-  if (els.toggleAccountListButton) {
-    els.toggleAccountListButton.addEventListener("click", () => {
-      state.accountListCollapsed = !state.accountListCollapsed;
-      try { localStorage.setItem("innerAccountListCollapsedV194", state.accountListCollapsed ? "1" : "0"); } catch (error) {}
       renderUsers();
     });
   }
@@ -969,7 +909,6 @@ function bindEvents() {
   els.aiForm.addEventListener("submit", askAi);
   els.aiKeyForm.addEventListener("submit", saveAiKey);
   els.clearAiKeyButton.addEventListener("click", clearAiKey);
-  if (els.refreshAiSecurityFlagsButton) els.refreshAiSecurityFlagsButton.addEventListener("click", () => loadAiSecurityFlags(true));
   els.devConfigForm.addEventListener("submit", saveDevConfig);
   els.botForm.addEventListener("submit", createBot);
   els.pluginForm.addEventListener("submit", createPlugin);
@@ -1026,7 +965,6 @@ function bindEvents() {
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.addEventListener("click", handleNavButton);
   });
-  setupNavigationGroups();
   document.addEventListener("click", handleNavButton, true);
   document.addEventListener("pointerup", handleNavButton, true);
   document.addEventListener("keydown", (event) => {
@@ -1456,7 +1394,6 @@ async function hydrateAdminState() {
     state.automod = data.automod || {};
     state.aiRequests = data.aiRequests || [];
     state.aiConfigured = Boolean(data.aiConfigured);
-    state.aiSecurityFlagsLoaded = false;
     state.emailStatus = data.emailStatus || null;
     state.adminStateLoaded = true;
     renderAll();
@@ -1515,7 +1452,6 @@ function showView(viewName, options = {}) {
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === viewName);
   });
-  syncNavigationGroups(viewName);
   document.querySelectorAll(".view").forEach((view) => {
     view.classList.toggle("active", view.id === `${viewName}View`);
   });
@@ -1525,42 +1461,6 @@ function showView(viewName, options = {}) {
     }, 0);
   }
   if (window.matchMedia("(max-width: 920px)").matches) closeSidebar();
-}
-
-function setupNavigationGroups() {
-  document.querySelectorAll(".nav-group-toggle").forEach((toggle) => {
-    const group = toggle.closest(".nav-group");
-    const submenu = group && group.querySelector(".nav-submenu");
-    if (!group || !submenu) return;
-    const key = `connectifi.nav-group.${group.dataset.navGroup || ""}`;
-    const saved = window.localStorage.getItem(key);
-    const expanded = saved === "open";
-    group.classList.toggle("is-open", expanded);
-    submenu.hidden = !expanded;
-    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
-    toggle.addEventListener("click", () => {
-      const next = !group.classList.contains("is-open");
-      group.classList.toggle("is-open", next);
-      submenu.hidden = !next;
-      toggle.setAttribute("aria-expanded", next ? "true" : "false");
-      window.localStorage.setItem(key, next ? "open" : "closed");
-    });
-  });
-  syncNavigationGroups(state.activeView);
-}
-
-function syncNavigationGroups(activeView) {
-  document.querySelectorAll(".nav-group").forEach((group) => {
-    const containsActiveView = Boolean(group.querySelector(`.nav-button[data-view="${activeView}"]`));
-    group.classList.toggle("contains-active-view", containsActiveView);
-    if (!containsActiveView) return;
-    const submenu = group.querySelector(".nav-submenu");
-    const toggle = group.querySelector(".nav-group-toggle");
-    if (!submenu || !toggle) return;
-    group.classList.add("is-open");
-    submenu.hidden = false;
-    toggle.setAttribute("aria-expanded", "true");
-  });
 }
 
 async function sendMessage(event) {
@@ -2198,25 +2098,6 @@ async function submitOwnerCheckin(event) {
   }
 }
 
-async function saveOwnerCheckinSchedule(event) {
-  event.preventDefault();
-  if (!isOwner()) return notify("Owner admin access required");
-  try {
-    els.saveOwnerCheckinScheduleButton.disabled = true;
-    const data = await api("/api/owner-checkin/schedule", {
-      method: "POST",
-      json: { scheduleTime: els.ownerCheckinTime.value },
-    });
-    state.settings = data.settings;
-    renderAll();
-    notify("Owner check-in delivery time saved");
-  } catch (error) {
-    notify(error.message);
-  } finally {
-    els.saveOwnerCheckinScheduleButton.disabled = false;
-  }
-}
-
 async function sendTestOwnerCheckin() {
   if (!isOwner()) return notify("Owner admin access required");
   try {
@@ -2281,7 +2162,6 @@ function serverSettingsPayload(extra = {}) {
     passwordResetEnabled: els.passwordResetEnabled ? els.passwordResetEnabled.checked : true,
     requireProfileUpdate: Boolean(els.requireProfileUpdate && els.requireProfileUpdate.checked),
     reportEmails: els.reportEmails.value.split(",").map((entry) => entry.trim()).filter(Boolean),
-    strikeEmails: splitEmailList(els.strikeEmails ? els.strikeEmails.value : ""),
     emailRoutes: {
       reports: splitEmailList(els.emailReports ? els.emailReports.value : ""),
       accountRequests: splitEmailList(els.emailAccounts ? els.emailAccounts.value : ""),
@@ -2613,80 +2493,6 @@ async function createAccount(event) {
   }
 }
 
-function renderDelegatedAdminFeatures() {
-  if (!els.delegatedAdminFeaturesForm || !isOwner()) return;
-  const admins = state.users.filter((account) => account.role === "admin" && !account.owner);
-  els.delegatedAdminFeaturesForm.classList.toggle("hidden", !admins.length);
-  if (!admins.length) return;
-  const selected = els.delegatedAdminUser.value || admins[0].username;
-  els.delegatedAdminUser.replaceChildren(...admins.map((account) => {
-    const option = document.createElement("option");
-    option.value = account.username;
-    option.textContent = account.username;
-    return option;
-  }));
-  els.delegatedAdminUser.value = admins.some((account) => account.username === selected) ? selected : admins[0].username;
-  const access = (state.settings.delegatedAdminFeatures || {})[els.delegatedAdminUser.value] || [];
-  els.delegatedAdminFeaturesForm.querySelectorAll("[data-admin-capability]").forEach((input) => {
-    input.checked = access.includes(input.dataset.adminCapability);
-  });
-}
-
-function renderPromoteExistingAdmin() {
-  if (!els.promoteExistingAdminForm || !isOwner()) return;
-  const candidates = state.users.filter((account) => !["admin", "admin2"].includes(String(account.username || "").toLowerCase()) && String(account.role || "").toLowerCase() !== "admin");
-  els.promoteExistingAdminForm.classList.toggle("hidden", !candidates.length);
-  if (!candidates.length) return;
-  const selected = els.promoteExistingAdminUser.value;
-  els.promoteExistingAdminUser.replaceChildren(...candidates.map((account) => {
-    const option = document.createElement("option");
-    option.value = account.username;
-    option.textContent = `${account.username} (${account.role || "member"})`;
-    return option;
-  }));
-  els.promoteExistingAdminUser.value = candidates.some((account) => account.username === selected) ? selected : candidates[0].username;
-  els.promoteExistingAdminButton.disabled = false;
-}
-
-async function promoteExistingAdmin(event) {
-  event.preventDefault();
-  if (!isOwner()) return notify("Owner admin access required");
-  const username = els.promoteExistingAdminUser.value;
-  if (!username) return notify("Choose an account");
-  if (!window.confirm(`Make ${username} a non-owner admin?`)) return;
-  try {
-    els.promoteExistingAdminButton.disabled = true;
-    await updateUser(username, { role: "admin" });
-    renderPromoteExistingAdmin();
-    renderDelegatedAdminFeatures();
-  } finally {
-    if (els.promoteExistingAdminButton) els.promoteExistingAdminButton.disabled = false;
-  }
-}
-
-async function saveDelegatedAdminFeatures(event) {
-  event.preventDefault();
-  if (!isOwner()) return notify("Owner admin access required");
-  try {
-    els.saveDelegatedAdminFeaturesButton.disabled = true;
-    const data = await api("/api/delegated-admin-features", {
-      method: "POST",
-      json: {
-        username: els.delegatedAdminUser.value,
-        features: Array.from(els.delegatedAdminFeaturesForm.querySelectorAll("[data-admin-capability]:checked"))
-          .map((input) => input.dataset.adminCapability),
-      },
-    });
-    state.settings = data.settings;
-    renderDelegatedAdminFeatures();
-    notify("Non-owner admin access saved");
-  } catch (error) {
-    notify(error.message);
-  } finally {
-    els.saveDelegatedAdminFeaturesButton.disabled = false;
-  }
-}
-
 async function saveFeatureLock(event) {
   event.preventDefault();
   if (!isModerator()) return notify("Moderator access required");
@@ -2998,12 +2804,10 @@ async function saveAiKey(event) {
       },
     });
     state.aiConfigured = Boolean(data.aiConfigured);
-    state.aiSecurityFlagsLoaded = false;
     els.aiApiKey.value = "";
     if (els.aiBaseUrl) els.aiBaseUrl.value = "";
     if (els.aiModel) els.aiModel.value = "";
     renderAiRequests();
-    loadAiSecurityFlags(true).catch(() => {});
     notify("AI key saved");
   } catch (error) {
     notify(error.message);
@@ -3831,18 +3635,8 @@ function handleSocketMessage(message) {
     if (message.sharing && isDmCallRoom(message.roomId) && message.from !== state.clientId) {
       showLiveAlert(`${peer.username || "Someone"} is sharing a screen in ${callRoomLabel(message.roomId)}`);
     }
-    if (message.sharing && message.from && message.from !== state.clientId) {
-      sendWs({ type: "screen:viewer-ready", target: message.from, roomId: message.roomId || "screen:global" });
-    }
     renderPeers();
     renderDmCall();
-    return;
-  }
-
-  if (message.type === "screen:viewer-ready") {
-    if (state.localStream && message.from && message.from !== state.clientId) {
-      makeOffer(message.from, message.roomId || state.screenRoomId || "screen:global").catch(() => {});
-    }
     return;
   }
 
@@ -4656,7 +4450,7 @@ function sendHttpRealtime(payload) {
 }
 
 function queueRealtimePayload(payload) {
-  if (!payload || !["presence:update", "typing", "voice:state", "screen:status", "screen:viewer-ready", "voice:join", "signal", "voice:signal"].includes(payload.type)) return;
+  if (!payload || !["presence:update", "typing", "voice:state", "screen:status", "voice:join", "signal", "voice:signal"].includes(payload.type)) return;
   state.wsOutbox.push({ ...payload, queuedAt: Date.now() });
   state.wsOutbox = state.wsOutbox.filter((entry) => Date.now() - entry.queuedAt < 15000).slice(-20);
 }
@@ -4836,18 +4630,13 @@ function renderWithFocusPreserved(callback) {
 function setupAdminCollapsibles() {
   if (!els.adminView || !hasAdminPanelAccess()) return;
   els.adminView.querySelectorAll(".panel-form, .status-panel").forEach((panel, index) => {
-    if (panel === els.accountManager) return;
+    if (panel.dataset.collapsibleReady === "1") return;
     const title = panel.querySelector("h3");
     if (!title) return;
-    let button = Array.from(panel.children).find((child) => child.classList && child.classList.contains("collapse-toggle"));
-    if (!button) {
-      button = document.createElement("button");
-      button.className = "collapse-toggle";
-      button.type = "button";
-      panel.append(button);
-    }
-    if (panel.dataset.connectifiAdminCollapsible === "1") return;
-    const storageKey = `connectifiAdminPanelCollapsedV188:${index}:${title.textContent}`;
+    const button = document.createElement("button");
+    button.className = "collapse-toggle";
+    button.type = "button";
+    const storageKey = `connectifiAdminPanelCollapsedV164:${index}:${title.textContent}`;
     const setCollapsed = (collapsed, persist = true) => {
       panel.classList.toggle("admin-collapsed", collapsed);
       button.textContent = collapsed ? "Expand" : "Collapse";
@@ -4862,15 +4651,16 @@ function setupAdminCollapsibles() {
     const saved = (() => {
       try {
         const value = localStorage.getItem(storageKey);
-        return value === null ? false : value === "1";
+        return value === null ? true : value === "1";
       } catch (error) {
         return true;
       }
     })();
     setCollapsed(saved, false);
-    // Keep a dedicated marker: older helpers used a generic ready flag and
-    // could prevent the real admin collapse handler from binding.
-    panel.dataset.connectifiAdminCollapsible = "1";
+    // Keep the control out of each panel's custom grid. Some expanded panels
+    // span headings across columns, which otherwise pushes the action away.
+    panel.append(button);
+    panel.dataset.collapsibleReady = "1";
   });
 
   const quickLinks = els.adminView.querySelector(".admin-quick-links");
@@ -5021,7 +4811,7 @@ function renderDashboardReportAlerts() {
     );
     card.classList.add("report-dashboard-alert", "dashboard-report-card");
     const actions = document.createElement("div");
-    actions.className = "account-action-groups";
+    actions.className = "account-actions";
     actions.append(
       accountButton("Mark seen", () => updateReport(report.id, "reviewing")),
       accountButton("Done", () => updateReport(report.id, "done"))
@@ -5165,6 +4955,43 @@ function showOnboarding() {
     // Onboarding still works without local storage.
   }
   renderOnboarding();
+}
+
+function sidebarIconMarkup() {
+  return '<span class="hamburger-lines" aria-hidden="true"><span></span><span></span><span></span></span>';
+}
+
+function toggleSidebar() {
+  if (!els.appView) return;
+  const phoneMode = window.matchMedia("(max-width: 920px)").matches;
+  if (phoneMode) {
+    const open = !els.appView.classList.contains("sidebar-open");
+    els.appView.classList.toggle("sidebar-open", open);
+    if (els.sidebarToggleButton) {
+      els.sidebarToggleButton.innerHTML = open ? '<span aria-hidden="true">??</span>' : '<span aria-hidden="true">???</span>';
+      els.sidebarToggleButton.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+      els.sidebarToggleButton.setAttribute("aria-expanded", String(open));
+    }
+    return;
+  }
+  const closed = !els.appView.classList.contains("sidebar-closed");
+  els.appView.classList.toggle("sidebar-closed", closed);
+  if (els.sidebarToggleButton) {
+    els.sidebarToggleButton.innerHTML = closed ? '<span aria-hidden="true">???</span>' : '<span aria-hidden="true">??</span>';
+    els.sidebarToggleButton.setAttribute("aria-label", closed ? "Open navigation" : "Close navigation");
+    els.sidebarToggleButton.setAttribute("aria-expanded", String(!closed));
+  }
+}
+
+function closeSidebar() {
+  if (!els.appView) return;
+  els.appView.classList.remove("sidebar-open");
+  if (els.sidebarToggleButton) {
+    const closed = els.appView.classList.contains("sidebar-closed");
+    els.sidebarToggleButton.innerHTML = closed ? '<span aria-hidden="true">???</span>' : '<span aria-hidden="true">???</span>';
+    els.sidebarToggleButton.setAttribute("aria-label", "Open navigation");
+    els.sidebarToggleButton.setAttribute("aria-expanded", String(!els.appView.classList.contains("sidebar-closed")));
+  }
 }
 
 function setSidebarButtonIcon(open) {
@@ -5464,11 +5291,8 @@ function renderMessagesInner() {
 
       item.append(meta, body);
       appendMessageAttachment(item, message.attachment);
-      const actions = item.querySelector(":scope > .message-actions") || document.createElement("div");
-      if (!actions.parentElement) {
-        actions.className = "message-actions";
-        item.append(actions);
-      }
+      const actions = document.createElement("div");
+      actions.className = "message-actions";
       ["like", "heart", "laugh"].forEach((emoji) => {
         const reactionButton = document.createElement("button");
         reactionButton.className = "ghost-light-button compact-button";
@@ -5492,7 +5316,7 @@ function renderMessagesInner() {
         pinButton.className = "ghost-light-button compact-button";
         pinButton.type = "button";
         pinButton.textContent = message.pinned ? "Unpin" : "Pin";
-        pinButton.disabled = Boolean(message.pinned) && !canUseModeratorCapability("content-moderation");
+        pinButton.disabled = Boolean(message.pinned) && !isModerator();
         pinButton.addEventListener("click", () => setMessagePin(message.id, !message.pinned));
         actions.append(pinButton);
       }
@@ -5634,25 +5458,21 @@ function renderDmsInner() {
   const locked = featureLock("dms");
   els.dmState.textContent = locked
     ? `DMs paused until ${formatDate(locked.disabledUntil)}`
-    : state.selectedDmUser
-      ? "Private chat. Use Call, Video, or Share screen for this chat."
-      : "Add an accepted friend, then choose a chat to message, call, start video, or share your screen.";
+    : "Create DMs and group chats with accepted friends.";
   const shouldStick = els.dmList.scrollTop + els.dmList.clientHeight >= els.dmList.scrollHeight - 24;
   const scrollOffset = els.dmList.scrollHeight - els.dmList.scrollTop;
   els.dmList.replaceChildren();
 
   if (!state.selectedDmUser) {
-    els.dmList.append(emptyBlock("No accepted friends yet. Add a friend to start a private chat."));
+    els.dmList.append(emptyBlock("No accounts available"));
     updateJumpButton(els.dmList, els.dmJumpBottomButton);
-    renderDmCall();
     return;
   }
 
   const visible = state.dms.filter((dm) => dmBetween(dm, state.user.username, state.selectedDmUser));
   if (!visible.length) {
-    els.dmList.append(emptyBlock("No messages yet. Say hello or start a call from the chat header."));
+    els.dmList.append(emptyBlock("No DMs yet"));
     updateJumpButton(els.dmList, els.dmJumpBottomButton);
-    renderDmCall();
     return;
   }
 
@@ -5686,21 +5506,16 @@ function renderDmsInner() {
       bubble.append(pinned);
     }
     if (dm.from === state.user.username || dm.status === "failed" || !dm.local) {
-      // renderMessageBubble may already have added the owner Delete action.
-      // Keep every DM action in that same row so a second row cannot escape
-      // the bubble when the conversation is constrained vertically.
-      const extraActions = bubble.querySelector(".message-actions") || document.createElement("div");
-      if (!extraActions.parentElement) {
-        extraActions.className = "message-actions";
-        bubble.append(extraActions);
-      }
+      const extraActions = document.createElement("div");
+      extraActions.className = "message-actions";
       if (dm.from === state.user.username && !dm.local) extraActions.append(accountButton("Edit", () => editDm(dm.id, dm.text)));
       if (dm.status === "failed" && dm.localId) extraActions.append(accountButton("Retry", () => retryPending(dm.localId)));
       if (!dm.local) {
         const pinButton = accountButton(dm.pinned ? "Unpin" : "Pin", () => setDmPin(dm.id, !dm.pinned));
-        pinButton.disabled = Boolean(dm.pinned) && !canUseModeratorCapability("content-moderation");
+        pinButton.disabled = Boolean(dm.pinned) && !isModerator();
         extraActions.append(pinButton);
       }
+      bubble.append(extraActions);
     }
     els.dmList.append(bubble);
   });
@@ -5722,26 +5537,16 @@ function renderDmCall() {
   const inThisCall = Boolean(state.voiceStream && state.voiceRoomId === roomId);
   const sharingHere = Boolean(state.localStream && state.screenRoomId === roomId);
   const remoteShareHere = Boolean(state.remoteScreenStream && state.remoteScreenRoomId === roomId);
-  const incomingHere = Boolean(state.incomingCall && (!roomId || state.incomingCall.roomId === roomId));
+  const incomingHere = Boolean(state.incomingCall);
   const people = hasSelection ? selectedDmParticipants() : [];
   const online = Array.from(state.peers.values()).filter((peer) => people.includes(peer.username)).length;
   const callExpanded = Boolean(inThisCall || sharingHere || remoteShareHere || incomingHere);
   els.dmCallPanel.classList.toggle("call-expanded", callExpanded);
-  if ("open" in els.dmCallPanel) els.dmCallPanel.open = callExpanded;
 
-  const connectedState = sharingHere
-    ? "screen sharing active"
-    : remoteShareHere
-      ? "screen share active"
-      : inThisCall
-        ? state.voiceVideoEnabled
-          ? state.voiceCameraOff ? "video call connected, camera off" : "video call connected"
-          : "voice call connected"
-        : "ready";
   els.dmCallState.textContent = incomingHere
     ? `${state.incomingCall.fromUser} is ringing ${state.incomingCall.roomLabel || callRoomLabel(state.incomingCall.roomId)}`
     : hasSelection
-      ? `${currentDmCallLabel()} - ${online} online - ${connectedState}`
+      ? `${currentDmCallLabel()} - ${online} online - ${inThisCall ? "in call" : "ready"}`
       : "Choose a DM or group to start a call";
 
   els.dmVoiceCallButton.disabled = !hasSelection || inThisCall || !featureAvailable("voice");
@@ -5876,11 +5681,8 @@ function renderFriends() {
   if (!els.friendList) return;
   const friendNames = new Set((state.friends.friends || []).map((entry) => entry.username));
   const candidates = friendCandidatePeople().filter((person) => !friendNames.has(person.username));
-  const search = String(state.friendSearch || "").trim();
-  const grade = String(state.friendGradeFilter || "").trim();
-  const emptyCandidateLabel = search || grade ? "No new matches found" : "Search exact username";
   els.friendUserSelect.replaceChildren(
-    optionElement("", candidates.length ? "Choose a person" : emptyCandidateLabel),
+    optionElement("", candidates.length ? "Choose a person" : "Search exact username"),
     ...candidates
       .map((person) => {
         const option = document.createElement("option");
@@ -5889,10 +5691,9 @@ function renderFriends() {
         return option;
       })
   );
-  if (els.sendFriendRequestButton) {
-    els.sendFriendRequestButton.disabled = !featureAvailable("friends") || !candidates.length;
-  }
   if (els.friendState) {
+    const search = String(state.friendSearch || "").trim();
+    const grade = String(state.friendGradeFilter || "").trim();
     const letter = String(state.friendAlphaFilter || "").trim();
     els.friendState.textContent = search
       ? "Exact username search can find people outside your grade."
@@ -6679,13 +6480,8 @@ function appendMessageAttachment(item, attachment) {
     preview.classList.add("message-attachment");
     item.append(preview);
   }
-  // A message can also have reactions and moderation controls. Reuse that
-  // action row so attachments never create a second row outside the bubble.
-  const actions = item.querySelector(":scope > .message-actions") || document.createElement("div");
-  if (!actions.parentElement) {
-    actions.className = "message-actions";
-    item.append(actions);
-  }
+  const actions = document.createElement("div");
+  actions.className = "message-actions";
   const open = document.createElement("a");
   open.href = attachment.url;
   open.target = "_blank";
@@ -6745,9 +6541,7 @@ function renderVoice() {
   els.joinVideoButton.disabled = joined || !featureAvailable("voice");
   els.leaveVoiceButton.disabled = !joined;
   els.muteVoiceButton.textContent = state.voiceMuted ? "Unmute" : "Mute";
-  els.muteVoiceButton.disabled = !joined || !featureAvailable("voice");
   els.deafenVoiceButton.textContent = state.voiceDeafened ? "Undeafen" : "Deafen";
-  els.deafenVoiceButton.disabled = !joined || !featureAvailable("voice");
   els.cameraVoiceButton.textContent = state.voiceCameraOff ? "Camera on" : "Camera off";
   els.cameraVoiceButton.disabled = !joined || !state.voiceVideoEnabled;
   document.querySelectorAll("[data-soundboard]").forEach((button) => {
@@ -6906,7 +6700,6 @@ function renderServerInner() {
     els.clearProfileUpdateButton.classList.toggle("hidden", !state.settings.requireProfileUpdate && !state.settings.profileUpdateRequestedAt);
   }
   setInputIfNotFocused(els.reportEmails, Array.isArray(state.settings.reportEmails) ? state.settings.reportEmails.join(", ") : "");
-  setInputIfNotFocused(els.strikeEmails, Array.isArray(state.settings.strikeEmails) ? state.settings.strikeEmails.join(", ") : "");
   const routes = state.settings.emailRoutes || {};
   setInputIfNotFocused(els.emailReports, Array.isArray(routes.reports) ? routes.reports.join(", ") : "");
   if (els.emailAccounts) {
@@ -6953,7 +6746,6 @@ function renderServerInner() {
   if (els.ownerFailsafeUnlockForm) els.ownerFailsafeUnlockForm.classList.toggle("hidden", !admin || !failsafe.locked);
   if (els.ownerCheckinStatus) {
     const checkin = state.settings.ownerCheckin || {};
-    if (els.ownerCheckinTime && document.activeElement !== els.ownerCheckinTime) els.ownerCheckinTime.value = checkin.scheduleTime || "12:00";
     if (checkin.pending) {
       els.ownerCheckinStatus.textContent = `A check-in is due. Submit a code before ${formatDate(checkin.deadlineAt)} or the owner recovery lock will activate.`;
     } else if (checkin.moderatorOnlyActive) {
@@ -6961,7 +6753,7 @@ function renderServerInner() {
     } else if (checkin.restrictionActive) {
       els.ownerCheckinStatus.textContent = `Limited mode is active: ${(checkin.restrictedFeatures || []).map(featureLabel).join(", ")}. Next ${checkin.cadence || "weekly"} check-in: ${formatDate(checkin.nextCheckAt)}.`;
     } else {
-      els.ownerCheckinStatus.textContent = `Next ${checkin.cadence || "weekly"} check-in: ${formatDate(checkin.nextCheckAt)}. Delivery time: ${checkin.scheduleTime || "12:00"} IST.`;
+      els.ownerCheckinStatus.textContent = `Next ${checkin.cadence || "weekly"} check-in: ${formatDate(checkin.nextCheckAt)}. Delivery includes dev.s.shah2013@gmail.com.`;
     }
   }
   const checkinAccessState = state.settings.ownerCheckin || {};
@@ -6969,7 +6761,7 @@ function renderServerInner() {
   if (els.ownerCheckinCode) els.ownerCheckinCode.disabled = !admin || !canSubmitOwnerCheckin;
   if (els.submitOwnerCheckinButton) els.submitOwnerCheckinButton.disabled = !admin || !canSubmitOwnerCheckin;
   if (els.testOwnerCheckinButton) els.testOwnerCheckinButton.disabled = !admin || Boolean((state.settings.ownerCheckin || {}).pending);
-  [els.roomNameInput, els.signupMode, els.requireContact, els.acceptedEmailDomains, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.triggerProfileUpdateButton, els.clearProfileUpdateButton, els.reportEmails, els.strikeEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.moderatorLogAccessUsers, els.emailGeneral, els.emailContactNoreply, els.emailContactReports, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton, els.ownerCheckinTime, els.saveOwnerCheckinScheduleButton].forEach((input) => {
+  [els.roomNameInput, els.signupMode, els.requireContact, els.acceptedEmailDomains, els.adminContactEmail, els.passwordResetEnabled, els.requireProfileUpdate, els.triggerProfileUpdateButton, els.clearProfileUpdateButton, els.reportEmails, els.emailReports, els.emailAccounts, els.emailAnnouncements, els.emailLoginFailures, els.moderatorLogAccessUsers, els.emailGeneral, els.emailContactNoreply, els.emailContactReports, els.emailContactSecurity, els.emailContactSupport, els.emailContactAdmin, els.testEmailRoute, els.reportRetentionDays, els.chessUrlInput, els.gameLinksInput, els.persistentDefaultEnabled, els.persistentGrades, els.persistentRoles, els.persistentRooms, els.serverEnabled, els.saveServerButton, els.shutdownServerButton, els.restartServerButton].forEach((input) => {
     if (!input) return;
     input.disabled = !admin;
   });
@@ -7019,7 +6811,6 @@ function renderQuickEdit() {
   const admin = isOwner();
   els.quickEditForm.classList.toggle("hidden", !admin);
   if (!admin) return;
-  renderPromoteExistingAdmin();
   const custom = state.settings.customizations || {};
   setInputIfNotFocused(els.quickAppName, custom.appName || "");
   setInputIfNotFocused(els.quickConnectedLabel, custom.connectedLabel || "");
@@ -7047,15 +6838,11 @@ function renderUsers() {
   if (els.featureLockForm) els.featureLockForm.classList.toggle("hidden", !isModerator());
   renderFeatureLockControls();
   if (!admin) return;
-  renderDelegatedAdminFeatures();
   if (document.activeElement !== els.accountSearchInput) {
     els.accountSearchInput.value = state.accountSearch || "";
   }
   if (els.accountGradeFilter && document.activeElement !== els.accountGradeFilter) {
     els.accountGradeFilter.value = state.accountGradeFilter || "";
-  }
-  if (els.accountSort && document.activeElement !== els.accountSort) {
-    els.accountSort.value = state.accountSort === "class" ? "class" : "alphabetical";
   }
 
   els.resetUser.replaceChildren(
@@ -7073,12 +6860,7 @@ function renderUsers() {
   syncSearchedAccountDetails(visibleUsers);
   renderAccountDetails();
   if (els.showAllAccountsButton) {
-    els.showAllAccountsButton.textContent = state.accountShowAll ? "Hide members" : "Show all members";
-  }
-  if (els.accountListWrap) els.accountListWrap.classList.toggle("hidden", state.accountListCollapsed);
-  if (els.toggleAccountListButton) {
-    els.toggleAccountListButton.textContent = state.accountListCollapsed ? "Expand list" : "Collapse list";
-    els.toggleAccountListButton.setAttribute("aria-expanded", state.accountListCollapsed ? "false" : "true");
+    els.showAllAccountsButton.textContent = state.accountShowAll ? "Hide all" : "Show all";
   }
   if (!String(state.accountSearch || "").trim() && !String(state.accountGradeFilter || "").trim() && !state.accountShowAll && !visibleUsers.length) {
     els.accountList.append(emptyBlock("Public admin accounts show here. Search a username/email/phone/IP/device or choose a grade to show more accounts."));
@@ -7095,7 +6877,7 @@ function renderUsers() {
 
   visibleUsers.forEach((user) => {
     const username = user.username.toLowerCase();
-    const isMainAdmin = ["admin", "admin2"].includes(username);
+    const isMainAdmin = username === "admin";
     const isCurrentUser = state.user && username === state.user.username.toLowerCase();
     const item = document.createElement("article");
     item.className = "account-card";
@@ -7123,10 +6905,9 @@ function renderUsers() {
     if (user.tempAdminUntil) meta.append(textNode(`Temp admin until ${formatDate(user.tempAdminUntil)}`));
     if (user.bannedUntil) meta.append(textNode(`Ban until ${formatDate(user.bannedUntil)}`));
     if (user.banReason) meta.append(textNode(user.banReason));
-    meta.append(textNode(`Strikes ${user.strikeCount || 0}`));
 
     const actions = document.createElement("div");
-    actions.className = "account-action-groups";
+    actions.className = "account-actions";
     const gradeSelect = document.createElement("select");
     gradeSelect.className = "compact-select account-grade-select";
     gradeSelect.setAttribute("aria-label", `Grade for ${user.username}`);
@@ -7141,15 +6922,10 @@ function renderUsers() {
       updateUser(user.username, { role: nextRole(user.role) })
     );
     roleButton.disabled = isMainAdmin || String(user.role || "").toLowerCase() === "admin";
-    const makeAdmin = accountButton("Make admin", () => {
-      if (window.confirm(`Make ${user.username} a non-owner admin? You can choose their allowed tools in Non-owner admin access.`)) {
-        updateUser(user.username, { role: "admin" });
-      }
-    });
     const persistentButton = accountButton(user.allowPersistentLogin ? "Disable persistent" : "Allow persistent", () =>
       updateUser(user.username, { allowPersistentLogin: !user.allowPersistentLogin })
     );
-    const detailsButton = accountButton("Details & files", () => openAccountDetails(user.username));
+    const detailsButton = accountButton("Details", () => openAccountDetails(user.username));
     const detailTabButton = accountButton("Open tab", () => openAccountDetailTab(user.username));
     const tempAdminHour = accountButton("Temp admin 1h", () => updateUser(user.username, { tempAdminMinutes: 60 }));
     const tempAdminDay = accountButton("Temp admin 24h", () => updateUser(user.username, { tempAdminMinutes: 1440 }));
@@ -7160,12 +6936,6 @@ function renderUsers() {
     const banDay = accountButton("Ban 24h", () => banUser(user.username, 1440));
     const unban = accountButton("Unban", () => banUser(user.username, 0));
     const remove = accountButton("Delete", () => deleteUser(user.username));
-    const strike = accountButton("Issue strike", () => issueStrike(user.username));
-    const removeLatestStrike = accountButton("Remove latest strike", () => {
-      const latest = Array.isArray(user.strikes) ? user.strikes[user.strikes.length - 1] : null;
-      if (latest && latest.id) removeAccountStrikes(user.username, latest.id);
-    });
-    const clearStrikes = accountButton("Clear all strikes", () => removeAccountStrikes(user.username, "", true));
     banFive.disabled = isMainAdmin;
     banShort.disabled = isMainAdmin;
     banHour.disabled = isMainAdmin;
@@ -7174,16 +6944,8 @@ function renderUsers() {
     tempAdminHour.disabled = isMainAdmin || String(user.role || "").toLowerCase() === "admin";
     tempAdminDay.disabled = isMainAdmin || String(user.role || "").toLowerCase() === "admin";
     clearTempAdmin.disabled = isMainAdmin || !user.tempAdminUntil;
-    makeAdmin.disabled = isMainAdmin || String(user.role || "").toLowerCase() === "admin";
     remove.disabled = isMainAdmin || isCurrentUser;
-    strike.disabled = isMainAdmin && !isOwner();
-    removeLatestStrike.disabled = !Array.isArray(user.strikes) || !user.strikes.length;
-    clearStrikes.disabled = !Array.isArray(user.strikes) || !user.strikes.length;
-    actions.append(
-      accountActionGroup("Account access", [gradeSelect, gradeButton, roleButton, makeAdmin, persistentButton, detailsButton, detailTabButton], true),
-      accountActionGroup("Temporary access", [tempAdminHour, tempAdminDay, clearTempAdmin], Boolean(user.tempAdminUntil)),
-      accountActionGroup("Safety and strikes", [strike, removeLatestStrike, clearStrikes, banFive, banShort, banHour, banDay, unban, remove], false)
-    );
+    actions.append(gradeSelect, gradeButton, roleButton, persistentButton, detailsButton, detailTabButton, tempAdminHour, tempAdminDay, clearTempAdmin, banFive, banShort, banHour, banDay, unban, remove);
 
     item.append(head, meta, actions);
     els.accountList.append(item);
@@ -7248,22 +7010,15 @@ function renderFeatureLocks() {
 
 function renderModeratorPanel() {
   const moderator = isModerator() && !hasBuiltInControlAccess();
-  const roomControlAllowed = canUseModeratorCapability("room-controls");
-  const reportAllowed = canUseModeratorCapability("reports");
-  const strikeAllowed = canUseModeratorCapability("strikes") || canUseModeratorCapability("member-actions");
   const formSlot = moderator ? els.moderatorFeatureLockSlot : els.adminFeatureLockSlot;
   const lockPanelSlot = moderator ? els.moderatorFeatureLockPanelSlot : els.adminFeatureLockPanelSlot;
   if (els.featureLockForm && formSlot && els.featureLockForm.parentElement !== formSlot) formSlot.append(els.featureLockForm);
   if (els.featureLockPanel && lockPanelSlot && els.featureLockPanel.parentElement !== lockPanelSlot) lockPanelSlot.append(els.featureLockPanel);
   if (els.featureLockPanel) els.featureLockPanel.classList.toggle("hidden", !isDev() && !moderator);
-  if (els.moderatorRoomControlsPanel) els.moderatorRoomControlsPanel.classList.toggle("hidden", moderator && !roomControlAllowed);
-  if (els.moderatorReportsPanel) els.moderatorReportsPanel.classList.toggle("hidden", moderator && !reportAllowed);
-  if (els.moderatorStrikesPanel) els.moderatorStrikesPanel.classList.toggle("hidden", moderator && !strikeAllowed);
 
   if (!els.moderatorRoomList) return;
   els.moderatorRoomList.replaceChildren();
   renderModeratorAuditLogs();
-  renderModeratorStrikeAccounts();
   if (!moderator) return;
   const rooms = (state.rooms || []).slice().sort((left, right) => String(left.name || left.id).localeCompare(String(right.name || right.id)));
   const openReports = (state.reports || []).filter((report) => !reportClosed(report)).length;
@@ -7330,112 +7085,6 @@ function renderModeratorAuditLogs() {
       formatDate(entry.createdAt),
     ].filter(Boolean)));
   });
-}
-
-async function searchModeratorAccounts(event) {
-  event.preventDefault();
-  if (!canUseModeratorCapability("strikes") && !canUseModeratorCapability("member-actions")) return notify("Owner admin has not granted account moderation access");
-  const query = els.moderatorAccountSearch.value.trim();
-  if (query.length < 2) return notify("Enter at least two characters");
-  try {
-    els.moderatorAccountSearchButton.disabled = true;
-    const data = await api(`/api/moderation/accounts?q=${encodeURIComponent(query)}`);
-    state.moderatorAccounts = data.users || [];
-    renderModeratorStrikeAccounts();
-  } catch (error) {
-    notify(error.message);
-  } finally {
-    els.moderatorAccountSearchButton.disabled = false;
-  }
-}
-
-function renderModeratorStrikeAccounts() {
-  if (!els.moderatorAccountList) return;
-  const canStrike = canUseModeratorCapability("strikes");
-  const canActOnMembers = canUseModeratorCapability("member-actions");
-  if (!canStrike && !canActOnMembers) {
-    els.moderatorAccountList.replaceChildren();
-    return;
-  }
-  els.moderatorAccountList.replaceChildren();
-  if (!state.moderatorAccounts.length) {
-    els.moderatorAccountList.append(emptyBlock("Search for an account to moderate."));
-    return;
-  }
-  state.moderatorAccounts.forEach((account) => {
-    const card = adminCard(account.username, `${account.strikeCount || 0} strikes`, [
-      `Role ${account.role || "member"}`,
-      account.grade ? `Grade ${account.grade}` : "",
-      ...(account.strikes || []).slice(-3).reverse().map((strike) => `${formatDate(strike.createdAt)} - ${strike.reason}`),
-    ].filter(Boolean));
-    const actions = document.createElement("div");
-    actions.className = "account-actions";
-    if (canStrike) {
-      actions.append(accountButton("Issue strike", () => issueStrike(account.username)));
-      if (account.strikeCount) {
-        const latestStrike = Array.isArray(account.strikes) ? account.strikes[account.strikes.length - 1] : null;
-        if (latestStrike && latestStrike.id) actions.append(accountButton("Remove latest strike", () => removeAccountStrikes(account.username, latestStrike.id)));
-        actions.append(accountButton("Clear all strikes", () => removeAccountStrikes(account.username, "", true)));
-      }
-    }
-    if (canActOnMembers) {
-      actions.append(
-        accountButton("Mute 15m", () => moderateMemberAction(account.username, "mute")),
-        accountButton("Ban 1h", () => moderateMemberAction(account.username, "ban")),
-        accountButton("Kick", () => moderateMemberAction(account.username, "kick"))
-      );
-    }
-    card.append(actions);
-    els.moderatorAccountList.append(card);
-  });
-}
-
-async function issueStrike(username) {
-  const reason = window.prompt(`Strike reason for ${username}`) || "";
-  if (!reason.trim()) return;
-  try {
-    const data = await api("/api/moderation/strikes", { method: "POST", json: { username, reason } });
-    state.moderatorAccounts = state.moderatorAccounts.map((entry) => entry.username === username ? data.user : entry);
-    if (isOwner()) state.users = state.users.map((entry) => entry.username === username ? { ...entry, ...data.user } : entry);
-    renderModeratorStrikeAccounts();
-    renderUsers();
-    notify(data.thresholdReset ? `${username} reached three strikes: email sent and strikes reset` : `${username} now has ${data.user.strikeCount} strikes`);
-  } catch (error) {
-    notify(error.message);
-  }
-}
-
-async function removeAccountStrikes(username, strikeId = "", all = false) {
-  if (!canUseModeratorCapability("strikes")) return notify("Owner admin has not granted strike access");
-  if (all && !window.confirm(`Clear every active strike for ${username}?`)) return;
-  try {
-    const data = await api("/api/moderation/strikes/remove", { method: "POST", json: { username, strikeId, all } });
-    state.moderatorAccounts = state.moderatorAccounts.map((entry) => entry.username === username ? data.user : entry);
-    if (isOwner()) state.users = state.users.map((entry) => entry.username === username ? { ...entry, ...data.user } : entry);
-    renderModeratorStrikeAccounts();
-    renderUsers();
-    notify(all ? `Cleared ${data.removed} strikes for ${username}` : `Removed one strike from ${username}`);
-  } catch (error) {
-    notify(error.message);
-  }
-}
-
-async function moderateMemberAction(username, action) {
-  if (!canUseModeratorCapability("member-actions")) return notify("Owner admin has not granted member-action access");
-  const reason = window.prompt(`${action === "kick" ? "Reason for kicking" : `Reason for ${action}ing`} ${username}`) || "";
-  if (!reason.trim()) return;
-  const endpoint = action === "kick" ? "/api/users/kick" : `/api/users/${action}`;
-  const payload = action === "kick"
-    ? { username, reason: reason.trim() }
-    : { username, minutes: action === "ban" ? 60 : 15, reason: reason.trim() };
-  try {
-    const data = await api(endpoint, { method: "POST", json: payload });
-    if (data.users) state.users = data.users;
-    renderUsers();
-    notify(action === "kick" ? `${username} was kicked` : `${username} was ${action}ed`);
-  } catch (error) {
-    notify(error.message);
-  }
 }
 
 function currentFeatureScheduleEditor() {
@@ -8206,7 +7855,7 @@ function requestedRoleLabel(role) {
 
 function renderReports() {
   if (els.reportList && isOwner()) renderReportList(els.reportList);
-  if (els.moderatorReportList && canUseModeratorCapability("reports")) renderReportList(els.moderatorReportList);
+  if (els.moderatorReportList && isModerator()) renderReportList(els.moderatorReportList);
 
   if (els.moderationLogList && canViewAuditLogs()) {
     els.moderationLogList.replaceChildren();
@@ -8486,10 +8135,8 @@ function renderAiRequests() {
   if (els.aiState) {
     els.aiState.textContent = state.aiConfigured
       ? "AI connection is configured. Ask for small safe changes."
-      : "AI is not configured. Add an API key below; provider options are optional.";
+      : "AI is not configured. Add any OpenAI-compatible key, base URL, and model below.";
   }
-  renderAiSecurityFlags();
-  if (!state.aiSecurityFlagsLoaded && !state.aiSecurityFlagsLoading) loadAiSecurityFlags().catch(() => {});
   els.aiResponseList.replaceChildren();
   if (!state.aiRequests.length) {
     els.aiResponseList.append(emptyBlock("No AI requests yet"));
@@ -8501,50 +8148,6 @@ function renderAiRequests() {
       `By ${request.createdBy} at ${formatDate(request.createdAt)}`,
     ]);
     els.aiResponseList.append(card);
-  });
-}
-
-async function loadAiSecurityFlags(force = false) {
-  if (!isOwner() || state.aiSecurityFlagsLoading || (state.aiSecurityFlagsLoaded && !force)) return;
-  state.aiSecurityFlagsLoading = true;
-  if (els.refreshAiSecurityFlagsButton) els.refreshAiSecurityFlagsButton.disabled = true;
-  try {
-    const data = await api("/api/ai/security-flags");
-    state.aiSecurityFlags = Array.isArray(data.flags) ? data.flags : [];
-    state.aiSecurityFlagsLoaded = true;
-  } catch (error) {
-    notify(error.message);
-  } finally {
-    state.aiSecurityFlagsLoading = false;
-    if (els.refreshAiSecurityFlagsButton) els.refreshAiSecurityFlagsButton.disabled = false;
-    renderAiSecurityFlags();
-  }
-}
-
-function renderAiSecurityFlags() {
-  if (!els.aiSecurityPanel || !isOwner()) return;
-  els.aiSecurityPanel.classList.remove("hidden");
-  if (els.aiSecurityStatus) {
-    els.aiSecurityStatus.textContent = state.aiConfigured
-      ? "Automatic review is active for unusual IP and device changes. Only owner admins can view these alerts."
-      : "Add an API key above to enable automatic login anomaly review.";
-  }
-  if (!els.aiSecurityFlagList) return;
-  els.aiSecurityFlagList.replaceChildren();
-  if (!state.aiSecurityFlags.length) {
-    els.aiSecurityFlagList.append(emptyBlock(state.aiConfigured ? "No suspicious login patterns flagged yet" : "AI login review is waiting for an API key"));
-    return;
-  }
-  state.aiSecurityFlags.forEach((flag) => {
-    const signals = flag.signals || {};
-    const card = adminCard(flag.username || "Account", String(flag.severity || "review").toUpperCase(), [
-      flag.reason || "Login pattern needs owner review.",
-      flag.loginAt ? `Login ${formatDate(flag.loginAt)}` : "",
-      flag.ip ? `IP ${flag.ip}` : "",
-      flag.device ? `Device ${flag.device}` : "",
-      `Signals: ${signals.ipChanged ? "IP changed" : ""}${signals.ipChanged && signals.deviceChanged ? ", " : ""}${signals.deviceChanged ? "device changed" : ""}${signals.distinctIpsLast24Hours ? `, ${signals.distinctIpsLast24Hours} IPs in 24h` : ""}`.replace(/^Signals: ,\s*/, "Signals: "),
-    ].filter(Boolean));
-    els.aiSecurityFlagList.append(card);
   });
 }
 
@@ -8592,7 +8195,7 @@ function updateControls() {
   els.privateUpload.disabled = !filesEnabled;
   els.uploadButton.disabled = !filesEnabled;
   els.friendUserSelect.disabled = !friendsEnabled;
-  els.sendFriendRequestButton.disabled = !friendsEnabled || !friendCandidatePeople().some((person) => !new Set((state.friends.friends || []).map((entry) => entry.username)).has(person.username));
+  els.sendFriendRequestButton.disabled = !friendsEnabled;
   els.joinVoiceButton.disabled = !voiceEnabled || Boolean(state.voiceStream);
   els.joinVideoButton.disabled = !voiceEnabled || Boolean(state.voiceStream);
   els.cameraVoiceButton.disabled = !voiceEnabled || !Boolean(state.voiceStream) || !state.voiceVideoEnabled;
@@ -8811,7 +8414,7 @@ function mentionNames(text) {
 }
 
 async function deleteMessage(id) {
-  if (!canUseModeratorCapability("content-moderation")) return notify("Owner admin has not granted content-moderation access");
+  if (!isOwner()) return notify("Admin access required");
   try {
     await api(`/api/messages/${encodeURIComponent(id)}`, { method: "DELETE" });
   } catch (error) {
@@ -9150,19 +8753,6 @@ function accountButton(label, onClick) {
   return button;
 }
 
-function accountActionGroup(title, controls, open = false) {
-  const group = document.createElement("details");
-  group.className = "account-action-group";
-  group.open = open;
-  const summary = document.createElement("summary");
-  summary.textContent = title;
-  const actions = document.createElement("div");
-  actions.className = "account-actions";
-  actions.append(...controls);
-  group.append(summary, actions);
-  return group;
-}
-
 function gradeOptions() {
   const grades = [["", "No grade"]];
   for (let grade = 6; grade <= 12; grade += 1) {
@@ -9296,26 +8886,15 @@ function filterUsersForAdmin(users) {
     if (!term) return true;
     return userMatchesAccountSearch(user, term);
   };
-  const sortUsers = (items) => items.slice().sort((left, right) => {
-    const leftProfile = state.profiles[left.username] || {};
-    const rightProfile = state.profiles[right.username] || {};
-    const leftName = String(left.displayName || leftProfile.displayName || left.username || "");
-    const rightName = String(right.displayName || rightProfile.displayName || right.username || "");
-    const nameOrder = leftName.localeCompare(rightName, undefined, { sensitivity: "base" });
-    if (state.accountSort !== "class") return nameOrder;
-    const leftGrade = normalizeClientGrade(left.grade || leftProfile.grade || "") || "zzzz";
-    const rightGrade = normalizeClientGrade(right.grade || rightProfile.grade || "") || "zzzz";
-    return leftGrade.localeCompare(rightGrade, undefined, { numeric: true, sensitivity: "base" }) || nameOrder;
-  });
-  if (state.accountShowAll) return sortUsers(list.filter((user) => matchesGrade(user) && matchesSearch(user)));
+  if (state.accountShowAll) return list.filter((user) => matchesGrade(user) && matchesSearch(user));
   if (!term && !gradeFilter && !noGradeFilter) {
-    return sortUsers(list.filter((user) => {
+    return list.filter((user) => {
       const role = String(user.role || "member").toLowerCase();
       const username = String(user.username || "").toLowerCase();
       return username !== "admin" && ["admin", "hmd", "dev"].includes(role);
-    }));
+    });
   }
-  return sortUsers(list.filter((user) => matchesGrade(user) && matchesSearch(user)));
+  return list.filter((user) => matchesGrade(user) && matchesSearch(user));
 }
 
 function userMatchesAccountSearch(user, term) {
@@ -9831,11 +9410,8 @@ function renderMessageBubble({ mine, title, text, createdAt, sourceIp, attachmen
   appendMessageAttachment(item, attachment);
 
   if (onDelete) {
-    const actions = item.querySelector(":scope > .message-actions") || document.createElement("div");
-    if (!actions.parentElement) {
-      actions.className = "message-actions";
-      item.append(actions);
-    }
+    const actions = document.createElement("div");
+    actions.className = "message-actions";
     const deleteButton = document.createElement("button");
     deleteButton.className = "ghost-light-button compact-button";
     deleteButton.type = "button";
@@ -10050,9 +9626,6 @@ function restoreUiState() {
     state.activeView = viewFromPath() || localStorage.getItem("innerActiveView") || "dashboard";
     state.selectedRoomId = localStorage.getItem("innerSelectedRoom") || "main";
     state.selectedDmUser = localStorage.getItem("innerSelectedDm") || "";
-    state.accountShowAll = localStorage.getItem("innerAccountShowAllV194") === "1";
-    state.accountListCollapsed = localStorage.getItem("innerAccountListCollapsedV194") === "1";
-    state.accountSort = localStorage.getItem("innerAccountSort") === "class" ? "class" : "alphabetical";
   } catch (error) {
     state.activeView = viewFromPath() || "dashboard";
   }
@@ -10300,21 +9873,11 @@ function isModerator() {
 
 function canViewAuditLogs() {
   if (hasBuiltInControlAccess()) return true;
-  if (canUseModeratorCapability("audit-logs")) return true;
   const allowed = state.settings && state.settings.moderationSettings && Array.isArray(state.settings.moderationSettings.logAccessUsers)
     ? state.settings.moderationSettings.logAccessUsers
     : [];
   const username = String(state.user && state.user.username || "").toLowerCase();
   return isModerator() && allowed.map((entry) => String(entry || "").toLowerCase()).includes(username);
-}
-
-function canUseModeratorCapability(capability) {
-  if (!isModerator()) return false;
-  if (hasBuiltInControlAccess() || isOwner()) return true;
-  const capabilities = state.settings && Array.isArray(state.settings.moderationCapabilities)
-    ? state.settings.moderationCapabilities
-    : [];
-  return capabilities.includes(capability);
 }
 
 function setConnection(value) {

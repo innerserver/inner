@@ -10,9 +10,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-208-ui-audit" />
-    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-208-ui-audit" />
-    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-208-ui-audit" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-210-dm-recovery" />
+    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-210-dm-recovery" />
+    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-210-dm-recovery" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -22,7 +22,7 @@
             <span class="brand-mark" aria-hidden="true"><span class="brand-glyph"></span></span>
             <div>
               <h1>Connectifi</h1>
-              <p>Connectifi workspace login - v208 UI audit build</p>
+              <p>Connectifi workspace login</p>
             </div>
           </div>
           <label>
@@ -232,7 +232,6 @@
                 Room
                 <select id="roomSelect"></select>
               </label>
-              <button class="secondary-button compact-button chat-theme-link" type="button" data-chat-theme-link>Customize chat</button>
               <details class="message-more-menu">
                 <summary aria-label="More room actions">+</summary>
                 <div class="message-more-menu-content">
@@ -267,15 +266,14 @@
             </div>
             <div class="message-header-controls">
               <label class="compact-label">
-                Account
+                Chat
                 <select id="dmPeerSelect"></select>
               </label>
               <div class="dm-quick-actions" aria-label="Call actions">
                 <button id="dmVoiceCallButton" class="secondary-button compact-button" type="button">Call</button>
                 <button id="dmVideoCallButton" class="secondary-button compact-button" type="button">Video</button>
-                <button id="dmShareScreenButton" class="secondary-button compact-button" type="button">Share</button>
+                <button id="dmShareScreenButton" class="secondary-button compact-button" type="button">Share screen</button>
               </div>
-              <button class="secondary-button compact-button chat-theme-link" type="button" data-chat-theme-link>Customize chat</button>
               <details class="message-more-menu dm-more-menu">
                 <summary aria-label="More direct message actions">+</summary>
                 <div class="message-more-menu-content">
@@ -283,6 +281,7 @@
                   <input id="dmAttachment" class="menu-file-input" type="file" accept="image/*,video/*,audio/*" form="dmForm" />
                   <input id="dmSelfieInput" class="hidden" type="file" accept="image/*" capture="user" form="dmForm" />
                   <button id="dmSelfieButton" class="secondary-button more-menu-action" type="button">Photo</button>
+                  <button id="openDmAppearanceButton" class="secondary-button more-menu-action" type="button">Chat appearance</button>
                   <label class="switch-row compact-switch more-menu-secret"><input id="dmSecret" type="checkbox" form="dmForm" /><span>Secret message</span></label>
                   <div class="dm-tools-panel">
                     <details class="dm-tool-card">
@@ -1150,11 +1149,11 @@
 
     <div id="cornerAd" class="corner-ad hidden" role="status"></div>
     <div id="toast" class="toast hidden" role="status"></div>
-    <script src="/session-guard.js?v=connectifi-208-ui-audit" defer></script>
-    <script src="/status-guard.js?v=connectifi-208-ui-audit" defer></script>
-    <script src="/ui-boot.js?v=connectifi-208-ui-audit" defer></script>
-    <script src="/app.js?v=connectifi-208-ui-audit" defer></script>
-    <script src="/force-logout.js?v=connectifi-208-ui-audit" defer></script>
+    <script src="/session-guard.js?v=connectifi-210-dm-recovery" defer></script>
+    <script src="/status-guard.js?v=connectifi-210-dm-recovery" defer></script>
+    <script src="/ui-boot.js?v=connectifi-210-dm-recovery" defer></script>
+    <script src="/app.js?v=connectifi-210-dm-recovery" defer></script>
+    <script src="/force-logout.js?v=connectifi-210-dm-recovery" defer></script>
   </body>
 </html>
 

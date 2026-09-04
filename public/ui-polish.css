@@ -1527,6 +1527,16 @@ body[data-theme="glass"] .file-card {
   white-space: nowrap;
 }
 
+#dmsView .dm-quick-actions > button.compact-button {
+  inline-size: auto;
+  min-inline-size: 66px;
+  padding-inline: 12px;
+}
+
+#dmsView #dmShareScreenButton {
+  min-inline-size: 112px;
+}
+
 #dmsView > .dm-call-panel:not([open]) {
   display: none !important;
 }
@@ -1579,6 +1589,15 @@ body[data-theme="glass"] .file-card {
 }
 
 @media (max-width: 560px) {
+  #dmsView .dm-quick-actions > button.compact-button {
+    min-inline-size: 58px;
+    padding-inline: 8px;
+  }
+
+  #dmsView #dmShareScreenButton {
+    min-inline-size: 104px;
+  }
+
   #dmsView .dm-quick-actions > button {
     min-width: 0;
     padding-inline: 8px;
@@ -1864,31 +1883,6 @@ body[data-theme="glass"] .file-card {
 #messagesView > .composer > input:first-child,
 #dmsView > .composer > input:first-child {
   grid-column: auto !important;
-}
-
-#dmsView .dm-quick-actions > button.compact-button {
-  inline-size: auto;
-  min-inline-size: 66px;
-  padding-inline: 12px;
-}
-
-#messagesView .chat-theme-link,
-#dmsView .chat-theme-link {
-  inline-size: auto;
-  min-inline-size: 122px;
-  white-space: nowrap;
-}
-
-@media (max-width: 560px) {
-  #dmsView .dm-quick-actions > button.compact-button {
-    min-inline-size: 58px;
-    padding-inline: 8px;
-  }
-
-  #messagesView .chat-theme-link,
-  #dmsView .chat-theme-link {
-    flex: 1 1 100%;
-  }
 }
 
 @media (max-width: 700px) {

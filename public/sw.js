@@ -1,1 +1,1 @@
-importScripts("/service-worker.js?v=connectifi-208-ui-audit");
+importScripts("/service-worker.js?v=connectifi-210-dm-recovery");

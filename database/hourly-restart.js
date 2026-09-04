@@ -1,14 +1,11 @@
-body.glass-theme .glass-card {
-  backdrop-filter: blur(20px);
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.15);
-}
+const ONE_HOUR = 60 * 60 * 1000;
 
-body:not(.glass-theme) .glass-card {
-  backdrop-filter: none;
-  background: inherit;
-  border: none;
-}
+console.log('[auto-restart] hourly restart enabled');
+
+setInterval(() => {
+  console.log('[auto-restart] restarting service');
+  process.exit(0);
+}, ONE_HOUR);
 
 
 document.addEventListener("DOMContentLoaded",()=>{

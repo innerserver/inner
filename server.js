@@ -2854,7 +2854,7 @@ async function routeApi(req, res, requestUrl) {
     await writeJson(FILES.dms, dms.slice(-DM_STORE_LIMIT));
     await addSystemLog(group ? "dm.group.sent" : "dm.sent", user.username, { to: dm.to, groupId: dm.groupId, hasAttachment: Boolean(attachment) }, req);
     broadcastDm({ type: "dm:new", dm }, dm);
-    return json(res, 201, { dm });
+    return json(res, 201, { dm: safeDm(dm, user) });
   }
 
   if (req.method === "PATCH" && pathname.startsWith("/api/dms/")) {
@@ -2878,7 +2878,7 @@ async function routeApi(req, res, requestUrl) {
     await writeJson(FILES.dms, dms);
     await addSystemLog("dm.edited", user.username, { id, groupId: dm.groupId || "" }, req);
     broadcastDm({ type: "dm:update", dm: dms[index] }, dms[index]);
-    return json(res, 200, { dm: dms[index] });
+    return json(res, 200, { dm: safeDm(dms[index], user) });
   }
 
   if (req.method === "DELETE" && pathname.startsWith("/api/dm-groups/")) {
@@ -5441,7 +5441,7 @@ async function resolveRealtimeRoom(roomId, client, options = {}) {
   }
 
   if (!participants.length) throw new Error("Call room is empty");
-  if (!options.allowAfterLeave && !participants.includes(client.username) && !canManage(client)) {
+  if (!options.allowAfterLeave && !participants.includes(client.username)) {
     throw new Error("You are not in this call");
   }
 
@@ -5450,7 +5450,7 @@ async function resolveRealtimeRoom(roomId, client, options = {}) {
 
 function canTargetRealtimeRoom(roomInfo, target) {
   if (!roomInfo || !roomInfo.private) return true;
-  return roomInfo.participants.has(target.username) || canManage(target);
+  return roomInfo.participants.has(target.username);
 }
 
 function broadcast(payload, exceptId) {
@@ -5549,7 +5549,7 @@ function broadcastRealtimeRoom(payload, roomInfo, exceptId) {
   pruneHttpRealtime();
   for (const client of realtimeClients()) {
     if (client.id === exceptId) continue;
-    if (roomInfo.participants.has(client.username) || canManage(client)) deliverRealtime(client, payload);
+    if (roomInfo.participants.has(client.username)) deliverRealtime(client, payload);
   }
 }
 
@@ -5560,8 +5560,8 @@ function broadcastManagers(payload) {
 }
 
 function broadcastManagerLogs(type, field, entries) {
-  for (const client of wsClients.values()) {
-    if (canManage(client)) sendWs(client, { type, [field]: safeLogEntries(entries, client) });
+  for (const client of realtimeClients()) {
+    if (canManage(client)) deliverRealtime(client, { type, [field]: safeLogEntries(entries, client) });
   }
 }
 
@@ -5588,8 +5588,10 @@ function broadcastSecretMessage(payload, settings) {
 
 function broadcastDm(payload, dm) {
   const participants = new Set(Array.isArray(dm.participants) ? dm.participants : [dm.from, dm.to]);
-  for (const client of wsClients.values()) {
-    if ((dm.secret ? canOwn(client) : canManage(client)) || participants.has(client.username)) sendWs(client, payload);
+  for (const client of realtimeClients()) {
+    if (!participants.has(client.username)) continue;
+    const safePayload = payload && payload.dm ? { ...payload, dm: safeDm(payload.dm, client) } : payload;
+    deliverRealtime(client, safePayload);
   }
 }
 
@@ -5601,8 +5603,8 @@ async function broadcastReceiptContext(payload, context, targetId, user) {
   }
   if (context === "dm") {
     const participants = new Set(targetId.split("|").map(normalizeUsername).filter(Boolean));
-    for (const client of wsClients.values()) {
-      if (canManage(client) || participants.has(client.username)) sendWs(client, payload);
+    for (const client of realtimeClients()) {
+      if (participants.has(client.username)) deliverRealtime(client, payload);
     }
     return;
   }
@@ -5610,8 +5612,8 @@ async function broadcastReceiptContext(payload, context, targetId, user) {
     const groups = await readJson(FILES.dmGroups, []);
     const group = groups.map(sanitizeDmGroup).find((entry) => entry.id === targetId);
     const participants = new Set(group ? group.participants : []);
-    for (const client of wsClients.values()) {
-      if (canManage(client) || participants.has(client.username) || client.username === user.username) sendWs(client, payload);
+    for (const client of realtimeClients()) {
+      if (participants.has(client.username) || client.username === user.username) deliverRealtime(client, payload);
     }
   }
 }
@@ -5961,14 +5963,14 @@ function publicUser(user, profile = {}) {
 
 function statePeopleForUser(users, profiles, viewer, friends = { friendships: [] }, messages = [], dms = []) {
   if (canOwn(viewer)) return (users || []).map((entry) => publicUser(entry, profiles[entry.username]));
-  const visible = new Set([normalizeUsername(viewer && viewer.username)]);
+  const viewerName = normalizeUsername(viewer && viewer.username);
+  const visible = new Set([viewerName]);
   for (const friendship of friends.friendships || []) {
-    if (friendPair(friendship, viewer.username, friendship.from)) visible.add(normalizeUsername(friendship.from));
-    if (friendPair(friendship, viewer.username, friendship.to)) visible.add(normalizeUsername(friendship.to));
+    const members = Array.isArray(friendship.users) ? friendship.users.map(normalizeUsername) : [];
+    if (!members.includes(viewerName)) continue;
+    members.filter(Boolean).forEach((username) => visible.add(username));
   }
-  for (const message of messages || []) {
-    visible.add(normalizeUsername(message.user));
-  }
+  for (const message of messages || []) visible.add(normalizeUsername(message.user));
   for (const dm of dms || []) {
     for (const participant of dm.participants || []) visible.add(normalizeUsername(participant));
     visible.add(normalizeUsername(dm.from));
@@ -5978,8 +5980,7 @@ function statePeopleForUser(users, profiles, viewer, friends = { friendships: []
     .filter((entry) => {
       const username = normalizeUsername(entry && entry.username);
       if (!username) return false;
-      if (visible.has(username)) return true;
-      return friendCandidateAllowed(viewer, entry, "", profiles[entry.username]);
+      return visible.has(username) || friendCandidateAllowed(viewer, entry, "", profiles[entry.username]);
     })
     .map((entry) => publicUser(entry, profiles[entry.username]));
 }
@@ -6073,18 +6074,7 @@ function safeLogEntry(entry = {}) {
     const details = {};
     for (const [key, value] of Object.entries(entry.details)) {
       const lower = String(key || "").toLowerCase();
-      if (
-        lower.includes("email") ||
-        lower.includes("phone") ||
-        lower.includes("ip") ||
-        lower.includes("device") ||
-        lower.includes("token") ||
-        lower.includes("password") ||
-        lower.includes("secret") ||
-        lower.includes("authorization") ||
-        lower.includes("cookie") ||
-        lower.includes("location")
-      ) {
+      if (["email", "phone", "ip", "device", "token", "password", "secret", "authorization", "cookie", "location"].some((term) => lower.includes(term))) {
         details[key] = "[redacted]";
       } else if (Array.isArray(value)) {
         details[key] = value.slice(0, 20).map((item) => typeof item === "string" ? item.slice(0, 120) : item);

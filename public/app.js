@@ -1,5 +1,3 @@
-const CONNECTIFI_BUILD_LABEL = "v208 UI audit";
-
 const state = {
   user: null,
   settings: { serverEnabled: true, roomName: "Connectifi" },
@@ -337,6 +335,7 @@ function cacheElements() {
     "dmVoiceCallButton",
     "dmVideoCallButton",
     "dmShareScreenButton",
+    "openDmAppearanceButton",
     "dmStopScreenButton",
     "dmLeaveCallButton",
     "dmAnswerCallButton",
@@ -823,6 +822,7 @@ function bindEvents() {
   els.dmVoiceCallButton.addEventListener("click", () => startDmCall(false));
   els.dmVideoCallButton.addEventListener("click", () => startDmCall(true));
   els.dmShareScreenButton.addEventListener("click", () => startDmScreenShare());
+  if (els.openDmAppearanceButton) els.openDmAppearanceButton.addEventListener("click", () => showView("profile"));
   els.dmStopScreenButton.addEventListener("click", () => stopShare());
   els.dmLeaveCallButton.addEventListener("click", leaveVoice);
   els.dmAnswerCallButton.addEventListener("click", answerIncomingCall);
@@ -852,9 +852,6 @@ function bindEvents() {
       state.friendGradeFilter = els.friendGradeSearch.value || "";
     });
   }
-  document.querySelectorAll("[data-chat-theme-link]").forEach((button) => {
-    button.addEventListener("click", openChatThemeEditor);
-  });
   els.profileForm.addEventListener("submit", saveProfile);
   els.profileTheme.addEventListener("change", () => {
     applyProfileTheme(els.profileTheme.value);
@@ -4922,8 +4919,8 @@ function renderShell() {
   els.serverPill.classList.toggle("on", enabled);
   els.serverPill.classList.toggle("off", !enabled);
   if (els.buildBadge) {
-    els.buildBadge.textContent = custom.versionLabel || CONNECTIFI_BUILD_LABEL;
-    els.buildBadge.classList.remove("hidden");
+    els.buildBadge.textContent = custom.versionLabel || "";
+    els.buildBadge.classList.toggle("hidden", !custom.versionLabel);
   }
   els.currentUser.textContent = state.user ? `${state.user.username} (${state.user.role})` : "-";
   els.messageCount.textContent = String(state.messages.length);
@@ -5130,7 +5127,7 @@ function onboardingGuideForRole(role) {
     subtitle: "Start here if you are using Inner for chats, files, friends, and docs.",
     steps: [
       { title: "Set up your profile", detail: "Add display name, grade, status, profile picture, and theme.", view: "profile", action: "Edit profile" },
-      { title: "Add friends", detail: "Same-grade users show by default. Search exact username to find someone outside your grade.", view: "friends", action: "Open friends" },
+      { title: "Add friends", detail: "Same-grade users show by default. Search exact username to find someone outside your grade.", view: "friends", action: "Find friends" },
       { title: "Use messages and DMs", detail: "Use Messages for rooms and DMs for private or group conversations with accepted friends.", view: "messages", action: "Open messages" },
       { title: "Upload and share files", detail: "Use Files for photos, videos, audio, and documents. Turn on Private if only you and admins should see it.", view: "files", action: "Open files" },
       { title: "Use Docs, Slides, and Sheets", detail: "Use the Google Workspace tab for school work directly inside Inner.", view: "googleWorkspace", action: "Open Workspace" },
@@ -5637,21 +5634,25 @@ function renderDmsInner() {
   const locked = featureLock("dms");
   els.dmState.textContent = locked
     ? `DMs paused until ${formatDate(locked.disabledUntil)}`
-    : "Create DMs and group chats with accepted friends.";
+    : state.selectedDmUser
+      ? "Private chat. Use Call, Video, or Share screen for this chat."
+      : "Add an accepted friend, then choose a chat to message, call, start video, or share your screen.";
   const shouldStick = els.dmList.scrollTop + els.dmList.clientHeight >= els.dmList.scrollHeight - 24;
   const scrollOffset = els.dmList.scrollHeight - els.dmList.scrollTop;
   els.dmList.replaceChildren();
 
   if (!state.selectedDmUser) {
-    els.dmList.append(emptyBlock("No accounts available"));
+    els.dmList.append(emptyBlock("No accepted friends yet. Add a friend to start a private chat."));
     updateJumpButton(els.dmList, els.dmJumpBottomButton);
+    renderDmCall();
     return;
   }
 
   const visible = state.dms.filter((dm) => dmBetween(dm, state.user.username, state.selectedDmUser));
   if (!visible.length) {
-    els.dmList.append(emptyBlock("No DMs yet"));
+    els.dmList.append(emptyBlock("No messages yet. Say hello or start a call from the chat header."));
     updateJumpButton(els.dmList, els.dmJumpBottomButton);
+    renderDmCall();
     return;
   }
 
@@ -5721,17 +5722,26 @@ function renderDmCall() {
   const inThisCall = Boolean(state.voiceStream && state.voiceRoomId === roomId);
   const sharingHere = Boolean(state.localStream && state.screenRoomId === roomId);
   const remoteShareHere = Boolean(state.remoteScreenStream && state.remoteScreenRoomId === roomId);
-  const incomingHere = Boolean(state.incomingCall);
+  const incomingHere = Boolean(state.incomingCall && (!roomId || state.incomingCall.roomId === roomId));
   const people = hasSelection ? selectedDmParticipants() : [];
   const online = Array.from(state.peers.values()).filter((peer) => people.includes(peer.username)).length;
   const callExpanded = Boolean(inThisCall || sharingHere || remoteShareHere || incomingHere);
   els.dmCallPanel.classList.toggle("call-expanded", callExpanded);
   if ("open" in els.dmCallPanel) els.dmCallPanel.open = callExpanded;
 
+  const connectedState = sharingHere
+    ? "screen sharing active"
+    : remoteShareHere
+      ? "screen share active"
+      : inThisCall
+        ? state.voiceVideoEnabled
+          ? state.voiceCameraOff ? "video call connected, camera off" : "video call connected"
+          : "voice call connected"
+        : "ready";
   els.dmCallState.textContent = incomingHere
     ? `${state.incomingCall.fromUser} is ringing ${state.incomingCall.roomLabel || callRoomLabel(state.incomingCall.roomId)}`
     : hasSelection
-      ? `${currentDmCallLabel()} - ${online} online - ${inThisCall ? "in call" : "ready"}`
+      ? `${currentDmCallLabel()} - ${online} online - ${connectedState}`
       : "Choose a DM or group to start a call";
 
   els.dmVoiceCallButton.disabled = !hasSelection || inThisCall || !featureAvailable("voice");
@@ -6262,8 +6272,8 @@ function applyCustomizations() {
   if (els.roomName) els.roomName.textContent = appName;
   document.title = appName;
   if (els.buildBadge) {
-    els.buildBadge.textContent = custom.versionLabel || CONNECTIFI_BUILD_LABEL;
-    els.buildBadge.classList.remove("hidden");
+    els.buildBadge.textContent = custom.versionLabel || "";
+    els.buildBadge.classList.toggle("hidden", !custom.versionLabel);
   }
   if (els.siteNotice) {
     els.siteNotice.textContent = custom.notice || "";
@@ -8582,7 +8592,7 @@ function updateControls() {
   els.privateUpload.disabled = !filesEnabled;
   els.uploadButton.disabled = !filesEnabled;
   els.friendUserSelect.disabled = !friendsEnabled;
-  els.sendFriendRequestButton.disabled = !friendsEnabled;
+  els.sendFriendRequestButton.disabled = !friendsEnabled || !friendCandidatePeople().some((person) => !new Set((state.friends.friends || []).map((entry) => entry.username)).has(person.username));
   els.joinVoiceButton.disabled = !voiceEnabled || Boolean(state.voiceStream);
   els.joinVideoButton.disabled = !voiceEnabled || Boolean(state.voiceStream);
   els.cameraVoiceButton.disabled = !voiceEnabled || !Boolean(state.voiceStream) || !state.voiceVideoEnabled;
@@ -10064,15 +10074,6 @@ async function sendFriendRequest(event) {
   } catch (error) {
     notify(error.message);
   }
-}
-
-function openChatThemeEditor() {
-  showView("profile");
-  window.setTimeout(() => {
-    if (!els.profileTheme) return;
-    els.profileTheme.focus();
-    els.profileTheme.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, 0);
 }
 
 async function respondFriendRequest(id, action) {

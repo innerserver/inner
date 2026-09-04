@@ -91,6 +91,30 @@ footer {
   border-top: 1px solid var(--line);
   color: var(--muted);
 }
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0f1115;
+    --surface: #181b21;
+    --ink: #f4f6fb;
+    --muted: #b8c0cc;
+    --line: #303746;
+    --accent: #69d4ad;
+    --soft: #15362d;
+  }
+  header { background: rgba(15, 17, 21, 0.94); }
+  .mark { background: linear-gradient(135deg, #050607, #176b5a); }
+  .hero, .card, nav a, .button {
+    background: var(--surface);
+    border-color: var(--line);
+  }
+  .hero { background: color-mix(in srgb, var(--surface) 76%, var(--soft)); }
+  .pill {
+    background: color-mix(in srgb, var(--surface) 82%, var(--soft));
+    border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
+    color: var(--ink);
+  }
+}
 @media (max-width: 760px) {
   .top { align-items: flex-start; flex-direction: column; }
   nav { justify-content: flex-start; }

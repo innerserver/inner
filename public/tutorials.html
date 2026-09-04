@@ -216,9 +216,11 @@
           <ul>
             <li>Dashboard shows announcements, online users, and the guide.</li>
             <li>Messages are room chats.</li>
+            <li>Friends are added from same-grade search or exact username search.</li>
             <li>DMs and group DMs work with accepted friends.</li>
+            <li>Call, Video, and Share screen live in the selected DM/group header.</li>
             <li>Files can be public or private.</li>
-            <li>Use the three-line menu on phone to open the sidebar.</li>
+            <li>Use the three-line menu on phone to open the sidebar, and log out normally when done.</li>
           </ul>
         </div>
       </section>
@@ -233,22 +235,22 @@
       <section class="grid">
         <div class="card">
           <h2>Member / Student</h2>
-          <p>Profile, friends, DMs, files, Google Workspace, Browser sharing, and phone basics.</p>
+          <p>Profile, adding friends by grade, DMs, calls, screen share, files, Google Workspace, Browser sharing, dark mode, and phone basics.</p>
           <p><a class="button" href="/tutorial-member.html">Open member tutorial</a></p>
         </div>
         <div class="card">
           <h2>Moderator / Teacher</h2>
-          <p>Room use, DMs, reports, class materials, safety expectations, and phone basics.</p>
+          <p>Room use, friends, DMs, calls, screen share, reports, class materials, safety expectations, themes, and phone basics.</p>
           <p><a class="button" href="/tutorial-moderator.html">Open moderator tutorial</a></p>
         </div>
         <div class="card">
           <h2>Admin</h2>
-          <p>Signup mode, account requests, account search, hidden tabs, browser rules, logs, and backups.</p>
+          <p>Signup mode, account requests, account search, friend/grade support, calls/TURN setup, hidden tabs, browser rules, logs, and backups.</p>
           <p><a class="button" href="/tutorial-admin.html">Open admin tutorial</a></p>
         </div>
         <div class="card">
           <h2>HMD / Dev</h2>
-          <p>Metrics, storage, emergency controls, localhost tools, bots, plugins, AI, and recovery.</p>
+          <p>Metrics, storage, calls/WebRTC health, emergency controls, localhost tools, bots, plugins, AI, and recovery.</p>
           <p><a class="button" href="/tutorial-hmd.html">Open HMD/dev tutorial</a></p>
         </div>
       </section>
@@ -262,6 +264,8 @@
             </thead>
             <tbody>
               <tr><td>Google Workspace</td><td>Use one Inner tab to switch between Docs, Slides, and Sheets.</td><td>If Google blocks sign-in in the frame, open full tab once, then return.</td></tr>
+              <tr><td>Friends</td><td>Find same-grade people from the grade dropdown or search exact username outside the grade.</td><td>Users must save Profile grade first so grade search has the right account data.</td></tr>
+              <tr><td>Calls</td><td>Use Call, Video, and Share screen from a selected DM/group.</td><td>HTTPS or localhost is required. Cross-network reliability needs TURN relay settings.</td></tr>
               <tr><td>Browser</td><td>Open allowed websites inside Inner and send links to friends/groups.</td><td>Admin block/allow rules apply through Inner's browser route.</td></tr>
             </tbody>
           </table>
@@ -277,6 +281,8 @@
             <li>Hide Admin, HMD, Domain, or any feature from users as needed.</li>
             <li>Use Account search before pressing Show all.</li>
             <li>Use grade filter for grade-level review.</li>
+            <li>Check user/profile grade if friend search is empty.</li>
+            <li>Add TURN values if calls fail across different networks.</li>
             <li>Export logs before wiping them.</li>
           </ul>
         </div>
@@ -285,7 +291,9 @@
           <ul>
             <li>Normal users should not see Admin, HMD, or Domain tabs.</li>
             <li>Private files are visible to the uploader and admins.</li>
-            <li>Users can only friend same-grade people unless they search exact contact details.</li>
+            <li>Users can only friend same-grade people unless they search exact username.</li>
+            <li>Dark themes should keep text readable across forms, panels, DMs, menus, and tutorials.</li>
+            <li>Phone logout should return to a scrollable sign-in screen.</li>
             <li>Admin browser rules can block websites for normal users.</li>
           </ul>
         </div>

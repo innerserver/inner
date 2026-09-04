@@ -1,9 +1,15 @@
-Connectifi build v212
+Connectifi build v213
 Released: 2026-09-04
 
 Changes in this package:
-- Added a final message/DM layout recovery layer so message lists scroll independently and composers stay inside the active view on desktop and mobile.
-- Polished the DM top bar into a compact WhatsApp-style header so Chat, Call, Video, Share screen, and the + menu do not collide.
-- Fixed server-side browser SSRF exposure by blocking local/private addresses, embedded credentials, unsafe redirects, oversized responses, and long-running fetches.
-- Added same-origin protection for authenticated WebSocket upgrades.
-- Extended the reusable UI audit script with CSRF and private browser target checks.
+- Added full role tutorials for members, moderators, admins, and HMD/super-admin accounts, including profile setup, adding friends, DMs, calls, video calls, screen sharing, dark mode, phone logout, and admin checks.
+- Fixed same-grade friend discovery so profile-grade data is used when the user record is missing a grade, and changing the friend grade filter refreshes the candidate list instead of leaving stale search state.
+- Improved call/video/screen-share recovery by rebuilding stale peer connections before sending new offers and disabling screen share when the browser does not support display capture.
+- Added broader dark-theme readability fixes outside chat themes so forms, cards, messages, menus, inputs, and tutorial pages keep readable text and contrast.
+- Improved the logged-out mobile view so the login panel fits the phone screen cleanly after logout.
+- Kept the v212 DM layout recovery, SSRF protections, WebSocket origin checks, and audit-script security checks.
+
+Upload command:
+git add .
+git commit -m "v213"
+git push

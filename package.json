@@ -1,6 +1,6 @@
 {
   "name": "inner",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "private": true,
   "description": "Private workspace app with messages, DMs, rooms, uploads, screen sharing, admin controls, backups, and VPN profile settings.",
   "main": "server.js",

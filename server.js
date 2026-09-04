@@ -2073,9 +2073,10 @@ async function routeApi(req, res, requestUrl) {
     const searchProof = String(body.search || "").trim();
     if (!to || to.toLowerCase() === user.username.toLowerCase()) return json(res, 400, { error: "Choose another user" });
     const users = await readJson(FILES.users, []);
+    const profiles = await readJson(FILES.profiles, {});
     const recipient = users.find((entry) => entry.username.toLowerCase() === to.toLowerCase());
     if (!recipient) return json(res, 404, { error: "Account not found" });
-    if (!canOwn(user) && !friendGradeAllowed(user, recipient, searchProof)) {
+    if (!canOwn(user) && !friendGradeAllowed(user, recipient, searchProof, profiles[user.username], profiles[recipient.username])) {
       return json(res, 403, { error: "You can only add people in your grade unless you search their exact username." });
     }
     const friends = await readJson(FILES.friends, { requests: [], friendships: [] });
@@ -2114,7 +2115,7 @@ async function routeApi(req, res, requestUrl) {
     const people = users
       .filter((entry) => entry.username.toLowerCase() !== user.username.toLowerCase())
       .filter((entry) => !currentFriends.has(entry.username.toLowerCase()))
-      .filter((entry) => canOwn(user) || friendCandidateAllowed(user, entry, query, profiles[entry.username]))
+      .filter((entry) => canOwn(user) || friendCandidateAllowed(user, entry, query, profiles[entry.username], profiles[user.username]))
       .slice(0, 25)
       .map((entry) => publicUser(entry, profiles[entry.username]));
     return json(res, 200, { people });
@@ -5987,7 +5988,7 @@ function statePeopleForUser(users, profiles, viewer, friends = { friendships: []
     .filter((entry) => {
       const username = normalizeUsername(entry && entry.username);
       if (!username) return false;
-      return visible.has(username) || friendCandidateAllowed(viewer, entry, "", profiles[entry.username]);
+      return visible.has(username) || friendCandidateAllowed(viewer, entry, "", profiles[entry.username], profiles[viewerName]);
     })
     .map((entry) => publicUser(entry, profiles[entry.username]));
 }
@@ -6147,15 +6148,15 @@ function friendRequestPair(entry, first, second) {
   return (from === a && to === b) || (from === b && to === a);
 }
 
-function friendGradeAllowed(user, recipient, query) {
-  const userGrade = normalizeGrade(user.grade || "");
-  const recipientGrade = normalizeGrade(recipient.grade || "");
+function friendGradeAllowed(user, recipient, query, userProfile = {}, recipientProfile = {}) {
+  const userGrade = normalizeGrade(user.grade || userProfile.grade || "");
+  const recipientGrade = normalizeGrade(recipient.grade || recipientProfile.grade || "");
   if (userGrade && recipientGrade && userGrade === recipientGrade) return true;
   return exactFriendUsernameMatch(recipient, query);
 }
 
-function friendCandidateAllowed(user, candidate, query, profile = {}) {
-  const userGrade = normalizeGrade(user.grade || "");
+function friendCandidateAllowed(user, candidate, query, profile = {}, userProfile = {}) {
+  const userGrade = normalizeGrade(user.grade || userProfile.grade || "");
   const candidateGrade = normalizeGrade(candidate.grade || profile.grade || "");
   const gradeSearch = String(query || "").trim().toLowerCase().match(/^grade:([\w-]+)$/);
   if (gradeSearch) {

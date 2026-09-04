@@ -850,6 +850,11 @@ function bindEvents() {
   if (els.friendGradeSearch) {
     els.friendGradeSearch.addEventListener("change", () => {
       state.friendGradeFilter = els.friendGradeSearch.value || "";
+      state.friendSearch = "";
+      state.friendAlphaFilter = "";
+      if (els.friendSearchInput) els.friendSearchInput.value = "";
+      if (state.friendGradeFilter) loadFriendCandidates();
+      else renderFriends();
     });
   }
   els.profileForm.addEventListener("submit", saveProfile);
@@ -3981,6 +3986,8 @@ async function offerScreenToRoom(roomId) {
   await refreshRealtimePeers();
   const peers = screenPeersForRoom(roomId).filter((peer) => peer.id !== state.clientId);
   for (const peer of peers) {
+    const existing = state.peerConnections.get(peer.id);
+    if (existing && connectionNeedsFreshOffer(existing)) closePeer(peer.id);
     await makeOffer(peer.id, roomId);
   }
   return peers.length;
@@ -4202,8 +4209,18 @@ async function syncVoicePeers(joinedPeerId = "") {
   const peers = state.voicePeers.filter((peer) => peer.id !== state.clientId && peer.voiceRoomId === state.voiceRoomId);
   for (const peer of peers) {
     if (joinedPeerId && joinedPeerId !== state.clientId && peer.id !== joinedPeerId) continue;
-    if (!state.voiceConnections.has(peer.id)) await makeVoiceOffer(peer.id);
+    const existing = state.voiceConnections.get(peer.id);
+    if (!existing || connectionNeedsFreshOffer(existing)) {
+      if (existing) closeVoicePeer(peer.id);
+      await makeVoiceOffer(peer.id);
+    }
   }
+}
+
+function connectionNeedsFreshOffer(pc) {
+  if (!pc || pc.signalingState === "closed") return true;
+  return ["failed", "disconnected", "closed"].includes(pc.connectionState) ||
+    ["failed", "disconnected", "closed"].includes(pc.iceConnectionState);
 }
 
 async function makeVoiceOffer(peerId) {
@@ -4452,7 +4469,13 @@ function addStreamTracks(pc, stream) {
   if (!pc || !stream) return;
   const senderTracks = new Set((pc.getSenders ? pc.getSenders() : []).map((sender) => sender.track).filter(Boolean));
   stream.getTracks().forEach((track) => {
-    if (!senderTracks.has(track)) pc.addTrack(track, stream);
+    if (!senderTracks.has(track)) {
+      try {
+        pc.addTrack(track, stream);
+      } catch (error) {
+        // The next reconnect pass will create a clean peer connection.
+      }
+    }
   });
 }
 
@@ -5726,6 +5749,7 @@ function renderDmCall() {
   const people = hasSelection ? selectedDmParticipants() : [];
   const online = Array.from(state.peers.values()).filter((peer) => people.includes(peer.username)).length;
   const callExpanded = Boolean(inThisCall || sharingHere || remoteShareHere || incomingHere);
+  const screenCaptureAvailable = Boolean(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
   els.dmCallPanel.classList.toggle("call-expanded", callExpanded);
   if ("open" in els.dmCallPanel) els.dmCallPanel.open = callExpanded;
 
@@ -5746,7 +5770,7 @@ function renderDmCall() {
 
   els.dmVoiceCallButton.disabled = !hasSelection || inThisCall || !featureAvailable("voice");
   els.dmVideoCallButton.disabled = !hasSelection || inThisCall || !featureAvailable("voice");
-  els.dmShareScreenButton.disabled = !hasSelection || sharingHere || !featureAvailable("screen");
+  els.dmShareScreenButton.disabled = !hasSelection || sharingHere || !featureAvailable("screen") || !screenCaptureAvailable;
   els.dmStopScreenButton.disabled = !sharingHere;
   els.dmLeaveCallButton.disabled = !inThisCall;
   els.dmAnswerCallButton.classList.toggle("hidden", !incomingHere);
@@ -8560,6 +8584,7 @@ function updateControls() {
   const voiceEnabled = serverEnabled && featureAvailable("voice");
   const invitesEnabled = serverEnabled && featureAvailable("invites");
   const dmCallReady = dmsEnabled && Boolean(currentDmCallRoom());
+  const screenCaptureAvailable = Boolean(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
   els.roomSelect.disabled = !featureAvailable("rooms") && room.id !== "main";
   els.inviteCodeInput.disabled = !invitesEnabled;
   els.joinInviteButton.disabled = !invitesEnabled;
@@ -8584,7 +8609,7 @@ function updateControls() {
   els.createDmGroupButton.disabled = !dmsEnabled || (!isOwner() && dmGroupCandidatePeople().length < 2);
   els.dmVoiceCallButton.disabled = !dmCallReady || Boolean(state.voiceStream);
   els.dmVideoCallButton.disabled = !dmCallReady || Boolean(state.voiceStream);
-  els.dmShareScreenButton.disabled = !dmCallReady || Boolean(state.localStream) || !screenEnabled;
+  els.dmShareScreenButton.disabled = !dmCallReady || Boolean(state.localStream) || !screenEnabled || !screenCaptureAvailable;
   els.dmStopScreenButton.disabled = !(state.localStream && state.screenRoomId === currentDmCallRoom());
   els.dmLeaveCallButton.disabled = !(state.voiceStream && state.voiceRoomId === currentDmCallRoom());
   els.fileInput.disabled = !filesEnabled;
@@ -8596,7 +8621,7 @@ function updateControls() {
   els.joinVoiceButton.disabled = !voiceEnabled || Boolean(state.voiceStream);
   els.joinVideoButton.disabled = !voiceEnabled || Boolean(state.voiceStream);
   els.cameraVoiceButton.disabled = !voiceEnabled || !Boolean(state.voiceStream) || !state.voiceVideoEnabled;
-  els.startShareButton.disabled = !screenEnabled || Boolean(state.localStream);
+  els.startShareButton.disabled = !screenEnabled || Boolean(state.localStream) || !screenCaptureAvailable;
   document.querySelectorAll("[data-soundboard]").forEach((button) => {
     button.disabled = !voiceEnabled || !Boolean(state.voiceStream);
   });

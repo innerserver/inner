@@ -11,13 +11,16 @@
     <main>
       <section class="hero">
         <h1>Admin Guide</h1>
-        <p>Use this for account review, announcements, signup mode, hidden tabs, browser rules, logs, reports, backups, and scaling.</p>
-        <div class="pill-row"><span class="pill">Accounts</span><span class="pill">Signup</span><span class="pill">Browser rules</span><span class="pill">Backups</span></div>
+        <p>Use this for account review, friend/grade setup, announcements, signup mode, hidden tabs, browser rules, calls, screen share, logs, reports, backups, and scaling.</p>
+        <div class="pill-row"><span class="pill">Accounts</span><span class="pill">Friends</span><span class="pill">Calls</span><span class="pill">Browser rules</span><span class="pill">Backups</span></div>
       </section>
       <section class="grid">
         <div class="card"><h2>Signup Mode</h2><ol><li>Open Admin &gt; Server.</li><li>Choose Request approval or Open signup.</li><li>Request mode makes the public button say Request account.</li><li>Open signup makes the public button say Create account.</li></ol></div>
-        <div class="card"><h2>Accounts</h2><ol><li>Public admin accounts show first.</li><li>Search by username, name, email, phone, grade, role, IP, or device.</li><li>Use Show all only when needed.</li><li>Approve/decline requests from Account requests.</li></ol></div>
+        <div class="card"><h2>Accounts</h2><ol><li>Public admin accounts show first.</li><li>Search by username, name, email, phone, grade, role, IP, or device.</li><li>Use Show all only when needed.</li><li>Set or fix grade/class on account rows when users cannot find classmates.</li><li>Approve/decline requests from Account requests.</li></ol></div>
+        <div class="card"><h2>Friends and Grade Search</h2><ol><li>Members should save Profile with grade, email, and phone first.</li><li>Friends &gt; Grade dropdown shows same-grade candidates.</li><li>The user selects a candidate and presses Add friend.</li><li>The recipient accepts under Friends &gt; Requests.</li><li>Outside-grade adds require exact username search.</li><li>If a user cannot see classmates, check both users have the same grade saved on their account/profile.</li></ol></div>
         <div class="card"><h2>Features and Browser</h2><ul><li>Hide tabs from normal users through feature visibility.</li><li>Allow specific users when needed.</li><li>Use Browser rules to block domains or enable allow-only mode.</li><li>Docs controls Google Docs, Slides, and Sheets together.</li></ul></div>
+        <div class="card"><h2>Calls and Screen Share</h2><ul><li>Voice/video/screen share require HTTPS or localhost.</li><li>Calls across different networks usually need TURN relay credentials.</li><li>Set INNER_TURN_URLS, INNER_TURN_USERNAME, and INNER_TURN_CREDENTIAL in the host environment.</li><li>Use INNER_RTC_RELAY_ONLY=true only after TURN credentials are confirmed.</li><li>Some phones cannot share screen from browser; use desktop Chrome/Edge for screen share.</li></ul></div>
+        <div class="card"><h2>Theme and Phone Logout</h2><ul><li>Profile themes now apply to app text, forms, menus, cards, and DMs.</li><li>Dark-mode readable themes are Dark, Midnight, Slate, Glass, and Custom.</li><li>After logout on phone, the login/request forms must stay scrollable.</li><li>If users see old CSS after deploy, tell them to close/reopen the home-screen app or hard refresh.</li></ul></div>
         <div class="card"><h2>Logs and Backups</h2><ul><li>Search logs by user or date.</li><li>Export logs before wiping.</li><li>Create backups before major admin changes.</li><li>Use rollback/reinstate when a saved backup is needed.</li></ul></div>
       </section>
       <footer>Inner admin tutorial.</footer>

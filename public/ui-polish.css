@@ -2086,3 +2086,155 @@ body[data-theme="glass"] .file-card {
     max-height: calc(100dvh - 368px) !important;
   }
 }
+
+/* v213 dark-mode and phone logout readability layer. Keep all primary app
+   text, controls, cards, and popovers readable when the account theme is dark. */
+body[data-theme="dark"],
+body[data-theme="midnight"],
+body[data-theme="slate"],
+body[data-theme="glass"] {
+  color-scheme: dark;
+}
+
+body[data-theme="dark"] .section-header,
+body[data-theme="dark"] .status-panel,
+body[data-theme="dark"] .panel-form,
+body[data-theme="dark"] .account-card,
+body[data-theme="dark"] .file-card,
+body[data-theme="dark"] .upload-bar,
+body[data-theme="dark"] .composer,
+body[data-theme="dark"] .message,
+body[data-theme="dark"] .message-list,
+body[data-theme="dark"] .message-more-menu-content,
+body[data-theme="midnight"] .section-header,
+body[data-theme="midnight"] .status-panel,
+body[data-theme="midnight"] .panel-form,
+body[data-theme="midnight"] .account-card,
+body[data-theme="midnight"] .file-card,
+body[data-theme="midnight"] .upload-bar,
+body[data-theme="midnight"] .composer,
+body[data-theme="midnight"] .message,
+body[data-theme="midnight"] .message-list,
+body[data-theme="midnight"] .message-more-menu-content,
+body[data-theme="slate"] .section-header,
+body[data-theme="slate"] .status-panel,
+body[data-theme="slate"] .panel-form,
+body[data-theme="slate"] .account-card,
+body[data-theme="slate"] .file-card,
+body[data-theme="slate"] .upload-bar,
+body[data-theme="slate"] .composer,
+body[data-theme="slate"] .message,
+body[data-theme="slate"] .message-list,
+body[data-theme="slate"] .message-more-menu-content,
+body[data-theme="glass"] .section-header,
+body[data-theme="glass"] .status-panel,
+body[data-theme="glass"] .panel-form,
+body[data-theme="glass"] .account-card,
+body[data-theme="glass"] .file-card,
+body[data-theme="glass"] .upload-bar,
+body[data-theme="glass"] .composer,
+body[data-theme="glass"] .message,
+body[data-theme="glass"] .message-list,
+body[data-theme="glass"] .message-more-menu-content {
+  background: color-mix(in srgb, var(--surface) 94%, #000) !important;
+  color: var(--ink) !important;
+  border-color: color-mix(in srgb, var(--line) 88%, transparent) !important;
+}
+
+body[data-theme="dark"] h1,
+body[data-theme="dark"] h2,
+body[data-theme="dark"] h3,
+body[data-theme="dark"] strong,
+body[data-theme="dark"] label,
+body[data-theme="dark"] .message-text,
+body[data-theme="midnight"] h1,
+body[data-theme="midnight"] h2,
+body[data-theme="midnight"] h3,
+body[data-theme="midnight"] strong,
+body[data-theme="midnight"] label,
+body[data-theme="midnight"] .message-text,
+body[data-theme="slate"] h1,
+body[data-theme="slate"] h2,
+body[data-theme="slate"] h3,
+body[data-theme="slate"] strong,
+body[data-theme="slate"] label,
+body[data-theme="slate"] .message-text,
+body[data-theme="glass"] h1,
+body[data-theme="glass"] h2,
+body[data-theme="glass"] h3,
+body[data-theme="glass"] strong,
+body[data-theme="glass"] label,
+body[data-theme="glass"] .message-text {
+  color: var(--ink) !important;
+}
+
+body[data-theme="dark"] p,
+body[data-theme="dark"] .panel-note,
+body[data-theme="dark"] .muted-label,
+body[data-theme="dark"] .inline-status,
+body[data-theme="dark"] .message-meta,
+body[data-theme="dark"] .account-meta,
+body[data-theme="midnight"] p,
+body[data-theme="midnight"] .panel-note,
+body[data-theme="midnight"] .muted-label,
+body[data-theme="midnight"] .inline-status,
+body[data-theme="midnight"] .message-meta,
+body[data-theme="midnight"] .account-meta,
+body[data-theme="slate"] p,
+body[data-theme="slate"] .panel-note,
+body[data-theme="slate"] .muted-label,
+body[data-theme="slate"] .inline-status,
+body[data-theme="slate"] .message-meta,
+body[data-theme="slate"] .account-meta,
+body[data-theme="glass"] p,
+body[data-theme="glass"] .panel-note,
+body[data-theme="glass"] .muted-label,
+body[data-theme="glass"] .inline-status,
+body[data-theme="glass"] .message-meta,
+body[data-theme="glass"] .account-meta {
+  color: color-mix(in srgb, var(--ink) 74%, var(--muted)) !important;
+}
+
+body[data-theme="dark"] input,
+body[data-theme="dark"] select,
+body[data-theme="dark"] textarea,
+body[data-theme="midnight"] input,
+body[data-theme="midnight"] select,
+body[data-theme="midnight"] textarea,
+body[data-theme="slate"] input,
+body[data-theme="slate"] select,
+body[data-theme="slate"] textarea,
+body[data-theme="glass"] input,
+body[data-theme="glass"] select,
+body[data-theme="glass"] textarea {
+  background: color-mix(in srgb, var(--surface) 86%, #000) !important;
+  color: var(--ink) !important;
+  border-color: color-mix(in srgb, var(--line) 92%, transparent) !important;
+}
+
+body[data-theme="dark"] input::placeholder,
+body[data-theme="dark"] textarea::placeholder,
+body[data-theme="midnight"] input::placeholder,
+body[data-theme="midnight"] textarea::placeholder,
+body[data-theme="slate"] input::placeholder,
+body[data-theme="slate"] textarea::placeholder,
+body[data-theme="glass"] input::placeholder,
+body[data-theme="glass"] textarea::placeholder {
+  color: color-mix(in srgb, var(--ink) 48%, transparent) !important;
+}
+
+@media (max-width: 640px) {
+  #loginView.login-shell:not(.hidden) {
+    display: grid !important;
+    min-height: 100dvh !important;
+    height: auto !important;
+    padding: 16px !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  #loginView.login-shell:not(.hidden) .login-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}

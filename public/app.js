@@ -117,6 +117,8 @@ const state = {
   remoteScreenStream: null,
   screenShareWarningShown: false,
   screenConnectionState: "",
+  screenOfferTimer: null,
+  screenWatchTimer: null,
   rtcIssueNotifiedAt: 0,
   rtcLastIceError: null,
   remoteFrom: "",
@@ -1382,6 +1384,7 @@ function fallbackAccountLocation(reason) {
 async function handleLogout() {
   state.loggedIn = false;
   stopSessionKeepAlive();
+  stopScreenWatchLoop();
   stopHttpRealtime();
   leaveVoice();
   closeSocket();
@@ -1448,6 +1451,7 @@ async function loadState() {
   window.requestAnimationFrame(() => renderAll());
   maybeAlertReportThreshold(0, activeReports().length);
   connectSocket();
+  startScreenWatchLoop();
   flushPendingSends();
   joinInviteFromUrl();
   shareLinkFromUrl();
@@ -1481,6 +1485,7 @@ async function hydrateAdminState() {
 function showLogin(message = "", options = {}) {
   state.loggedIn = false;
   stopSessionKeepAlive();
+  stopScreenWatchLoop();
   applyProfileTheme("system");
   els.loginView.classList.remove("hidden");
   closeSignupChoice();
@@ -3387,6 +3392,7 @@ function connectSocket(options = {}) {
     setConnection("Live");
     scheduleSocketRefresh();
     startSessionKeepAlive();
+    startScreenWatchLoop();
     sendWs({ type: "client:network", network: browserNetworkInfo() });
     flushWsOutbox();
     recoverRealtimeState(wasReconnect).catch(() => {});
@@ -3985,6 +3991,7 @@ async function startShare(options = {}) {
       stopShare({ silent: true });
       return notify("Live connection is not ready");
     }
+    startScreenOfferLoop();
     const offered = await offerScreenToRoom(roomId);
     state.screenConnectionState = offered ? "Connecting to viewer" : "Waiting for a viewer";
     setTimeout(() => offerScreenToRoom(roomId).catch(() => {}), 900);
@@ -3995,6 +4002,19 @@ async function startShare(options = {}) {
   } catch (error) {
     notify(error.message || "Screen sharing was cancelled");
   }
+}
+
+function startScreenOfferLoop() {
+  clearInterval(state.screenOfferTimer);
+  state.screenOfferTimer = setInterval(() => {
+    if (!state.localStream || !state.screenRoomId) {
+      clearInterval(state.screenOfferTimer);
+      state.screenOfferTimer = null;
+      return;
+    }
+    sendWs({ type: "screen:status", sharing: true, roomId: state.screenRoomId });
+    offerScreenToRoom(state.screenRoomId).catch(() => {});
+  }, 3000);
 }
 
 async function offerScreenToRoom(roomId) {
@@ -4364,6 +4384,8 @@ function closeVoicePeer(peerId) {
 function stopShare(options = {}) {
   const stream = state.localStream;
   const roomId = state.screenRoomId || "screen:global";
+  clearInterval(state.screenOfferTimer);
+  state.screenOfferTimer = null;
   state.localStream = null;
   state.screenRoomId = "";
   state.screenConnectionState = "";
@@ -4849,6 +4871,19 @@ function requestActiveScreenShares(peers = Array.from(state.peers.values())) {
       sendWs({ type: "screen:viewer-ready", target: peer.id, targetUser: peer.username || "", roomId });
       setTimeout(() => sendWs({ type: "screen:viewer-ready", target: peer.id, targetUser: peer.username || "", roomId }), 900);
     });
+}
+
+function startScreenWatchLoop() {
+  clearInterval(state.screenWatchTimer);
+  state.screenWatchTimer = setInterval(() => {
+    if (!state.loggedIn || state.localStream || state.remoteScreenStream) return;
+    requestActiveScreenShares();
+  }, 3000);
+}
+
+function stopScreenWatchLoop() {
+  clearInterval(state.screenWatchTimer);
+  state.screenWatchTimer = null;
 }
 
 function canJoinScreenRoom(roomId, peer = {}) {

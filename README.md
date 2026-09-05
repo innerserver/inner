@@ -156,6 +156,8 @@ INNER_RTC_RELAY_ONLY=true
 
 That forces WebRTC to use TURN relay candidates only. This is the closest browser-supported version of "use TURN instead." Leave it `false` only while testing whether your TURN credentials are valid. A server-side `wrtc` package would not make phone/browser screen sharing work by itself because the browser still needs HTTPS screen-capture support and ICE relay candidates to reach the other device.
 
+After deployment, open `/api/health` on your domain and check the `rtc` object. It should show `turnConfigured: true`, `turnCredentialConfigured: true`, and `relayOnly: true`. If those are false, Render is not receiving one of the TURN env vars.
+
 For local HTTPS testing, create a certificate and start the server with both paths set:
 
 ```powershell

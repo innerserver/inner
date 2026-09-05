@@ -1087,10 +1087,7 @@ async function routeApi(req, res, requestUrl) {
         forceHttps: FORCE_HTTPS,
       },
       rtc: {
-        turnConfigured: buildRtcConfig().iceServers.some((server) =>
-          splitEnvList(Array.isArray(server.urls) ? server.urls.join(",") : server.urls).some((url) => /^turns?:/i.test(url))
-        ),
-        relayOnly: isTruthy(process.env.INNER_RTC_RELAY_ONLY),
+        ...buildRtcStatus(),
       },
       persistence: {
         mode: storageModeLabel(),
@@ -1722,6 +1719,7 @@ async function routeApi(req, res, requestUrl) {
       user: safeUser(user, user),
       settings: safeSettings(settings, user),
       rtcConfig: buildRtcConfig(),
+      rtcStatus: buildRtcStatus(),
       uploadConfig: safeUploadConfig(settings),
       rooms: safeRoomsForUser(rooms, user),
       messages: normalizedMessages.slice(-STATE_MESSAGE_LIMIT),
@@ -7371,12 +7369,13 @@ function sanitizeCustomizations(customizations) {
 }
 
 function buildRtcConfig() {
+  const relayOnly = isTruthy(process.env.INNER_RTC_RELAY_ONLY);
   const configuredIceServers = parseIceServersJson(
     firstEnvValue("INNER_ICE_SERVERS_JSON", "ICE_SERVERS_JSON", "TURN_ICE_SERVERS_JSON")
   );
   if (configuredIceServers.length) {
     const config = { iceServers: configuredIceServers, iceCandidatePoolSize: 6 };
-    if (isTruthy(process.env.INNER_RTC_RELAY_ONLY)) config.iceTransportPolicy = "relay";
+    if (relayOnly) config.iceTransportPolicy = "relay";
     return config;
   }
 
@@ -7412,8 +7411,9 @@ function buildRtcConfig() {
     "TURN_PASSWORD",
     "TURN_SECRET"
   );
-  const iceServers = [
-    {
+  const iceServers = [];
+  if (!(relayOnly && turnUrls.length)) {
+    iceServers.push({
       urls: stunUrls.length
         ? stunUrls
         : [
@@ -7421,8 +7421,8 @@ function buildRtcConfig() {
             "stun:stun1.l.google.com:19302",
             "stun:global.stun.twilio.com:3478",
           ],
-    },
-  ];
+    });
+  }
 
   if (turnUrls.length) {
     const turnServer = { urls: turnUrls };
@@ -7435,8 +7435,25 @@ function buildRtcConfig() {
   }
 
   const config = { iceServers, iceCandidatePoolSize: 6 };
-  if (isTruthy(process.env.INNER_RTC_RELAY_ONLY)) config.iceTransportPolicy = "relay";
+  if (relayOnly) config.iceTransportPolicy = "relay";
   return config;
+}
+
+function buildRtcStatus() {
+  const config = buildRtcConfig();
+  const urls = (config.iceServers || []).flatMap((server) => splitEnvList(Array.isArray(server.urls) ? server.urls.join(",") : server.urls));
+  const turnUrls = urls.filter((url) => /^turns?:/i.test(url));
+  const turnServers = (config.iceServers || []).filter((server) =>
+    splitEnvList(Array.isArray(server.urls) ? server.urls.join(",") : server.urls).some((url) => /^turns?:/i.test(url))
+  );
+  const credentialConfigured = turnServers.some((server) => Boolean(server.username && server.credential));
+  return {
+    turnConfigured: turnUrls.length > 0,
+    turnUrlCount: turnUrls.length,
+    turnCredentialConfigured: credentialConfigured,
+    relayOnly: config.iceTransportPolicy === "relay" || isTruthy(process.env.INNER_RTC_RELAY_ONLY),
+    iceServerCount: (config.iceServers || []).length,
+  };
 }
 
 function splitEnvList(value) {

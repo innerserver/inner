@@ -1,7 +1,10 @@
-Connectifi build v214
+Connectifi build v215
 Released: 2026-09-05
 
 Changes in this package:
+- Added RTC/TURN status reporting so `/api/health` and logged-in app state can show whether TURN URLs, TURN credentials, and relay-only mode are actually reaching the server.
+- Added browser ICE candidate error handling for calls and screen share so TURN credential failures, unreachable TURN servers, and missing TURN config show clearer in-app messages.
+- Made relay-only TURN mode omit the default STUN servers when TURN URLs are configured, so the browser receives a cleaner TURN-only WebRTC config.
 - Added a visible "People you can add" panel on the Friends page so addable same-grade/search candidates show directly, not only accepted friends.
 - Friend candidate cards now have their own Add friend button and pending/already-added users are hidden from the addable list.
 - Kept same-grade candidate loading available even before typing a search, using the people/profile data already returned by app state.
@@ -20,5 +23,5 @@ Changes in this package:
 
 Upload command:
 git add .
-git commit -m "v214"
+git commit -m "v215"
 git push

@@ -2,6 +2,7 @@ const state = {
   user: null,
   settings: { serverEnabled: true, roomName: "Connectifi" },
   uploadConfig: { directCloudinary: false, maxBytes: 250 * 1024 * 1024, maxLabel: "250 MB" },
+  rtcStatus: { turnConfigured: false, turnCredentialConfigured: false, relayOnly: false },
   rooms: [],
   selectedRoomId: "main",
   messages: [],
@@ -116,6 +117,7 @@ const state = {
   remoteScreenStream: null,
   screenShareWarningShown: false,
   screenConnectionState: "",
+  rtcIssueNotifiedAt: 0,
   remoteFrom: "",
   activeView: "dashboard",
   loggedIn: false,
@@ -1395,6 +1397,7 @@ async function loadState() {
   if (data.rtcConfig && Array.isArray(data.rtcConfig.iceServers)) {
     rtcConfig = data.rtcConfig;
   }
+  state.rtcStatus = data.rtcStatus || state.rtcStatus;
   state.rooms = data.rooms || [];
   state.messages = data.messages || [];
   state.secretMessages = data.secretMessages || [];
@@ -4246,6 +4249,7 @@ function createVoicePeer(peerId) {
   pc.onicecandidate = (event) => {
     if (event.candidate) sendWs({ type: "voice:signal", target: peerId, roomId: state.voiceRoomId, signal: { candidate: event.candidate } });
   };
+  pc.onicecandidateerror = (event) => handleIceCandidateError("call", event);
   pc.ontrack = (event) => {
     attachCallStream(peerId, event.streams[0]);
   };
@@ -4399,6 +4403,7 @@ function createPeer(peerId, roomId = "screen:global") {
   pc.onicecandidate = (event) => {
     if (event.candidate) sendSignal(peerId, { candidate: event.candidate }, roomId);
   };
+  pc.onicecandidateerror = (event) => handleIceCandidateError("screen share", event);
   pc.ontrack = (event) => {
     const stream = event.streams[0];
     if (!stream) return;
@@ -4479,6 +4484,28 @@ async function flushCandidates(peerId, pc) {
 
 function sendSignal(target, signal, roomId = state.screenRoomId || "screen:global") {
   sendWs({ type: "signal", target, roomId, signal });
+}
+
+function handleIceCandidateError(kind, event) {
+  const now = Date.now();
+  if (now - Number(state.rtcIssueNotifiedAt || 0) < 12000) return;
+  state.rtcIssueNotifiedAt = now;
+  const code = Number(event && event.errorCode);
+  const detail = event && event.errorText ? ` ${event.errorText}` : "";
+  const turnMissing = !state.rtcStatus || !state.rtcStatus.turnConfigured || !state.rtcStatus.turnCredentialConfigured;
+  if (turnMissing) {
+    notify(`${kind} cannot use TURN yet. Check Render env vars for TURN URL, username, and credential.`);
+    return;
+  }
+  if ([401, 438].includes(code)) {
+    notify(`${kind} TURN login failed. Check the TURN username and credential in Render.`);
+    return;
+  }
+  if (code === 701) {
+    notify(`${kind} could not reach the TURN server. Check the TURN host, port, and firewall.${detail}`);
+    return;
+  }
+  notify(`${kind} connection failed while gathering network candidates.${detail}`);
 }
 
 function addStreamTracks(pc, stream) {

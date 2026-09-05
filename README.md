@@ -154,7 +154,7 @@ If calls still fail on strict school/mobile networks after adding real TURN valu
 INNER_RTC_RELAY_ONLY=true
 ```
 
-That forces WebRTC to use TURN relay candidates only. Leave it `false` if your TURN credentials are still being tested.
+That forces WebRTC to use TURN relay candidates only. This is the closest browser-supported version of "use TURN instead." Leave it `false` only while testing whether your TURN credentials are valid. A server-side `wrtc` package would not make phone/browser screen sharing work by itself because the browser still needs HTTPS screen-capture support and ICE relay candidates to reach the other device.
 
 For local HTTPS testing, create a certificate and start the server with both paths set:
 

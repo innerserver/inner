@@ -1,15 +1,24 @@
-Connectifi build v213
-Released: 2026-09-04
+Connectifi build v214
+Released: 2026-09-05
 
 Changes in this package:
+- Added a visible "People you can add" panel on the Friends page so addable same-grade/search candidates show directly, not only accepted friends.
+- Friend candidate cards now have their own Add friend button and pending/already-added users are hidden from the addable list.
+- Kept same-grade candidate loading available even before typing a search, using the people/profile data already returned by app state.
+- Improved screen-share connection recovery by closing stale/non-stable peer connections before creating fresh offers.
+- Repeated viewer-ready signaling shortly after a screen-share status update so the sharer can send a fresh offer when the first signal is too early.
+- Added reconnect queue coverage for screen requests, call invites, and voice leave events.
+- Aligned the standalone Screen view with the DM screen-share browser-support checks.
 - Added full role tutorials for members, moderators, admins, and HMD/super-admin accounts, including profile setup, adding friends, DMs, calls, video calls, screen sharing, dark mode, phone logout, and admin checks.
 - Fixed same-grade friend discovery so profile-grade data is used when the user record is missing a grade, and changing the friend grade filter refreshes the candidate list instead of leaving stale search state.
 - Improved call/video/screen-share recovery by rebuilding stale peer connections before sending new offers and disabling screen share when the browser does not support display capture.
 - Added broader dark-theme readability fixes outside chat themes so forms, cards, messages, menus, inputs, and tutorial pages keep readable text and contrast.
 - Improved the logged-out mobile view so the login panel fits the phone screen cleanly after logout.
 - Kept the v212 DM layout recovery, SSRF protections, WebSocket origin checks, and audit-script security checks.
+- Updated friend discovery so the Friends page loads server-side "People you can add" candidates even when there is no search text, and pending requests are hidden from the addable list.
+- Clarified TURN-first setup for calls, video calls, and screen share. Use `INNER_RTC_RELAY_ONLY=true` with real TURN credentials when strict school/mobile networks block direct WebRTC.
 
 Upload command:
 git add .
-git commit -m "v213"
+git commit -m "v214"
 git push

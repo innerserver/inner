@@ -2112,9 +2112,14 @@ async function routeApi(req, res, requestUrl) {
       .filter((entry) => Array.isArray(entry.users) && entry.users.includes(user.username))
       .flatMap((entry) => entry.users)
       .map((name) => String(name).toLowerCase()));
+    const pendingFriends = new Set((friends.requests || [])
+      .filter((entry) => entry && entry.status === "pending" && (entry.from === user.username || entry.to === user.username))
+      .flatMap((entry) => [entry.from, entry.to])
+      .map((name) => String(name || "").toLowerCase()));
     const people = users
       .filter((entry) => entry.username.toLowerCase() !== user.username.toLowerCase())
       .filter((entry) => !currentFriends.has(entry.username.toLowerCase()))
+      .filter((entry) => !pendingFriends.has(entry.username.toLowerCase()))
       .filter((entry) => canOwn(user) || friendCandidateAllowed(user, entry, query, profiles[entry.username], profiles[user.username]))
       .slice(0, 25)
       .map((entry) => publicUser(entry, profiles[entry.username]));

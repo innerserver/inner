@@ -19,6 +19,8 @@ const state = {
   friendGradeFilter: "",
   friendAlphaFilter: "",
   friendSearchTimer: 0,
+  friendCandidatesLoaded: false,
+  friendCandidatesLoading: false,
   editingFeatureScheduleId: "",
   selectedDmUser: "",
   adminDmFilter: "all",
@@ -365,6 +367,7 @@ function cacheElements() {
     "friendGradeSearch",
     "friendGradeSearchButton",
     "friendUserSelect",
+    "friendCandidateList",
     "sendFriendRequestButton",
     "friendAlphaFilter",
     "friendList",
@@ -1407,6 +1410,7 @@ async function loadState() {
   state.users = data.users || [];
   state.people = data.people || [];
   state.friendCandidates = [];
+  state.friendCandidatesLoaded = false;
   state.backups = data.backups || [];
   state.profiles = data.profiles || {};
   state.friends = data.friends || { friends: [], incoming: [], outgoing: [] };
@@ -1515,6 +1519,7 @@ function showView(viewName, options = {}) {
   }
   state.activeView = viewName;
   if (viewName === "googleWorkspace") syncGoogleWorkspaceFrame();
+  if (viewName === "friends") loadFriendCandidates({ silent: true });
   saveUiState();
   if (options.updateHistory !== false) updateRoute(viewName);
   document.querySelectorAll(".nav-button").forEach((button) => {
@@ -3549,7 +3554,7 @@ function handleSocketMessage(message) {
     renderPeers();
     renderVoice();
     renderDmCall();
-    if (state.localStream && canPeerReceiveScreen(message.peer)) makeOffer(message.peer.id, state.screenRoomId || "screen:global");
+    if (state.localStream && canPeerReceiveScreen(message.peer)) makeFreshScreenOffer(message.peer.id, state.screenRoomId || "screen:global");
     return;
   }
 
@@ -3838,6 +3843,7 @@ function handleSocketMessage(message) {
     }
     if (message.sharing && message.from && message.from !== state.clientId) {
       sendWs({ type: "screen:viewer-ready", target: message.from, roomId: message.roomId || "screen:global" });
+      setTimeout(() => sendWs({ type: "screen:viewer-ready", target: message.from, roomId: message.roomId || "screen:global" }), 800);
     }
     renderPeers();
     renderDmCall();
@@ -3846,7 +3852,7 @@ function handleSocketMessage(message) {
 
   if (message.type === "screen:viewer-ready") {
     if (state.localStream && message.from && message.from !== state.clientId) {
-      makeOffer(message.from, message.roomId || state.screenRoomId || "screen:global").catch(() => {});
+      makeFreshScreenOffer(message.from, message.roomId || state.screenRoomId || "screen:global").catch(() => {});
     }
     return;
   }
@@ -3986,9 +3992,7 @@ async function offerScreenToRoom(roomId) {
   await refreshRealtimePeers();
   const peers = screenPeersForRoom(roomId).filter((peer) => peer.id !== state.clientId);
   for (const peer of peers) {
-    const existing = state.peerConnections.get(peer.id);
-    if (existing && connectionNeedsFreshOffer(existing)) closePeer(peer.id);
-    await makeOffer(peer.id, roomId);
+    await makeFreshScreenOffer(peer.id, roomId);
   }
   return peers.length;
 }
@@ -4376,6 +4380,14 @@ async function makeOffer(peerId, roomId = state.screenRoomId || "screen:global")
   sendSignal(peerId, { description: pc.localDescription }, roomId);
 }
 
+async function makeFreshScreenOffer(peerId, roomId = state.screenRoomId || "screen:global") {
+  const existing = state.peerConnections.get(peerId);
+  if (existing && (connectionNeedsFreshOffer(existing) || existing.signalingState !== "stable" || existing.roomId !== roomId)) {
+    closePeer(peerId);
+  }
+  await makeOffer(peerId, roomId);
+}
+
 function createPeer(peerId, roomId = "screen:global") {
   const existing = state.peerConnections.get(peerId);
   if (existing && existing.roomId === roomId && existing.signalingState !== "closed") return existing;
@@ -4428,9 +4440,13 @@ function createPeer(peerId, roomId = "screen:global") {
 async function handleSignal(from, fromUser, signal, roomId = "screen:global") {
   const peer = state.peers.get(from) || { id: from, username: fromUser || "Peer", sharing: false };
   state.peers.set(from, peer);
-  const pc = createPeer(from, roomId);
+  let pc = createPeer(from, roomId);
 
   if (signal.description) {
+    if (signal.description.type === "offer" && pc.signalingState !== "stable") {
+      closePeer(from);
+      pc = createPeer(from, roomId);
+    }
     await pc.setRemoteDescription(signal.description);
     await flushCandidates(from, pc);
     if (signal.description.type === "offer") {
@@ -4679,7 +4695,7 @@ function sendHttpRealtime(payload) {
 }
 
 function queueRealtimePayload(payload) {
-  if (!payload || !["presence:update", "typing", "voice:state", "screen:status", "screen:viewer-ready", "voice:join", "signal", "voice:signal"].includes(payload.type)) return;
+  if (!payload || !["presence:update", "typing", "voice:state", "screen:status", "screen:viewer-ready", "screen:request", "call:invite", "voice:join", "voice:leave", "signal", "voice:signal"].includes(payload.type)) return;
   state.wsOutbox.push({ ...payload, queuedAt: Date.now() });
   state.wsOutbox = state.wsOutbox.filter((entry) => Date.now() - entry.queuedAt < 15000).slice(-20);
 }
@@ -4711,7 +4727,7 @@ async function recoverRealtimeState(wasReconnect) {
     sendWs({ type: "screen:status", sharing: true, roomId: state.screenRoomId });
     setTimeout(() => {
       for (const peer of screenPeersForRoom(state.screenRoomId)) {
-        makeOffer(peer.id, state.screenRoomId).catch(() => {});
+        makeFreshScreenOffer(peer.id, state.screenRoomId).catch(() => {});
       }
     }, 350);
   }
@@ -5899,10 +5915,14 @@ function updateJumpButton(container, button) {
 function renderFriends() {
   if (!els.friendList) return;
   const friendNames = new Set((state.friends.friends || []).map((entry) => entry.username));
-  const candidates = friendCandidatePeople().filter((person) => !friendNames.has(person.username));
+  const pendingNames = new Set([
+    ...(state.friends.incoming || []).map((entry) => entry.from),
+    ...(state.friends.outgoing || []).map((entry) => entry.to),
+  ].filter(Boolean));
+  const candidates = friendCandidatePeople().filter((person) => !friendNames.has(person.username) && !pendingNames.has(person.username));
   const search = String(state.friendSearch || "").trim();
   const grade = String(state.friendGradeFilter || "").trim();
-  const emptyCandidateLabel = search || grade ? "No new matches found" : "Search exact username";
+  const emptyCandidateLabel = search || grade ? "No new matches found" : "No addable people yet";
   els.friendUserSelect.replaceChildren(
     optionElement("", candidates.length ? "Choose a person" : emptyCandidateLabel),
     ...candidates
@@ -5928,6 +5948,7 @@ function renderFriends() {
   }
 
   renderFriendAlphabet();
+  renderFriendCandidates(candidates, search, grade);
   els.friendList.replaceChildren();
   const visibleFriends = filteredFriendsForList();
   if (!(state.friends.friends || []).length) {
@@ -5976,6 +5997,31 @@ function renderFriends() {
     actions.append(accountButton("Decline", () => respondFriendRequest(request.id, "decline")));
     card.append(actions);
     els.friendRequestList.append(card);
+  });
+}
+
+function renderFriendCandidates(candidates, search, grade) {
+  if (!els.friendCandidateList) return;
+  els.friendCandidateList.replaceChildren();
+  if (!featureAvailable("friends")) {
+    els.friendCandidateList.append(emptyBlock(lockMessage("friends")));
+    return;
+  }
+  if (!candidates.length) {
+    els.friendCandidateList.append(emptyBlock(search || grade ? "No addable people match this filter" : "No same-grade people available yet"));
+    return;
+  }
+  candidates.slice(0, 24).forEach((person) => {
+    const profile = state.profiles[person.username] || {};
+    const card = adminCard(profile.displayName || person.displayName || person.username, friendGradeLabel(person), [
+      person.username,
+      profile.customStatus || person.status || "",
+    ].filter(Boolean));
+    const actions = document.createElement("div");
+    actions.className = "account-actions";
+    actions.append(accountButton("Add friend", () => sendFriendRequestTo(person.username)));
+    card.append(actions);
+    els.friendCandidateList.append(card);
   });
 }
 
@@ -6029,7 +6075,7 @@ function friendCandidatePeople() {
   const search = String(state.friendSearch || "").trim();
   const gradeFilter = String(state.friendGradeFilter || "").trim();
   const currentGrade = gradeOf(state.user);
-  const people = search || gradeFilter ? state.friendCandidates : state.people;
+  const people = state.friendCandidatesLoaded || search || gradeFilter ? state.friendCandidates : state.people;
   return (people || [])
     .filter((person) => {
       if (!person || !person.username || person.banned) return false;
@@ -6041,19 +6087,19 @@ function friendCandidatePeople() {
     .sort((a, b) => String(a.displayName || a.username).localeCompare(String(b.displayName || b.username)));
 }
 
-async function loadFriendCandidates() {
+async function loadFriendCandidates(options = {}) {
+  if (state.friendCandidatesLoading) return;
   const query = String(state.friendSearch || "").trim() || (state.friendGradeFilter ? `grade:${state.friendGradeFilter}` : "");
-  if (!query) {
-    state.friendCandidates = [];
-    renderFriends();
-    return;
-  }
+  state.friendCandidatesLoading = true;
   try {
     const data = await api(`/api/friends/candidates?q=${encodeURIComponent(query)}`);
     state.friendCandidates = data.people || [];
+    state.friendCandidatesLoaded = true;
     renderFriends();
   } catch (error) {
-    notify(error.message || "Could not search friends");
+    if (!options.silent) notify(error.message || "Could not search friends");
+  } finally {
+    state.friendCandidatesLoading = false;
   }
 }
 
@@ -6812,7 +6858,8 @@ function renderVoice() {
 function renderScreen() {
   const sharing = Boolean(state.localStream);
   const remoteActive = Boolean(els.remoteVideo.srcObject);
-  els.startShareButton.disabled = sharing || (!state.settings.serverEnabled && !isOwner()) || !featureAvailable("screen");
+  const screenCaptureAvailable = Boolean(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+  els.startShareButton.disabled = sharing || (!state.settings.serverEnabled && !isOwner()) || !featureAvailable("screen") || !screenCaptureAvailable;
   els.stopShareButton.disabled = !sharing;
   els.emptyScreen.classList.toggle("hidden", remoteActive);
 
@@ -6823,6 +6870,8 @@ function renderScreen() {
     els.screenStatus.textContent = `${peer ? peer.username : "Peer"} is sharing`;
   } else if (!featureAvailable("screen")) {
     els.screenStatus.textContent = lockMessage("screen");
+  } else if (!screenCaptureAvailable) {
+    els.screenStatus.textContent = "Screen sharing is not available in this browser";
   } else {
     els.screenStatus.textContent = state.settings.serverEnabled || isOwner() ? "No active share" : "Room paused";
   }
@@ -10085,13 +10134,16 @@ function restoreUiState() {
 
 async function sendFriendRequest(event) {
   event.preventDefault();
-  const to = els.friendUserSelect.value;
+  await sendFriendRequestTo(els.friendUserSelect.value);
+}
+
+async function sendFriendRequestTo(to) {
   if (!to) return;
   try {
     const data = await api("/api/friends/request", { method: "POST", json: { to, search: els.friendSearchInput ? els.friendSearchInput.value : "" } });
     state.friends = data.friends;
     state.friendSearch = "";
-    state.friendCandidates = [];
+    state.friendCandidates = state.people || [];
     state.friendAlphaFilter = "";
     if (els.friendSearchInput) els.friendSearchInput.value = "";
     renderFriends();

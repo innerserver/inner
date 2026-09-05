@@ -160,6 +160,16 @@ After deployment, open `/api/health` on your domain and check the `rtc` object. 
 
 Do not use `turns:...?...transport=udp`. Secure TURN (`turns:`) uses TCP/TLS, so the app ignores `turns:` UDP entries before sending ICE config to browsers.
 
+Turnix ICE credentials from `/api/v1/credentials/ice` can be short-lived. For that setup, put the Turnix bearer token in Render instead of freezing one generated username/password forever:
+
+```text
+INNER_TURNIX_API_TOKEN=your-turnix-api-bearer-token
+INNER_TURNIX_TTL=3600
+INNER_RTC_RELAY_ONLY=true
+```
+
+When this is set, Connectifi asks Turnix for fresh ICE servers before app state, WebSocket hello, and every call or screen-share start.
+
 For local HTTPS testing, create a certificate and start the server with both paths set:
 
 ```powershell

@@ -3545,6 +3545,8 @@ function handleSocketMessage(message) {
     state.peers = new Map((message.peers || []).map((peer) => [peer.id, peer]));
     state.voicePeers = (message.peers || []).filter((peer) => peer.voiceRoomId);
     state.presence = message.presence || state.presence;
+    if (message.rtcConfig && Array.isArray(message.rtcConfig.iceServers)) rtcConfig = message.rtcConfig;
+    if (message.rtcStatus) state.rtcStatus = message.rtcStatus;
     renderPeers();
     renderVoice();
     renderDmCall();
@@ -3946,6 +3948,7 @@ async function startShare(options = {}) {
   if (!state.settings.serverEnabled && !isOwner()) return notify("Server room is off");
   if (!featureAvailable("screen")) return notify(lockMessage("screen"));
   if (!(await ensureRealtimeReady("screen sharing"))) return;
+  await refreshRtcConfig();
   if (!window.isSecureContext) return notify("Screen sharing needs HTTPS or localhost.");
   if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
     return notify("Screen sharing is not available in this browser");
@@ -4097,6 +4100,7 @@ function handleCallInvite(message) {
 async function joinVoice(videoEnabled = false, options = {}) {
   if (!featureAvailable("voice")) return notify(lockMessage("voice"));
   if (!(await ensureRealtimeReady(videoEnabled ? "video chat" : "voice chat"))) return;
+  await refreshRtcConfig();
   if (!window.isSecureContext) return notify("Voice and video need HTTPS or localhost.");
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return notify("Voice is not available in this browser");
   try {
@@ -4572,6 +4576,17 @@ async function sendRealtimeNow(payload, label = "live features") {
   if (sendWs(payload)) return true;
   if (await ensureHttpRealtime(label)) return sendWs(payload);
   return false;
+}
+
+async function refreshRtcConfig() {
+  try {
+    const data = await api("/api/rtc/config");
+    if (data.rtcConfig && Array.isArray(data.rtcConfig.iceServers)) rtcConfig = data.rtcConfig;
+    if (data.rtcStatus) state.rtcStatus = data.rtcStatus;
+    return true;
+  } catch (error) {
+    return false;
+  }
 }
 
 function websocketStateName() {

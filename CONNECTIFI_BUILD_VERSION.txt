@@ -1,7 +1,10 @@
-Connectifi build v218
+Connectifi build v219
 Released: 2026-09-05
 
 Changes in this package:
+- Added authenticated `/api/rtc/config` so the browser refreshes RTC config right before starting voice, video, or screen share.
+- Added Turnix dynamic ICE credential support through `INNER_TURNIX_API_TOKEN`, with cached fresh credentials and optional `INNER_TURNIX_TTL`.
+- WebSocket hello and HTTP realtime connect now send fresh RTC config instead of relying only on login-time app state.
 - Rebuilt RTC config normalization so explicit Render TURN vars are always added even when `INNER_ICE_SERVERS_JSON` also contains ICE servers.
 - In relay-only mode with TURN URLs present, the browser now receives TURN servers only.
 - Dropped invalid `turns:` over UDP entries before sending WebRTC config to browsers.
@@ -31,5 +34,5 @@ Changes in this package:
 
 Upload command:
 git add .
-git commit -m "v218"
+git commit -m "v219"
 git push

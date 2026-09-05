@@ -111,6 +111,7 @@ const httpRealtimeClients = new Map();
 const httpRealtimeEvents = [];
 const HTTP_REALTIME_TTL_MS = Math.max(30000, Number(process.env.INNER_HTTP_REALTIME_TTL_MS || 90000));
 const HTTP_REALTIME_EVENT_TTL_MS = Math.max(15000, Number(process.env.INNER_HTTP_REALTIME_EVENT_TTL_MS || 45000));
+let turnixIceCache = { expiresAt: 0, config: null, error: "" };
 let wsHeartbeatTimer = null;
 let ownerCheckinTimer = null;
 const messageRateLimits = new Map();
@@ -1101,6 +1102,15 @@ async function routeApi(req, res, requestUrl) {
     });
   }
 
+  if (req.method === "GET" && pathname === "/api/rtc/config") {
+    const user = requireUser(req, res);
+    if (!user) return;
+    return json(res, 200, {
+      rtcConfig: await buildRtcConfigForRequest(req),
+      rtcStatus: buildRtcStatus(),
+    });
+  }
+
   if (req.method === "GET" && pathname === "/api/session/ping") {
     const pingUser = requireUser(req, res);
     if (!pingUser) return;
@@ -1122,7 +1132,7 @@ async function routeApi(req, res, requestUrl) {
       clientId: client.id,
       peers: peerList(client.id, user, users, friends),
       presence: presenceList(profiles, user, users, friends),
-      rtcConfig: buildRtcConfig(),
+      rtcConfig: await buildRtcConfigForRequest(req),
       fallback: "http",
       now: Date.now(),
     });
@@ -1718,7 +1728,7 @@ async function routeApi(req, res, requestUrl) {
     return json(res, 200, {
       user: safeUser(user, user),
       settings: safeSettings(settings, user),
-      rtcConfig: buildRtcConfig(),
+      rtcConfig: await buildRtcConfigForRequest(req),
       rtcStatus: buildRtcStatus(),
       uploadConfig: safeUploadConfig(settings),
       rooms: safeRoomsForUser(rooms, user),
@@ -4761,6 +4771,8 @@ async function handleUpgrade(req, socket) {
     user: safeUser(user),
     peers: peerList(id, user, await readJson(FILES.users, []), await readJson(FILES.friends, { requests: [], friendships: [] })),
     presence: presenceList(await readJson(FILES.profiles, {}), user, await readJson(FILES.users, []), await readJson(FILES.friends, { requests: [], friendships: [] })),
+    rtcConfig: await buildRtcConfigForRequest(req),
+    rtcStatus: buildRtcStatus(),
   });
   await broadcastPeerJoined(client, id);
 
@@ -7443,6 +7455,23 @@ function buildRtcConfig() {
   return config;
 }
 
+async function buildRtcConfigForRequest(req) {
+  const dynamicConfig = await fetchTurnixRtcConfig(req);
+  if (!dynamicConfig) return buildRtcConfig();
+  const baseConfig = buildRtcConfig();
+  const relayOnly = isTruthy(process.env.INNER_RTC_RELAY_ONLY);
+  const iceServers = normalizeIceServerList([
+    ...(dynamicConfig.iceServers || []),
+    ...(baseConfig.iceServers || []),
+  ]);
+  const config = {
+    iceServers: relayOnly ? iceServers.filter(iceServerHasTurnUrl) : iceServers,
+    iceCandidatePoolSize: 6,
+  };
+  if (relayOnly) config.iceTransportPolicy = "relay";
+  return config;
+}
+
 function buildRtcStatus() {
   const config = buildRtcConfig();
   const urls = (config.iceServers || []).flatMap((server) => splitEnvList(Array.isArray(server.urls) ? server.urls.join(",") : server.urls));
@@ -7457,8 +7486,58 @@ function buildRtcStatus() {
     turnCredentialConfigured: credentialConfigured,
     relayOnly: config.iceTransportPolicy === "relay" || isTruthy(process.env.INNER_RTC_RELAY_ONLY),
     iceServerCount: (config.iceServers || []).length,
+    turnixDynamicConfigured: Boolean(turnixApiToken()),
+    turnixDynamicReady: Boolean(turnixIceCache.config && turnixIceCache.expiresAt > Date.now()),
+    turnixLastError: turnixIceCache.error || "",
     env: rtcEnvStatus(),
   };
+}
+
+async function fetchTurnixRtcConfig(req) {
+  const token = turnixApiToken();
+  if (!token) return null;
+  const now = Date.now();
+  if (turnixIceCache.config && turnixIceCache.expiresAt > now + 5000) return turnixIceCache.config;
+  const ttl = Math.min(86400, Math.max(60, Number(firstEnvValue("INNER_TURNIX_TTL", "TURNIX_TTL", "TURN_ICE_TTL") || 3600)));
+  const body = { ttl };
+  const preferredRegion = firstEnvValue("INNER_TURNIX_PREFERRED_REGION", "TURNIX_PREFERRED_REGION");
+  const fixedRegion = firstEnvValue("INNER_TURNIX_FIXED_REGION", "TURNIX_FIXED_REGION");
+  if (fixedRegion) body.fixed_region = fixedRegion;
+  else if (preferredRegion) body.preferred_region = preferredRegion;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7000);
+  try {
+    const response = await fetch("https://turnix.io/api/v1/credentials/ice", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Turnix ICE request failed with status ${response.status}`);
+    const data = await response.json();
+    const iceServers = normalizeIceServerList(data && data.iceServers || []);
+    if (!iceServers.some(iceServerHasTurnUrl)) throw new Error("Turnix ICE response did not include TURN servers");
+    const config = { iceServers };
+    turnixIceCache = {
+      config,
+      expiresAt: Date.now() + Math.max(30000, Math.round(ttl * 1000 * 0.75)),
+      error: "",
+    };
+    return config;
+  } catch (error) {
+    turnixIceCache.error = error && error.message ? error.message : "Turnix ICE request failed";
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function turnixApiToken() {
+  return firstEnvValue("INNER_TURNIX_API_TOKEN", "TURNIX_API_TOKEN", "TURNIX_AUTH_TOKEN", "INNER_TURNIX_AUTH_TOKEN");
 }
 
 function normalizeIceServerList(servers) {

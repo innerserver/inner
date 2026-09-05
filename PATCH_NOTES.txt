@@ -1,0 +1,13 @@
+PATCHES APPLIED
+
+1. MongoDB/GridFS requirement bypassed
+2. Added theme toggle foundation
+3. Glass theme no longer forced by default
+4. Added logs system foundation
+5. Added wipe logs utility
+
+NEW FILES:
+- client_theme_patch/themeToggle.js
+- client_theme_patch/glass.css
+- server_logs_patch/logger.js
+- server_logs_patch/wipeLogs.js

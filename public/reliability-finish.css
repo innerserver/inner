@@ -1,0 +1,201 @@
+/* v154 final overrides: keep login responsive and let the desktop header scroll. */
+#appView.app-loading > .workspace > .view.active,
+#appView.app-loading > .workspace > .site-notice {
+  visibility: hidden;
+}
+
+@media (min-width: 861px) {
+  #appView .topbar {
+    position: relative !important;
+    top: auto !important;
+    z-index: 1 !important;
+    transition: background-color 160ms ease, box-shadow 160ms ease;
+  }
+}
+
+@media (max-width: 860px) {
+  #appView .topbar {
+    position: relative !important;
+    top: auto !important;
+    z-index: 1 !important;
+  }
+}
+
+/* Collapsed admin panels need a single header row, even when their expanded
+   layout uses a specialized multi-column grid. */
+#adminView #serverForm.admin-collapsed,
+#adminView .status-panel.admin-collapsed:has(#vpnLocationStatus) {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+}
+
+#adminView .admin-grid > .admin-collapsed > h3,
+#adminView .admin-grid > .admin-collapsed > .collapse-toggle {
+  grid-column: auto !important;
+}
+
+/* Every admin panel uses the same pinned collapse action. It remains visible
+   regardless of the panel's expanded grid, including Server and Screen time. */
+#adminView .panel-form.admin-collapsed,
+#adminView .status-panel.admin-collapsed {
+  position: relative !important;
+  padding-right: 136px !important;
+}
+
+#adminView .panel-form.admin-collapsed > .collapse-toggle,
+#adminView .status-panel.admin-collapsed > .collapse-toggle {
+  position: absolute !important;
+  top: 9px !important;
+  right: 14px !important;
+  z-index: 2;
+  margin: 0 !important;
+}
+
+#ownerFailsafePanel .stack-form {
+  display: grid;
+  gap: 10px;
+}
+
+#ownerFailsafePanel .stack-form + .stack-form {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+/* Admin sections use the full available width in both compact and expanded
+   states, so a single expanded tool never competes with adjacent cards. */
+#adminView .admin-grid > .panel-form,
+#adminView .admin-grid > .status-panel {
+  grid-column: 1 / -1 !important;
+  min-height: 0 !important;
+}
+
+#adminView .panel-form,
+#adminView .status-panel {
+  position: relative;
+}
+
+#adminView .panel-form > .collapse-toggle,
+#adminView .status-panel > .collapse-toggle {
+  position: absolute !important;
+  top: 18px !important;
+  right: 20px !important;
+  z-index: 2;
+  margin: 0 !important;
+}
+
+#adminView .panel-form > h3,
+#adminView .status-panel > h3,
+#adminView .panel-form > .panel-title-row,
+#adminView .status-panel > .panel-title-row {
+  padding-right: 142px;
+}
+
+/* One compact-card contract for every Admin section. Expanded layouts may use
+   their own fields; the collapsed state never does. */
+#adminView .panel-form.admin-collapsed,
+#adminView .status-panel.admin-collapsed {
+  display: block !important;
+  width: 100% !important;
+  min-height: 82px !important;
+  max-height: none !important;
+  padding: 18px 148px 18px 20px !important;
+  overflow: hidden !important;
+}
+
+#adminView .panel-form.admin-collapsed > h3,
+#adminView .status-panel.admin-collapsed > h3,
+#adminView .panel-form.admin-collapsed > .panel-title-row,
+#adminView .status-panel.admin-collapsed > .panel-title-row {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 46px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#adminView .panel-form.admin-collapsed > .collapse-toggle,
+#adminView .status-panel.admin-collapsed > .collapse-toggle {
+  top: 50% !important;
+  right: 20px !important;
+  transform: translateY(-50%);
+  min-width: 116px;
+}
+
+/* The DM drawers are intentionally mutually exclusive. Keep the open drawer
+   within the page's available vertical space instead of clipping its controls. */
+#dmsView .dm-tools-panel {
+  align-items: start;
+}
+
+#dmsView .dm-tool-card[open] {
+  max-height: min(44dvh, 420px);
+  overflow-y: auto;
+}
+
+/* DMs has six direct regions: header, tools, call controls, conversation,
+   jump action, and composer. Keep the conversation as the sole flexible row. */
+#dmsView.view.active {
+  display: grid !important;
+  grid-template-rows: auto auto auto minmax(160px, 1fr) auto auto !important;
+  min-height: calc(100dvh - 92px) !important;
+  overflow: hidden !important;
+}
+
+#dmsView .dm-tools-panel {
+  max-height: min(44dvh, 420px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+#dmsView .dm-tool-card[open] {
+  max-height: none;
+  overflow: visible;
+}
+
+#dmsView #dmList {
+  min-height: 160px !important;
+  height: 100% !important;
+}
+
+/* Use normal vertical flow for DMs. The previous fixed grid accumulated six
+   independently sized regions and could reduce the conversation to a sliver. */
+#dmsView.view.active {
+  display: flex !important;
+  flex-direction: column;
+  height: calc(100dvh - 92px) !important;
+  min-height: 0 !important;
+  gap: 12px !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+
+#dmsView .section-header,
+#dmsView .dm-tools-panel,
+#dmsView .dm-call-panel,
+#dmsView .composer,
+#dmsView .jump-bottom-button {
+  flex: 0 0 auto;
+}
+
+#dmsView .dm-tools-panel {
+  max-height: none;
+  overflow: visible;
+}
+
+#dmsView .dm-tool-card[open] {
+  max-height: min(52dvh, 520px);
+  overflow-y: auto;
+}
+
+#dmsView #dmList {
+  flex: 1 0 320px;
+  min-height: 320px !important;
+  height: auto !important;
+}
+
+#dmsView .composer {
+  position: sticky !important;
+  bottom: 0;
+  z-index: 6;
+  margin-bottom: 0;
+}

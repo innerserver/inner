@@ -1,0 +1,88 @@
+services:
+  - type: web
+    name: inner
+    env: node
+    plan: standard
+    buildCommand: "npm ci"
+    startCommand: "npm start"
+    envVars:
+      - key: HOST
+        value: "0.0.0.0"
+      - key: NODE_ENV
+        value: "production"
+      - key: NODE_OPTIONS
+        value: "--max-old-space-size=1024"
+      - key: INNER_TARGET_CONCURRENT_USERS
+        value: "400"
+      - key: INNER_WS_MAX_CLIENTS
+        value: "550"
+      - key: INNER_STATE_MESSAGE_LIMIT
+        value: "350"
+      - key: INNER_STATE_DM_LIMIT
+        value: "350"
+      - key: INNER_STATE_FILE_LIMIT
+        value: "400"
+      - key: INNER_STATE_LOG_LIMIT
+        value: "200"
+      - key: INNER_MESSAGE_STORE_LIMIT
+        value: "5000"
+      - key: INNER_DM_STORE_LIMIT
+        value: "5000"
+      - key: INNER_DATA_DIR
+        value: "/tmp/inner-data"
+      - key: INNER_UPLOAD_INLINE_LIMIT
+        value: "0"
+      - key: INNER_FORCE_HTTPS
+        value: "true"
+      - key: INNER_REQUIRE_CLOUD_STORAGE
+        value: "true"
+      - key: INNER_UPLOAD_PROVIDER
+        value: "backblaze"
+      - key: INNER_B2_KEY_ID
+        sync: false
+      - key: INNER_B2_APPLICATION_KEY
+        sync: false
+      - key: INNER_B2_BUCKET_NAME
+        sync: false
+      - key: INNER_B2_BUCKET_ID
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB
+        value: "inner"
+      - key: INNER_TURN_URLS
+        sync: false
+      - key: INNER_TURN_USERNAME
+        sync: false
+      - key: INNER_TURN_CREDENTIAL
+        sync: false
+      - key: INNER_RTC_RELAY_ONLY
+        value: "false"
+      - key: INNER_SIGNUP_MODE
+        value: "open"
+      - key: INNER_REQUIRE_CONTACT
+        value: "false"
+      - key: INNER_REPORT_EMAILS
+        sync: false
+      - key: INNER_EMAIL_FROM
+        sync: false
+      - key: INNER_EMAIL_REPLY_TO
+        sync: false
+      - key: INNER_SMTP_HOST
+        sync: false
+      - key: INNER_SMTP_PORT
+        sync: false
+      - key: INNER_SMTP_SECURE
+        sync: false
+      - key: INNER_SMTP_USER
+        sync: false
+      - key: INNER_SMTP_PASS
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: INNER_EMAIL_WEBHOOK_URL
+        sync: false

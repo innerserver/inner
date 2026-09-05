@@ -3547,6 +3547,7 @@ function handleSocketMessage(message) {
     state.presence = message.presence || state.presence;
     if (message.rtcConfig && Array.isArray(message.rtcConfig.iceServers)) rtcConfig = message.rtcConfig;
     if (message.rtcStatus) state.rtcStatus = message.rtcStatus;
+    requestActiveScreenShares();
     renderPeers();
     renderVoice();
     renderDmCall();
@@ -3561,6 +3562,7 @@ function handleSocketMessage(message) {
     renderVoice();
     renderDmCall();
     if (state.localStream && canPeerReceiveScreen(message.peer)) makeFreshScreenOffer(message.peer.id, state.screenRoomId || "screen:global");
+    else requestActiveScreenShares([message.peer]);
     return;
   }
 
@@ -4784,6 +4786,8 @@ async function recoverRealtimeState(wasReconnect) {
         makeFreshScreenOffer(peer.id, state.screenRoomId).catch(() => {});
       }
     }, 350);
+  } else {
+    setTimeout(() => requestActiveScreenShares(), 350);
   }
 }
 
@@ -4821,14 +4825,31 @@ function attachScreenStream(peerId, stream, roomId = "screen:global") {
   state.remoteFrom = peerId;
   state.remoteScreenRoomId = roomId;
   state.remoteScreenStream = stream;
-  const target = isDmCallRoom(roomId) ? els.dmScreenVideo : els.remoteVideo;
-  if (target) {
+  [els.remoteVideo, els.dmScreenVideo].filter(Boolean).forEach((target) => {
     target.muted = false;
     target.srcObject = stream;
     playMedia(target);
-  }
+  });
   renderScreen();
   renderDmCall();
+}
+
+function requestActiveScreenShares(peers = Array.from(state.peers.values())) {
+  if (state.localStream || !state.clientId) return;
+  peers
+    .filter((peer) => peer && peer.id && peer.id !== state.clientId && peer.sharing)
+    .filter((peer) => !peer.screenRoomId || canJoinScreenRoom(peer.screenRoomId, peer))
+    .forEach((peer) => {
+      const roomId = peer.screenRoomId || "screen:global";
+      sendWs({ type: "screen:viewer-ready", target: peer.id, roomId });
+      setTimeout(() => sendWs({ type: "screen:viewer-ready", target: peer.id, roomId }), 900);
+    });
+}
+
+function canJoinScreenRoom(roomId, peer = {}) {
+  if (!isDmCallRoom(roomId)) return true;
+  const participants = callRoomParticipants(roomId);
+  return participants.includes(state.user.username) && (!peer.username || participants.includes(peer.username));
 }
 
 function clearRemoteVideo(roomId = "") {

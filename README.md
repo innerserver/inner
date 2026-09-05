@@ -158,6 +158,8 @@ That forces WebRTC to use TURN relay candidates only. This is the closest browse
 
 After deployment, open `/api/health` on your domain and check the `rtc` object. It should show `turnConfigured: true`, `turnCredentialConfigured: true`, and `relayOnly: true`. If those are false, Render is not receiving one of the TURN env vars.
 
+Do not use `turns:...?...transport=udp`. Secure TURN (`turns:`) uses TCP/TLS, so the app ignores `turns:` UDP entries before sending ICE config to browsers.
+
 For local HTTPS testing, create a certificate and start the server with both paths set:
 
 ```powershell

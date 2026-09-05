@@ -7413,9 +7413,6 @@ function buildRtcConfig() {
     "TURNIX_PASSWORD"
   );
   const iceServers = configuredIceServers.slice();
-  const configuredHasTurn = configuredIceServers.some((server) =>
-    splitEnvList(Array.isArray(server.urls) ? server.urls.join(",") : server.urls).some((url) => /^turns?:/i.test(url))
-  );
   if (!(relayOnly && turnUrls.length)) {
     const configuredHasStun = configuredIceServers.some((server) =>
       splitEnvList(Array.isArray(server.urls) ? server.urls.join(",") : server.urls).some((url) => /^stuns?:/i.test(url))
@@ -7431,7 +7428,7 @@ function buildRtcConfig() {
     });
   }
 
-  if (turnUrls.length && !configuredHasTurn) {
+  if (turnUrls.length) {
     const turnServer = { urls: turnUrls };
     if (turnUsername) turnServer.username = turnUsername;
     if (turnCredential) {
@@ -7441,7 +7438,7 @@ function buildRtcConfig() {
     iceServers.push(turnServer);
   }
 
-  const config = { iceServers, iceCandidatePoolSize: 6 };
+  const config = { iceServers: normalizeIceServerList(relayOnly && turnUrls.length ? iceServers.filter(iceServerHasTurnUrl) : iceServers), iceCandidatePoolSize: 6 };
   if (relayOnly) config.iceTransportPolicy = "relay";
   return config;
 }
@@ -7462,6 +7459,33 @@ function buildRtcStatus() {
     iceServerCount: (config.iceServers || []).length,
     env: rtcEnvStatus(),
   };
+}
+
+function normalizeIceServerList(servers) {
+  const seen = new Set();
+  const result = [];
+  for (const server of servers || []) {
+    const normalized = normalizeIceServer(server);
+    if (!normalized) continue;
+    const urls = Array.isArray(normalized.urls) ? normalized.urls : [normalized.urls];
+    const uniqueUrls = urls.filter((url) => {
+      const key = String(url || "").toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (!uniqueUrls.length) continue;
+    result.push({
+      ...normalized,
+      urls: uniqueUrls.length === 1 ? uniqueUrls[0] : uniqueUrls,
+    });
+  }
+  return result;
+}
+
+function iceServerHasTurnUrl(server) {
+  return splitEnvList(Array.isArray(server && server.urls) ? server.urls.join(",") : server && server.urls)
+    .some((url) => /^turns?:/i.test(url));
 }
 
 function rtcEnvStatus() {
@@ -7525,6 +7549,7 @@ function normalizeIceServer(entry) {
 function normalizeIceUrl(value, fallbackScheme = "stun") {
   const url = String(value || "").trim();
   if (!url) return "";
+  if (/^turns:.*[?&]transport=udp/i.test(url)) return "";
   if (/^(stun|stuns|turn|turns):/i.test(url)) return url;
   if (/^https?:/i.test(url)) return "";
   return `${fallbackScheme}:${url}`;

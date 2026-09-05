@@ -1,7 +1,10 @@
-Connectifi build v217
+Connectifi build v218
 Released: 2026-09-05
 
 Changes in this package:
+- Rebuilt RTC config normalization so explicit Render TURN vars are always added even when `INNER_ICE_SERVERS_JSON` also contains ICE servers.
+- In relay-only mode with TURN URLs present, the browser now receives TURN servers only.
+- Dropped invalid `turns:` over UDP entries before sending WebRTC config to browsers.
 - Fixed the TURN diagnostic popup so individual ICE candidate errors are recorded quietly and only shown if the full call or screen-share peer connection actually fails.
 - Reworded the TURN failure message so a single unreachable candidate route does not falsely claim every TURN path is broken.
 - Fixed RTC config precedence so `INNER_TURN_URLS`, `INNER_TURN_USERNAME`, and `INNER_TURN_CREDENTIAL` are merged even when `INNER_ICE_SERVERS_JSON` is also present.
@@ -28,5 +31,5 @@ Changes in this package:
 
 Upload command:
 git add .
-git commit -m "v217"
+git commit -m "v218"
 git push

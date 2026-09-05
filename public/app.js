@@ -3850,8 +3850,8 @@ function handleSocketMessage(message) {
       showLiveAlert(`${peer.username || "Someone"} is sharing a screen in ${callRoomLabel(message.roomId)}`);
     }
     if (message.sharing && message.from && message.from !== state.clientId) {
-      sendWs({ type: "screen:viewer-ready", target: message.from, roomId: message.roomId || "screen:global" });
-      setTimeout(() => sendWs({ type: "screen:viewer-ready", target: message.from, roomId: message.roomId || "screen:global" }), 800);
+      sendWs({ type: "screen:viewer-ready", target: message.from, targetUser: peer.username || message.fromUser || "", roomId: message.roomId || "screen:global" });
+      setTimeout(() => sendWs({ type: "screen:viewer-ready", target: message.from, targetUser: peer.username || message.fromUser || "", roomId: message.roomId || "screen:global" }), 800);
     }
     renderPeers();
     renderDmCall();
@@ -4243,7 +4243,7 @@ async function makeVoiceOffer(peerId) {
   addStreamTracks(pc, state.voiceStream);
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  sendWs({ type: "voice:signal", target: peerId, roomId: state.voiceRoomId, videoEnabled: state.voiceVideoEnabled, signal: pc.localDescription });
+  sendWs({ type: "voice:signal", target: peerId, targetUser: peerUsernameForId(peerId), roomId: state.voiceRoomId, videoEnabled: state.voiceVideoEnabled, signal: pc.localDescription });
 }
 
 function createVoicePeer(peerId) {
@@ -4254,7 +4254,7 @@ function createVoicePeer(peerId) {
   pc.roomId = state.voiceRoomId;
   state.voiceConnections.set(peerId, pc);
   pc.onicecandidate = (event) => {
-    if (event.candidate) sendWs({ type: "voice:signal", target: peerId, roomId: state.voiceRoomId, signal: { candidate: event.candidate } });
+    if (event.candidate) sendWs({ type: "voice:signal", target: peerId, targetUser: peerUsernameForId(peerId), roomId: state.voiceRoomId, signal: { candidate: event.candidate } });
   };
   pc.onicecandidateerror = (event) => recordIceCandidateError("call", event);
   pc.ontrack = (event) => {
@@ -4304,7 +4304,7 @@ async function handleVoiceSignal(from, signal, roomId = "") {
   if (signal.type === "offer") {
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    sendWs({ type: "voice:signal", target: from, roomId: state.voiceRoomId, videoEnabled: state.voiceVideoEnabled, signal: pc.localDescription });
+    sendWs({ type: "voice:signal", target: from, targetUser: peerUsernameForId(from), roomId: state.voiceRoomId, videoEnabled: state.voiceVideoEnabled, signal: pc.localDescription });
   }
   const pending = state.voicePendingCandidates.get(from) || [];
   for (const candidate of pending) await pc.addIceCandidate(candidate);
@@ -4491,7 +4491,12 @@ async function flushCandidates(peerId, pc) {
 }
 
 function sendSignal(target, signal, roomId = state.screenRoomId || "screen:global") {
-  sendWs({ type: "signal", target, roomId, signal });
+  sendWs({ type: "signal", target, targetUser: peerUsernameForId(target), roomId, signal });
+}
+
+function peerUsernameForId(peerId) {
+  const peer = state.peers.get(peerId) || state.voicePeers.find((entry) => entry.id === peerId) || {};
+  return peer.username || "";
 }
 
 function recordIceCandidateError(kind, event) {
@@ -4826,7 +4831,7 @@ function attachScreenStream(peerId, stream, roomId = "screen:global") {
   state.remoteScreenRoomId = roomId;
   state.remoteScreenStream = stream;
   [els.remoteVideo, els.dmScreenVideo].filter(Boolean).forEach((target) => {
-    target.muted = false;
+    target.muted = true;
     target.srcObject = stream;
     playMedia(target);
   });
@@ -4841,8 +4846,8 @@ function requestActiveScreenShares(peers = Array.from(state.peers.values())) {
     .filter((peer) => !peer.screenRoomId || canJoinScreenRoom(peer.screenRoomId, peer))
     .forEach((peer) => {
       const roomId = peer.screenRoomId || "screen:global";
-      sendWs({ type: "screen:viewer-ready", target: peer.id, roomId });
-      setTimeout(() => sendWs({ type: "screen:viewer-ready", target: peer.id, roomId }), 900);
+      sendWs({ type: "screen:viewer-ready", target: peer.id, targetUser: peer.username || "", roomId });
+      setTimeout(() => sendWs({ type: "screen:viewer-ready", target: peer.id, targetUser: peer.username || "", roomId }), 900);
     });
 }
 

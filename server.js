@@ -4917,16 +4917,22 @@ async function handleWsMessage(client, message) {
 
   if (message.type === "signal") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
-    const target = getRealtimeClient(String(message.target || ""));
-    if (!target) return;
-    if (!canTargetRealtimeRoom(roomInfo, target)) return sendWs(client, { type: "error", error: "Target is not in this call" });
-    return deliverRealtime(target, {
-      type: "signal",
-      from: client.id,
-      fromUser: client.username,
-      roomId: roomInfo.roomId,
-      signal: message.signal,
-    });
+    const targets = getRealtimeTargets(message.target, message.targetUser);
+    if (!targets.length) return;
+    let delivered = false;
+    for (const target of targets) {
+      if (!canTargetRealtimeRoom(roomInfo, target)) continue;
+      delivered = true;
+      deliverRealtime(target, {
+        type: "signal",
+        from: client.id,
+        fromUser: client.username,
+        roomId: roomInfo.roomId,
+        signal: message.signal,
+      });
+    }
+    if (!delivered) return sendWs(client, { type: "error", error: "Target is not in this call" });
+    return;
   }
 
   if (message.type === "screen:request" || message.type === "location:request") {
@@ -5001,19 +5007,25 @@ async function handleWsMessage(client, message) {
 
   if (message.type === "voice:signal") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || client.voiceRoomId || "lobby", client);
-    const target = getRealtimeClient(String(message.target || ""));
-    if (!target) return;
-    if (!canTargetRealtimeRoom(roomInfo, target) || target.voiceRoomId !== roomInfo.roomId) {
+    const targets = getRealtimeTargets(message.target, message.targetUser);
+    if (!targets.length) return;
+    let delivered = false;
+    for (const target of targets) {
+      if (!canTargetRealtimeRoom(roomInfo, target) || target.voiceRoomId !== roomInfo.roomId) continue;
+      delivered = true;
+      deliverRealtime(target, {
+        type: "voice:signal",
+        from: client.id,
+        fromUser: client.username,
+        roomId: roomInfo.roomId,
+        videoEnabled: Boolean(client.videoEnabled),
+        signal: message.signal,
+      });
+    }
+    if (!delivered) {
       return sendWs(client, { type: "error", error: "Target is not in this call" });
     }
-    return deliverRealtime(target, {
-      type: "voice:signal",
-      from: client.id,
-      fromUser: client.username,
-      roomId: roomInfo.roomId,
-      videoEnabled: Boolean(client.videoEnabled),
-      signal: message.signal,
-    });
+    return;
   }
 
   if (message.type === "call:invite") {
@@ -5049,14 +5061,17 @@ async function handleWsMessage(client, message) {
 
   if (message.type === "screen:viewer-ready") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
-    const target = getRealtimeClient(String(message.target || ""));
-    if (!target || !canTargetRealtimeRoom(roomInfo, target) || target.screenRoomId !== roomInfo.roomId) return;
-    return deliverRealtime(target, {
-      type: "screen:viewer-ready",
-      from: client.id,
-      fromUser: client.username,
-      roomId: roomInfo.roomId,
-    });
+    const targets = getRealtimeTargets(message.target, message.targetUser);
+    for (const target of targets) {
+      if (!canTargetRealtimeRoom(roomInfo, target) || target.screenRoomId !== roomInfo.roomId) continue;
+      deliverRealtime(target, {
+        type: "screen:viewer-ready",
+        from: client.id,
+        fromUser: client.username,
+        roomId: roomInfo.roomId,
+      });
+    }
+    return;
   }
 
   if (message.type === "screen:status") {
@@ -5140,16 +5155,22 @@ async function handleHttpRealtimeMessage(client, message) {
 
   if (message.type === "signal") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
-    const target = getRealtimeClient(String(message.target || ""));
-    if (!target) return;
-    if (!canTargetRealtimeRoom(roomInfo, target)) return deliverRealtime(client, { type: "error", error: "Target is not in this call" });
-    return deliverRealtime(target, {
-      type: "signal",
-      from: client.id,
-      fromUser: client.username,
-      roomId: roomInfo.roomId,
-      signal: message.signal,
-    });
+    const targets = getRealtimeTargets(message.target, message.targetUser);
+    if (!targets.length) return;
+    let delivered = false;
+    for (const target of targets) {
+      if (!canTargetRealtimeRoom(roomInfo, target)) continue;
+      delivered = true;
+      deliverRealtime(target, {
+        type: "signal",
+        from: client.id,
+        fromUser: client.username,
+        roomId: roomInfo.roomId,
+        signal: message.signal,
+      });
+    }
+    if (!delivered) return deliverRealtime(client, { type: "error", error: "Target is not in this call" });
+    return;
   }
 
   if (message.type === "voice:join") {
@@ -5202,19 +5223,25 @@ async function handleHttpRealtimeMessage(client, message) {
 
   if (message.type === "voice:signal") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || client.voiceRoomId || "lobby", client);
-    const target = getRealtimeClient(String(message.target || ""));
-    if (!target) return;
-    if (!canTargetRealtimeRoom(roomInfo, target) || target.voiceRoomId !== roomInfo.roomId) {
+    const targets = getRealtimeTargets(message.target, message.targetUser);
+    if (!targets.length) return;
+    let delivered = false;
+    for (const target of targets) {
+      if (!canTargetRealtimeRoom(roomInfo, target) || target.voiceRoomId !== roomInfo.roomId) continue;
+      delivered = true;
+      deliverRealtime(target, {
+        type: "voice:signal",
+        from: client.id,
+        fromUser: client.username,
+        roomId: roomInfo.roomId,
+        videoEnabled: Boolean(client.videoEnabled),
+        signal: message.signal,
+      });
+    }
+    if (!delivered) {
       return deliverRealtime(client, { type: "error", error: "Target is not in this call" });
     }
-    return deliverRealtime(target, {
-      type: "voice:signal",
-      from: client.id,
-      fromUser: client.username,
-      roomId: roomInfo.roomId,
-      videoEnabled: Boolean(client.videoEnabled),
-      signal: message.signal,
-    });
+    return;
   }
 
   if (message.type === "call:invite") {
@@ -5235,14 +5262,17 @@ async function handleHttpRealtimeMessage(client, message) {
 
   if (message.type === "screen:viewer-ready") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
-    const target = getRealtimeClient(String(message.target || ""));
-    if (!target || !canTargetRealtimeRoom(roomInfo, target) || target.screenRoomId !== roomInfo.roomId) return;
-    return deliverRealtime(target, {
-      type: "screen:viewer-ready",
-      from: client.id,
-      fromUser: client.username,
-      roomId: roomInfo.roomId,
-    });
+    const targets = getRealtimeTargets(message.target, message.targetUser);
+    for (const target of targets) {
+      if (!canTargetRealtimeRoom(roomInfo, target) || target.screenRoomId !== roomInfo.roomId) continue;
+      deliverRealtime(target, {
+        type: "screen:viewer-ready",
+        from: client.id,
+        fromUser: client.username,
+        roomId: roomInfo.roomId,
+      });
+    }
+    return;
   }
 
   if (message.type === "screen:status") {
@@ -5302,6 +5332,14 @@ function realtimeClients() {
 
 function getRealtimeClient(id) {
   return wsClients.get(id) || httpRealtimeClients.get(id) || null;
+}
+
+function getRealtimeTargets(id, username = "") {
+  const direct = getRealtimeClient(String(id || ""));
+  if (direct) return [direct];
+  const cleanUsername = normalizeUsername(username).toLowerCase();
+  if (!cleanUsername) return [];
+  return realtimeClients().filter((client) => String(client.username || "").toLowerCase() === cleanUsername);
 }
 
 function deliverRealtime(client, payload) {

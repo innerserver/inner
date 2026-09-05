@@ -1,7 +1,9 @@
-Connectifi build v216
+Connectifi build v217
 Released: 2026-09-05
 
 Changes in this package:
+- Fixed the TURN diagnostic popup so individual ICE candidate errors are recorded quietly and only shown if the full call or screen-share peer connection actually fails.
+- Reworded the TURN failure message so a single unreachable candidate route does not falsely claim every TURN path is broken.
 - Fixed RTC config precedence so `INNER_TURN_URLS`, `INNER_TURN_USERNAME`, and `INNER_TURN_CREDENTIAL` are merged even when `INNER_ICE_SERVERS_JSON` is also present.
 - Added safe RTC env-key diagnostics to `/api/health` so Render can show which RTC env variable names are present without exposing secret values.
 - Added extra TURN env aliases for hosted setups that use `WEBRTC_TURN_*`, `RTC_TURN_*`, or `TURNIX_*` variable names.
@@ -26,5 +28,5 @@ Changes in this package:
 
 Upload command:
 git add .
-git commit -m "v216"
+git commit -m "v217"
 git push

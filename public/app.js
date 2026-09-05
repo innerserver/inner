@@ -118,6 +118,7 @@ const state = {
   screenShareWarningShown: false,
   screenConnectionState: "",
   rtcIssueNotifiedAt: 0,
+  rtcLastIceError: null,
   remoteFrom: "",
   activeView: "dashboard",
   loggedIn: false,
@@ -4249,7 +4250,7 @@ function createVoicePeer(peerId) {
   pc.onicecandidate = (event) => {
     if (event.candidate) sendWs({ type: "voice:signal", target: peerId, roomId: state.voiceRoomId, signal: { candidate: event.candidate } });
   };
-  pc.onicecandidateerror = (event) => handleIceCandidateError("call", event);
+  pc.onicecandidateerror = (event) => recordIceCandidateError("call", event);
   pc.ontrack = (event) => {
     attachCallStream(peerId, event.streams[0]);
   };
@@ -4260,6 +4261,7 @@ function createVoicePeer(peerId) {
         pc.restartIce();
       } catch (error) {}
     }
+    if (pc.connectionState === "failed") notifyRtcConnectionFailure("call");
     renderVoice();
   };
   pc.oniceconnectionstatechange = () => {
@@ -4403,7 +4405,7 @@ function createPeer(peerId, roomId = "screen:global") {
   pc.onicecandidate = (event) => {
     if (event.candidate) sendSignal(peerId, { candidate: event.candidate }, roomId);
   };
-  pc.onicecandidateerror = (event) => handleIceCandidateError("screen share", event);
+  pc.onicecandidateerror = (event) => recordIceCandidateError("screen share", event);
   pc.ontrack = (event) => {
     const stream = event.streams[0];
     if (!stream) return;
@@ -4420,7 +4422,7 @@ function createPeer(peerId, roomId = "screen:global") {
     }
     if (pc.connectionState === "failed" && state.localStream && !state.screenShareWarningShown) {
       state.screenShareWarningShown = true;
-      notify("Screen share could not reach the other device. A TURN relay is needed for different networks.");
+      notifyRtcConnectionFailure("screen share");
     }
     renderScreen();
   };
@@ -4486,12 +4488,22 @@ function sendSignal(target, signal, roomId = state.screenRoomId || "screen:globa
   sendWs({ type: "signal", target, roomId, signal });
 }
 
-function handleIceCandidateError(kind, event) {
+function recordIceCandidateError(kind, event) {
+  state.rtcLastIceError = {
+    kind,
+    code: Number(event && event.errorCode) || 0,
+    text: String(event && event.errorText || "").slice(0, 180),
+    at: Date.now(),
+  };
+}
+
+function notifyRtcConnectionFailure(kind) {
   const now = Date.now();
   if (now - Number(state.rtcIssueNotifiedAt || 0) < 12000) return;
   state.rtcIssueNotifiedAt = now;
-  const code = Number(event && event.errorCode);
-  const detail = event && event.errorText ? ` ${event.errorText}` : "";
+  const last = state.rtcLastIceError && state.rtcLastIceError.kind === kind ? state.rtcLastIceError : {};
+  const code = Number(last.code || 0);
+  const detail = last.text ? ` ${last.text}` : "";
   const turnMissing = !state.rtcStatus || !state.rtcStatus.turnConfigured || !state.rtcStatus.turnCredentialConfigured;
   if (turnMissing) {
     notify(`${kind} cannot use TURN yet. Check Render env vars for TURN URL, username, and credential.`);
@@ -4502,10 +4514,10 @@ function handleIceCandidateError(kind, event) {
     return;
   }
   if (code === 701) {
-    notify(`${kind} could not reach the TURN server. Check the TURN host, port, and firewall.${detail}`);
+    notify(`${kind} could not finish the TURN connection. Check the TURN host, port, and firewall.${detail}`);
     return;
   }
-  notify(`${kind} connection failed while gathering network candidates.${detail}`);
+  notify(`${kind} connection failed. Check that the other user is online, then verify TURN in Render.${detail}`);
 }
 
 function addStreamTracks(pc, stream) {

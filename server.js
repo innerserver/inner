@@ -4899,6 +4899,7 @@ async function handleWsMessage(client, message) {
     settings.serverEnabled === false &&
     !canAccessWhileServerLocked(client, settings) &&
     (message.type === "signal" ||
+      message.type === "screen:join" ||
       message.type === "screen:status" ||
       message.type === "screen:viewer-ready" ||
       message.type === "screen:request" ||
@@ -4911,7 +4912,7 @@ async function handleWsMessage(client, message) {
     return sendWs(client, { type: "error", error: "Server is shut down. Only admin, HMD, and dev access is open right now." });
   }
   const screenFeatureError = await featureGateError(settings, "screen", client);
-  if (screenFeatureError && (message.type === "signal" || message.type === "screen:status" || message.type === "screen:viewer-ready" || message.type === "screen:request")) {
+  if (screenFeatureError && (message.type === "signal" || message.type === "screen:join" || message.type === "screen:status" || message.type === "screen:viewer-ready" || message.type === "screen:request")) {
     return sendWs(client, { type: "error", error: screenFeatureError });
   }
 
@@ -4943,6 +4944,19 @@ async function handleWsMessage(client, message) {
       type: message.type,
       from: client.id,
       fromUser: client.username,
+    });
+  }
+
+  if (message.type === "screen:join") {
+    const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
+    client.screenViewRoomId = roomInfo.roomId;
+    return sendWs(client, {
+      type: "screen:update",
+      from: client.id,
+      fromUser: client.username,
+      roomId: roomInfo.roomId,
+      sharing: Boolean(client.sharing && client.screenRoomId === roomInfo.roomId),
+      peers: realtimeRoomPeers(roomInfo),
     });
   }
 
@@ -5136,6 +5150,7 @@ async function handleHttpRealtimeMessage(client, message) {
     settings.serverEnabled === false &&
     !canAccessWhileServerLocked(client, settings) &&
     (message.type === "signal" ||
+      message.type === "screen:join" ||
       message.type === "screen:status" ||
       message.type === "screen:viewer-ready" ||
       message.type === "screen:request" ||
@@ -5150,7 +5165,7 @@ async function handleHttpRealtimeMessage(client, message) {
   }
 
   const screenFeatureError = await featureGateError(settings, "screen", client);
-  if (screenFeatureError && (message.type === "signal" || message.type === "screen:status" || message.type === "screen:viewer-ready" || message.type === "screen:request")) {
+  if (screenFeatureError && (message.type === "signal" || message.type === "screen:join" || message.type === "screen:status" || message.type === "screen:viewer-ready" || message.type === "screen:request")) {
     return deliverRealtime(client, { type: "error", error: screenFeatureError });
   }
 
@@ -5172,6 +5187,19 @@ async function handleHttpRealtimeMessage(client, message) {
     }
     if (!delivered) return deliverRealtime(client, { type: "error", error: "Target is not in this call" });
     return;
+  }
+
+  if (message.type === "screen:join") {
+    const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
+    client.screenViewRoomId = roomInfo.roomId;
+    return deliverRealtime(client, {
+      type: "screen:update",
+      from: client.id,
+      fromUser: client.username,
+      roomId: roomInfo.roomId,
+      sharing: Boolean(client.sharing && client.screenRoomId === roomInfo.roomId),
+      peers: realtimeRoomPeers(roomInfo),
+    });
   }
 
   if (message.type === "voice:join") {

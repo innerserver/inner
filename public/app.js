@@ -119,6 +119,7 @@ const state = {
   screenConnectionState: "",
   screenOfferTimer: null,
   screenWatchTimer: null,
+  screenJoinSentAt: new Map(),
   rtcIssueNotifiedAt: 0,
   rtcLastIceError: null,
   remoteFrom: "",
@@ -3877,7 +3878,7 @@ function handleSocketMessage(message) {
     if (state.localStream && state.screenRoomId === (message.roomId || state.screenRoomId)) {
       offerScreenToRoom(state.screenRoomId).catch(() => {});
     } else {
-      requestActiveScreenShares();
+      requestActiveScreenShares(message.peers || undefined);
     }
     renderPeers();
     renderScreen();
@@ -4008,6 +4009,7 @@ async function startShare(options = {}) {
     stream.getTracks().forEach((track) => {
       track.addEventListener("ended", () => stopShare());
     });
+    sendWs({ type: "screen:join", roomId });
     if (!(await sendRealtimeNow({ type: "screen:status", sharing: true, roomId }, "screen sharing"))) {
       stopShare({ silent: true });
       return notify("Live connection is not ready");
@@ -4033,6 +4035,7 @@ function startScreenOfferLoop() {
       state.screenOfferTimer = null;
       return;
     }
+    sendWs({ type: "screen:join", roomId: state.screenRoomId });
     sendWs({ type: "screen:status", sharing: true, roomId: state.screenRoomId });
     offerScreenToRoom(state.screenRoomId).catch(() => {});
   }, 3000);
@@ -4799,7 +4802,7 @@ function sendHttpRealtime(payload) {
 }
 
 function queueRealtimePayload(payload) {
-  if (!payload || !["presence:update", "typing", "voice:state", "screen:status", "screen:viewer-ready", "screen:request", "call:invite", "voice:join", "voice:leave", "signal", "voice:signal"].includes(payload.type)) return;
+  if (!payload || !["presence:update", "typing", "voice:state", "screen:join", "screen:status", "screen:viewer-ready", "screen:request", "call:invite", "voice:join", "voice:leave", "signal", "voice:signal"].includes(payload.type)) return;
   state.wsOutbox.push({ ...payload, queuedAt: Date.now() });
   state.wsOutbox = state.wsOutbox.filter((entry) => Date.now() - entry.queuedAt < 15000).slice(-20);
 }
@@ -4828,6 +4831,7 @@ async function recoverRealtimeState(wasReconnect) {
     setTimeout(() => syncVoicePeers().catch(() => {}), 350);
   }
   if (state.localStream && state.screenRoomId) {
+    sendWs({ type: "screen:join", roomId: state.screenRoomId });
     sendWs({ type: "screen:status", sharing: true, roomId: state.screenRoomId });
     setTimeout(() => {
       for (const peer of screenPeersForRoom(state.screenRoomId)) {
@@ -4835,6 +4839,7 @@ async function recoverRealtimeState(wasReconnect) {
       }
     }, 350);
   } else {
+    setTimeout(() => joinScreenRoom("screen:global"), 200);
     setTimeout(() => requestActiveScreenShares(), 350);
   }
 }
@@ -4894,6 +4899,15 @@ function requestActiveScreenShares(peers = Array.from(state.peers.values())) {
     });
 }
 
+function joinScreenRoom(roomId = "screen:global") {
+  if (!state.loggedIn) return;
+  const now = Date.now();
+  const lastSentAt = Number(state.screenJoinSentAt.get(roomId) || 0);
+  if (now - lastSentAt < 2500) return;
+  state.screenJoinSentAt.set(roomId, now);
+  sendWs({ type: "screen:join", roomId });
+}
+
 function mergeScreenPeers(roomId, peers = []) {
   const activeIds = new Set();
   peers.forEach((peer) => {
@@ -4914,6 +4928,7 @@ function startScreenWatchLoop() {
   clearInterval(state.screenWatchTimer);
   state.screenWatchTimer = setInterval(() => {
     if (!state.loggedIn || state.localStream || state.remoteScreenStream) return;
+    joinScreenRoom("screen:global");
     requestActiveScreenShares();
   }, 3000);
 }
@@ -8785,6 +8800,9 @@ function updateControls() {
   const voiceEnabled = serverEnabled && featureAvailable("voice");
   const invitesEnabled = serverEnabled && featureAvailable("invites");
   const dmCallReady = dmsEnabled && Boolean(currentDmCallRoom());
+  if (dmCallReady && state.loggedIn && !state.localStream && !state.remoteScreenStream) {
+    joinScreenRoom(currentDmCallRoom());
+  }
   const screenCaptureAvailable = Boolean(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
   els.roomSelect.disabled = !featureAvailable("rooms") && room.id !== "main";
   els.inviteCodeInput.disabled = !invitesEnabled;

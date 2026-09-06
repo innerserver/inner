@@ -57,6 +57,8 @@ const MIN_PASSWORD_LENGTH = Math.max(10, Number(firstEnvValue("INNER_MIN_PASSWOR
 const PUBLIC_HOST_FALLBACK = "https://connectifi.in";
 const DEFAULT_PRIVILEGED_ACCOUNTS_ENABLED = isTruthy(firstEnvValue("INNER_ENABLE_DEFAULT_PRIVILEGED_ACCOUNTS", "ENABLE_DEFAULT_PRIVILEGED_ACCOUNTS"));
 const SMTP_ALLOW_INSECURE_TLS = isTruthy(firstEnvValue("INNER_SMTP_ALLOW_INSECURE_TLS", "SMTP_ALLOW_INSECURE_TLS"));
+const ALLOW_CUSTOM_AI_BASE_URL = isTruthy(firstEnvValue("INNER_ALLOW_CUSTOM_AI_BASE_URL", "ALLOW_CUSTOM_AI_BASE_URL"));
+const AI_ALLOWED_HOSTS = new Set(["api.openai.com", ...splitEnvList(firstEnvValue("INNER_AI_ALLOWED_HOSTS", "AI_ALLOWED_HOSTS")).map((host) => host.toLowerCase())]);
 const BLOCK_DUPLICATE_SIGNUP_IPS = isTruthy(firstEnvValue("INNER_BLOCK_DUPLICATE_SIGNUP_IPS", "BLOCK_DUPLICATE_SIGNUP_IPS"));
 const DUPLICATE_SIGNUP_IP_ALLOWLIST = new Set(
   ["152.58.2.169", ...splitEnvList(firstEnvValue("INNER_SIGNUP_IP_ALLOWLIST", "INNER_DUPLICATE_IP_ALLOWLIST", "SIGNUP_IP_ALLOWLIST"))]
@@ -1917,6 +1919,7 @@ async function routeApi(req, res, requestUrl) {
     if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
     const featureError = await featureGateError(settings, "files", user);
     if (featureError) return json(res, 423, { error: featureError });
+    if (!cloudinaryConfigured() || UPLOAD_PROVIDER === "mongodb") return json(res, 503, { error: "Direct Cloudinary uploads are not configured" });
     const body = await readJsonBody(req);
     const draft = body.draft || {};
     const cloudinary = body.cloudinary || {};
@@ -1925,6 +1928,8 @@ async function routeApi(req, res, requestUrl) {
     const originalName = sanitizeFileName(draft.originalName || "upload.bin");
     const extension = path.extname(originalName).toLowerCase();
     if (!isAllowedUploadExtension(extension)) return json(res, 400, { error: "Unsupported or unsafe file type" });
+    const cloudinaryError = validateCloudinaryUploadResult(cloudinary, draft);
+    if (cloudinaryError) return json(res, 400, { error: cloudinaryError });
 
     const fileRecord = {
       ...draft,
@@ -4648,6 +4653,47 @@ function signCloudinaryParams(params) {
     .map((key) => `${key}=${params[key]}`)
     .join("&");
   return crypto.createHash("sha1").update(`${payload}${CLOUDINARY_API_SECRET}`).digest("hex");
+}
+
+function expectedCloudinaryPublicId(storedName) {
+  return `${CLOUDINARY_FOLDER}/${path.basename(String(storedName || ""), path.extname(String(storedName || "")))}`.replace(/\/+/g, "/");
+}
+
+function validateCloudinaryUploadResult(cloudinary, draft) {
+  if (!cloudinaryConfigured()) return "Cloudinary is not configured";
+  const publicId = String(cloudinary.public_id || "");
+  const expectedPublicId = expectedCloudinaryPublicId(draft.storedName);
+  if (publicId !== expectedPublicId) return "Cloudinary upload result does not match this upload";
+  const version = String(cloudinary.version || "");
+  const signature = String(cloudinary.signature || "");
+  if (!/^\d+$/.test(version) || !/^[a-f0-9]{40}$/i.test(signature)) return "Cloudinary upload signature is missing";
+  const expectedSignature = signCloudinaryParams({ public_id: publicId, version });
+  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))) return "Cloudinary upload signature is invalid";
+  if (!isAllowedCloudinarySecureUrl(cloudinary.secure_url, publicId, version)) return "Cloudinary secure URL is invalid";
+  const resourceType = String(cloudinary.resource_type || "auto");
+  if (!["image", "video", "raw", "auto"].includes(resourceType)) return "Cloudinary resource type is invalid";
+  return "";
+}
+
+function isAllowedCloudinarySecureUrl(value, publicId = "", version = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "https:") return false;
+    if (parsed.username || parsed.password) return false;
+    if (parsed.hostname.toLowerCase() !== "res.cloudinary.com") return false;
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    if (parts[0] !== CLOUDINARY_CLOUD_NAME) return false;
+    if (!["image", "video", "raw"].includes(parts[1])) return false;
+    if (parts[2] !== "upload") return false;
+    const versionIndex = parts.findIndex((part) => /^v\d+$/.test(part));
+    if (version && versionIndex !== -1 && parts[versionIndex] !== `v${version}`) return false;
+    const pathAfterUpload = parts.slice(parts[3] && /^v\d+$/.test(parts[3]) ? 4 : 3).join("/");
+    return !publicId || pathAfterUpload === publicId || pathAfterUpload.startsWith(`${publicId}.`);
+  } catch (error) {
+    return false;
+  }
 }
 
 function cloudinaryConfigured() {
@@ -10124,7 +10170,12 @@ function sanitizeAiBaseUrl(value) {
   const raw = String(value || "").trim() || "https://api.openai.com/v1";
   try {
     const parsed = new URL(raw);
-    if (!["http:", "https:"].includes(parsed.protocol)) return "https://api.openai.com/v1";
+    if (parsed.protocol !== "https:") return "https://api.openai.com/v1";
+    if (parsed.username || parsed.password) return "https://api.openai.com/v1";
+    const host = parsed.hostname.toLowerCase();
+    if (host !== "api.openai.com" && (!ALLOW_CUSTOM_AI_BASE_URL || !AI_ALLOWED_HOSTS.has(host))) {
+      return "https://api.openai.com/v1";
+    }
     return parsed.toString().replace(/\/+$/, "");
   } catch (error) {
     return "https://api.openai.com/v1";
@@ -10297,6 +10348,7 @@ async function serveCloudUpload(req, res, record) {
     return proxyB2Upload(req, res, record);
   }
   if (record && record.cloudStorage === "cloudinary" && record.cloudinarySecureUrl) {
+    if (!isAllowedCloudinarySecureUrl(record.cloudinarySecureUrl, record.cloudinaryPublicId, record.cloudinaryVersion)) return false;
     const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
     if (record.private || requestUrl.searchParams.get("download") === "1") return proxyCloudinaryUpload(req, res, record);
     res.writeHead(302, {
@@ -10354,6 +10406,7 @@ async function serveCloudUpload(req, res, record) {
 
 async function proxyCloudinaryUpload(req, res, record) {
   if (typeof fetch !== "function") return false;
+  if (!isAllowedCloudinarySecureUrl(record.cloudinarySecureUrl, record.cloudinaryPublicId, record.cloudinaryVersion)) return false;
   const requestHeaders = {};
   if (req.headers.range) requestHeaders.Range = req.headers.range;
   const upstream = await fetch(record.cloudinarySecureUrl, { headers: requestHeaders }).catch(() => null);

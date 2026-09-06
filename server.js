@@ -5007,7 +5007,7 @@ async function handleWsMessage(client, message) {
   if (message.type === "screen:join") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
     client.screenViewRoomId = roomInfo.roomId;
-    return sendWs(client, {
+    sendWs(client, {
       type: "screen:update",
       from: client.id,
       fromUser: client.username,
@@ -5015,6 +5015,8 @@ async function handleWsMessage(client, message) {
       sharing: Boolean(client.sharing && client.screenRoomId === roomInfo.roomId),
       peers: realtimeRoomPeers(roomInfo),
     });
+    notifyScreenSharersOfViewer(roomInfo, client);
+    return;
   }
 
   if (message.type === "location:share") {
@@ -5250,7 +5252,7 @@ async function handleHttpRealtimeMessage(client, message) {
   if (message.type === "screen:join") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
     client.screenViewRoomId = roomInfo.roomId;
-    return deliverRealtime(client, {
+    deliverRealtime(client, {
       type: "screen:update",
       from: client.id,
       fromUser: client.username,
@@ -5258,6 +5260,8 @@ async function handleHttpRealtimeMessage(client, message) {
       sharing: Boolean(client.sharing && client.screenRoomId === roomInfo.roomId),
       peers: realtimeRoomPeers(roomInfo),
     });
+    notifyScreenSharersOfViewer(roomInfo, client);
+    return;
   }
 
   if (message.type === "voice:join") {
@@ -5574,6 +5578,21 @@ function realtimeRoomPeers(roomInfo, exceptId = "") {
     .filter((client) => client.id !== exceptId)
     .filter((client) => !roomInfo || !roomInfo.private || roomInfo.participants.has(client.username))
     .map(peerSummary);
+}
+
+function notifyScreenSharersOfViewer(roomInfo, viewer) {
+  if (!viewer || !roomInfo) return;
+  for (const target of realtimeClients()) {
+    if (target.id === viewer.id) continue;
+    if (target.screenRoomId !== roomInfo.roomId || !target.sharing) continue;
+    if (!canTargetRealtimeRoom(roomInfo, target)) continue;
+    deliverRealtime(target, {
+      type: "screen:viewer-ready",
+      from: viewer.id,
+      fromUser: viewer.username,
+      roomId: roomInfo.roomId,
+    });
+  }
 }
 
 async function resolveRealtimeRoom(roomId, client, options = {}) {

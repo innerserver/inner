@@ -4459,7 +4459,7 @@ function createPeer(peerId, roomId = "screen:global") {
   };
   pc.onicecandidateerror = (event) => recordIceCandidateError("screen share", event);
   pc.ontrack = (event) => {
-    const stream = event.streams[0];
+    const stream = selectScreenVideoStream(event);
     if (!stream) return;
     attachScreenStream(peerId, stream, roomId);
   };
@@ -4875,7 +4875,15 @@ function closePeer(peerId) {
   state.pendingCandidates.delete(peerId);
 }
 
+function selectScreenVideoStream(event) {
+  const stream = Array.from(event.streams || []).find((entry) => entry && entry.getVideoTracks().length);
+  if (stream) return stream;
+  if (event.track && event.track.kind === "video") return new MediaStream([event.track]);
+  return null;
+}
+
 function attachScreenStream(peerId, stream, roomId = "screen:global") {
+  if (!stream || !stream.getVideoTracks().length) return;
   state.remoteFrom = peerId;
   state.remoteScreenRoomId = roomId;
   state.remoteScreenStream = stream;

@@ -59,8 +59,14 @@ services:
       - key: INNER_RTC_RELAY_ONLY
         value: "false"
       - key: INNER_SIGNUP_MODE
-        value: "open"
+        value: "request"
       - key: INNER_REQUIRE_CONTACT
+        value: "true"
+      - key: INNER_PUBLIC_URL
+        value: "https://connectifi.in"
+      - key: INNER_MIN_PASSWORD_LENGTH
+        value: "10"
+      - key: INNER_ENABLE_DEFAULT_PRIVILEGED_ACCOUNTS
         value: "false"
       - key: INNER_REPORT_EMAILS
         sync: false

@@ -192,7 +192,7 @@ namespace InnerDesktop
             startInfo.EnvironmentVariables["INNER_LOCALHOST_MODE"] = "true";
             startInfo.EnvironmentVariables["INNER_REQUIRE_CLOUD_STORAGE"] = "false";
             startInfo.EnvironmentVariables["INNER_DATA_DIR"] = Path.Combine(appRoot, "data");
-            startInfo.EnvironmentVariables["HOST"] = "0.0.0.0";
+            startInfo.EnvironmentVariables["HOST"] = Environment.GetEnvironmentVariable("INNER_DESKTOP_SHARE_LAN") == "true" ? "0.0.0.0" : "127.0.0.1";
             startInfo.EnvironmentVariables["PORT"] = port.ToString();
 
             try

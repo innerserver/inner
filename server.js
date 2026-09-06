@@ -53,6 +53,10 @@ const SMTP_PASS = firstEnvValue("INNER_SMTP_PASS", "SMTP_PASS", "SMTP_PASSWORD")
 const SMTP_SECURE = firstEnvValue("INNER_SMTP_SECURE", "SMTP_SECURE");
 const DEFAULT_SIGNUP_MODE = String(firstEnvValue("INNER_SIGNUP_MODE", "SIGNUP_MODE") || "open").toLowerCase() === "request" ? "request" : "open";
 const DEFAULT_REQUIRE_CONTACT = firstEnvValue("INNER_REQUIRE_CONTACT", "REQUIRE_CONTACT") === "" ? false : !isFalsy(firstEnvValue("INNER_REQUIRE_CONTACT", "REQUIRE_CONTACT"));
+const MIN_PASSWORD_LENGTH = Math.max(10, Number(firstEnvValue("INNER_MIN_PASSWORD_LENGTH", "MIN_PASSWORD_LENGTH") || 10));
+const PUBLIC_HOST_FALLBACK = "https://connectifi.in";
+const DEFAULT_PRIVILEGED_ACCOUNTS_ENABLED = isTruthy(firstEnvValue("INNER_ENABLE_DEFAULT_PRIVILEGED_ACCOUNTS", "ENABLE_DEFAULT_PRIVILEGED_ACCOUNTS"));
+const SMTP_ALLOW_INSECURE_TLS = isTruthy(firstEnvValue("INNER_SMTP_ALLOW_INSECURE_TLS", "SMTP_ALLOW_INSECURE_TLS"));
 const BLOCK_DUPLICATE_SIGNUP_IPS = isTruthy(firstEnvValue("INNER_BLOCK_DUPLICATE_SIGNUP_IPS", "BLOCK_DUPLICATE_SIGNUP_IPS"));
 const DUPLICATE_SIGNUP_IP_ALLOWLIST = new Set(
   ["152.58.2.169", ...splitEnvList(firstEnvValue("INNER_SIGNUP_IP_ALLOWLIST", "INNER_DUPLICATE_IP_ALLOWLIST", "SIGNUP_IP_ALLOWLIST"))]
@@ -529,6 +533,7 @@ async function ensureUsers() {
   const settings = await readJson(FILES.settings, {});
   const deletedDefaults = Array.isArray(settings.deletedDefaultAdmins) ? settings.deletedDefaultAdmins : [];
   const defaultHash = (username) => defaultAccountPasswordHash(username);
+  const allowDefault = (username) => shouldProvisionDefaultAccount(username);
 
   if (!(await jsonExists(FILES.users))) {
     await writeJson(FILES.users, [
@@ -541,7 +546,7 @@ async function ensureUsers() {
         locked: true,
         createdAt: now,
       },
-      {
+      allowDefault("admin2") ? {
         username: "admin2",
         role: "admin",
         passwordHash: defaultHash("admin2"),
@@ -549,8 +554,8 @@ async function ensureUsers() {
         allowPersistentLogin: false,
         locked: false,
         createdAt: now,
-      },
-      {
+      } : null,
+      allowDefault("hmd") ? {
         username: "hmd",
         role: "hmd",
         passwordHash: defaultHash("hmd"),
@@ -559,8 +564,8 @@ async function ensureUsers() {
         locked: false,
         createdAt: now,
         createdBy: "system",
-      },
-      {
+      } : null,
+      allowDefault("dev") ? {
         username: "dev",
         role: "dev",
         passwordHash: defaultHash("dev"),
@@ -569,8 +574,8 @@ async function ensureUsers() {
         locked: false,
         createdAt: now,
         createdBy: "system",
-      },
-    ]);
+      } : null,
+    ].filter(Boolean));
     return;
   }
 
@@ -580,7 +585,7 @@ async function ensureUsers() {
   const admin2Index = users.findIndex((entry) => entry.username.toLowerCase() === "admin2");
   const ensureDefaultUser = (username, role, preset, locked = false) => {
     const index = users.findIndex((entry) => entry.username.toLowerCase() === username);
-    if (index === -1 && !deletedDefaults.includes(username)) {
+    if (index === -1 && !deletedDefaults.includes(username) && allowDefault(username)) {
       users.push({
         username,
         role,
@@ -638,7 +643,7 @@ async function ensureUsers() {
     changed = changed || admin.role !== "admin" || shouldSetOwnerPassword;
   }
 
-  if (admin2Index === -1 && !deletedDefaults.includes("admin2")) {
+  if (admin2Index === -1 && !deletedDefaults.includes("admin2") && allowDefault("admin2")) {
     users.push({
       username: "admin2",
       role: "admin",
@@ -1234,7 +1239,7 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     const tokenValue = String(body.token || "").trim();
     const nextPassword = String(body.nextPassword || "");
-    if (nextPassword.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
+    if (nextPassword.length < MIN_PASSWORD_LENGTH) return json(res, 400, { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
     const [id, rawToken] = tokenValue.split(".");
     if (!id || !rawToken) return json(res, 400, { error: "Reset link is invalid" });
     const settings = await readJson(FILES.settings, {});
@@ -1290,7 +1295,7 @@ async function routeApi(req, res, requestUrl) {
     const password = String(body.password || "");
     const grade = normalizeGrade(body.grade || "");
     const contact = String(body.contact || [email, phone].filter(Boolean).join(" / ")).trim().slice(0, 160);
-    if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
+    if (password.length < MIN_PASSWORD_LENGTH) return json(res, 400, { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
     if (settings.requireContact !== false && !contact) {
       return json(res, 400, { error: "Add an email or phone number so admins can contact you after review." });
     }
@@ -1381,7 +1386,7 @@ async function routeApi(req, res, requestUrl) {
     const contact = String(body.contact || [email, phone].filter(Boolean).join(" / ")).trim().slice(0, 160);
     const grade = normalizeGrade(body.grade || "");
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
-    if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
+    if (password.length < MIN_PASSWORD_LENGTH) return json(res, 400, { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
     if (settings.requireContact !== false && !contact) {
       return json(res, 400, { error: "Add an email or phone number so admins can contact you." });
     }
@@ -1460,10 +1465,6 @@ async function routeApi(req, res, requestUrl) {
   const user = requireUser(req, res);
   if (!user) return;
 
-  if (req.method === "GET" && pathname === "/api/browser/frame") {
-    return serveBrowserFrame(req, res, requestUrl, user);
-  }
-
   const shutdownSettings = await readJson(FILES.settings, {});
   if (shutdownSettings.serverEnabled === false && !canAccessWhileServerLocked(user, shutdownSettings)) {
     clearSessionForRequest(req, res);
@@ -1472,6 +1473,10 @@ async function routeApi(req, res, requestUrl) {
   if (ownerCheckinModeratorOnly(shutdownSettings) && !canModerate(user)) {
     clearSessionForRequest(req, res);
     return json(res, 423, { error: "Moderator continuity mode is active. Only moderators and owner admins can access the app right now." });
+  }
+
+  if (req.method === "GET" && pathname === "/api/browser/frame") {
+    return serveBrowserFrame(req, res, requestUrl, user);
   }
 
   if (req.method === "POST" && pathname === "/api/owner-failsafe/recovery-code") {
@@ -2881,7 +2886,10 @@ async function routeApi(req, res, requestUrl) {
     const index = dms.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "DM not found" });
     const dm = dms[index];
-    if (dm.from !== user.username && !canModerate(user)) return json(res, 403, { error: "You can edit only your DMs" });
+    if (dm.from !== user.username) {
+      const settings = await readJson(FILES.settings, {});
+      if (!canUseModerationCapability(user, settings, "content-moderation")) return json(res, 403, { error: "Content moderation access required" });
+    }
     const automodError = await checkAutomod(textValue, user, req);
     if (automodError) return json(res, 400, { error: automodError });
     dms[index] = {
@@ -2927,11 +2935,8 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "POST" && pathname === "/api/features/lock") {
-    if (!canManage(user) && !canModerate(user)) return json(res, 403, { error: "Moderator access required" });
     const settings = await readJson(FILES.settings, {});
-    if (normalizeRole(user.role) === "admin" && !canOwn(user) && !canUseModerationCapability(user, settings, "room-controls")) {
-      return json(res, 403, { error: "Owner admin has not granted room-control access" });
-    }
+    if (!canUseModerationCapability(user, settings, "room-controls")) return json(res, 403, { error: "Room-control access required" });
     const body = await readJsonBody(req);
     const feature = String(body.feature || "").toLowerCase();
     if (!allowedFeatureLocks.has(feature)) return json(res, 400, { error: "Unknown feature" });
@@ -3147,7 +3152,7 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     const id = String(body.id || "");
     const password = String(body.password || "");
-    if (password.length > 0 && password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
+    if (password.length > 0 && password.length < MIN_PASSWORD_LENGTH) return json(res, 400, { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
 
     const [requests, users, profiles] = await Promise.all([
       readJson(FILES.accountRequests, []),
@@ -3161,7 +3166,7 @@ async function routeApi(req, res, requestUrl) {
     if (grantedRole === "admin") return json(res, 403, { error: "Creating new admin accounts is locked. Use the existing admin accounts only." });
     if (["hmd", "dev"].includes(grantedRole) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
     if (request.status === "approved") return json(res, 409, { error: "Request already approved" });
-    const nextPasswordHash = password.length >= 4 ? hashPassword(password) : request.passwordHash;
+    const nextPasswordHash = password.length >= MIN_PASSWORD_LENGTH ? hashPassword(password) : request.passwordHash;
     if (!nextPasswordHash) return json(res, 400, { error: "This request has no password. Set one while approving." });
     if (users.some((entry) => entry.username.toLowerCase() === request.username.toLowerCase())) {
       return json(res, 409, { error: "That username already exists" });
@@ -3229,7 +3234,7 @@ async function routeApi(req, res, requestUrl) {
         "",
         `Username: ${request.username}`,
         `Account type: ${grantedRole}`,
-        password.length >= 4 ? "Use the password your admin just set." : "Use the password you chose when requesting the account.",
+        password.length >= MIN_PASSWORD_LENGTH ? "Use the password your admin just set." : "Use the password you chose when requesting the account.",
       ].join("\n"), { route: "accountApprovals", contactType: "support", fromContact: false, actionLabel: "Open Connectifi", ctaUrl: publicBaseUrl(req) });
     }
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
@@ -3251,7 +3256,7 @@ async function routeApi(req, res, requestUrl) {
     if (username.toLowerCase() === "admin") return json(res, 400, { error: "The admin account already exists" });
     if (role === "admin" && !canOwn(user)) return json(res, 403, { error: "Only an owner admin can create non-owner admin accounts" });
     if (["hmd", "dev"].includes(role) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
-    if (password.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
+    if (password.length < MIN_PASSWORD_LENGTH) return json(res, 400, { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
 
     const users = await readJson(FILES.users, []);
     if (users.some((entry) => entry.username.toLowerCase() === username.toLowerCase())) {
@@ -3670,7 +3675,10 @@ async function routeApi(req, res, requestUrl) {
     if (index === -1) return json(res, 404, { error: "Message not found" });
     const room = rooms.find((entry) => entry.id === (messages[index].roomId || "main")) || { id: messages[index].roomId || "main" };
     if (!canAccessRoom(room, user)) return json(res, 403, { error: "You do not have access to this message" });
-    if (messages[index].user !== user.username && !canModerate(user)) return json(res, 403, { error: "You can edit only your messages" });
+    if (messages[index].user !== user.username) {
+      const settings = await readJson(FILES.settings, {});
+      if (!canUseModerationCapability(user, settings, "content-moderation")) return json(res, 403, { error: "Content moderation access required" });
+    }
     const automodError = await checkAutomod(textValue, user, req);
     if (automodError) return json(res, 400, { error: automodError });
     messages[index] = {
@@ -3884,7 +3892,8 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "POST" && pathname === "/api/automod") {
-    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
+    const settings = await readJson(FILES.settings, {});
+    if (!canUseModerationCapability(user, settings, "auto-moderation")) return json(res, 403, { error: "Auto-moderation access required" });
     const body = await readJsonBody(req);
     const existing = await readJson(FILES.automod, {});
     const next = {
@@ -3923,7 +3932,7 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     const currentPassword = String(body.currentPassword || "");
     const nextPassword = String(body.nextPassword || "");
-    if (nextPassword.length < 4) return json(res, 400, { error: "New password must be at least 4 characters" });
+    if (nextPassword.length < MIN_PASSWORD_LENGTH) return json(res, 400, { error: `New password must be at least ${MIN_PASSWORD_LENGTH} characters` });
 
     const users = await readJson(FILES.users, []);
     const index = users.findIndex((entry) => entry.username === user.username);
@@ -3946,7 +3955,7 @@ async function routeApi(req, res, requestUrl) {
     const username = String(body.username || "").trim();
     const nextPassword = String(body.nextPassword || "");
     if (!username) return json(res, 400, { error: "Choose a user" });
-    if (nextPassword.length < 4) return json(res, 400, { error: "Password must be at least 4 characters" });
+    if (nextPassword.length < MIN_PASSWORD_LENGTH) return json(res, 400, { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
 
     const users = await readJson(FILES.users, []);
     const index = users.findIndex((entry) => entry.username.toLowerCase() === username.toLowerCase());
@@ -4200,8 +4209,8 @@ async function resolveChatAttachment(attachment) {
 }
 
 function createUploadRecord({ req, user, originalName, storedName, category, extension, providedType, privateUpload, size, url, persistence: persistenceLabel }) {
-  const releaseAt = canModerate(user) ? normalizeReleaseAt(req.headers["x-file-release-at"]) : "";
-  const releaseRoom = canModerate(user) ? String(req.headers["x-file-release-room"] || "").trim().slice(0, 80) : "";
+  const releaseAt = canManage(user) ? normalizeReleaseAt(req.headers["x-file-release-at"]) : "";
+  const releaseRoom = canManage(user) ? String(req.headers["x-file-release-room"] || "").trim().slice(0, 80) : "";
   return {
     id: crypto.randomUUID(),
     originalName,
@@ -5915,7 +5924,7 @@ function requiresCsrfProtection(req) {
 function isSameOriginRequest(req) {
   const requestHost = String(req.headers.host || "").toLowerCase();
   const source = String(req.headers.origin || req.headers.referer || "").trim();
-  if (!source) return true;
+  if (!source) return false;
   try {
     return new URL(source).host.toLowerCase() === requestHost;
   } catch (error) {
@@ -8020,7 +8029,7 @@ function canManage(user) {
 }
 
 function canOwn(user) {
-  return ownerUsernames.has(String(user && user.username || "").toLowerCase());
+  return ownerUsernames.has(String(user && user.username || "").toLowerCase()) && effectiveRole(user) === "admin";
 }
 
 function canDev(user) {
@@ -8028,8 +8037,7 @@ function canDev(user) {
 }
 
 function canBypassShutdown(user) {
-  const username = String(user && user.username ? user.username : "").toLowerCase();
-  return shutdownExemptUsernames.has(username) || canManage(user);
+  return canManage(user) || canDev(user);
 }
 
 function canModerate(user) {
@@ -8058,7 +8066,7 @@ function sanitizeDelegatedAdminFeatures(source) {
 
 function canUseModerationCapability(user, settings, capability) {
   if (!canModerate(user)) return false;
-  if (normalizeRole(user && user.role) !== "admin" || canOwn(user)) return true;
+  if (canOwn(user)) return true;
   const features = sanitizeDelegatedAdminFeatures(settings && settings.delegatedAdminFeatures)[normalizeUsername(user.username)] || [];
   return features.includes(capability);
 }
@@ -8379,7 +8387,7 @@ async function checkAutomod(textValue, user, req) {
 }
 
 async function checkMessageRate(user) {
-  if (canModerate(user)) return "";
+  if (canManage(user)) return "";
   const users = await readJson(FILES.users, []);
   const account = users.find((entry) => entry.username === user.username);
   if (isUserMuted(account)) return `You are muted until ${new Date(account.mutedUntil).toLocaleString()}`;
@@ -8985,9 +8993,15 @@ async function sendEmailToRecipients(recipients, subject, body, options = {}) {
 function publicBaseUrl(req) {
   const configured = firstEnvValue("INNER_PUBLIC_URL", "PUBLIC_URL", "RENDER_EXTERNAL_URL");
   if (configured) return String(configured).replace(/\/+$/, "");
+  if (isProductionRuntime()) return PUBLIC_HOST_FALLBACK;
   const proto = firstForwardedValue(req.headers["x-forwarded-proto"]) || (req.socket.encrypted ? "https" : "http");
   const host = req.headers["x-forwarded-host"] || req.headers.host || `${HOST}:${PORT}`;
   return `${proto}://${host}`.replace(/\/+$/, "");
+}
+
+function isProductionRuntime() {
+  return String(process.env.NODE_ENV || "").toLowerCase() === "production" ||
+    Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID || process.env.RENDER_EXTERNAL_URL);
 }
 
 async function sendResendEmail(payload) {
@@ -9059,7 +9073,7 @@ async function sendSmtpEmail(payload) {
     await session.command(`EHLO ${smtpEhloName()}`, 250);
     if (!secure && port !== 25) {
       await session.command("STARTTLS", 220);
-      socket = tls.connect({ socket, servername: SMTP_HOST, rejectUnauthorized: false });
+      socket = tls.connect({ socket, servername: SMTP_HOST, rejectUnauthorized: !SMTP_ALLOW_INSECURE_TLS });
       await new Promise((resolve, reject) => {
         socket.once("secureConnect", resolve);
         socket.once("error", reject);
@@ -9088,7 +9102,7 @@ async function sendSmtpEmail(payload) {
 function openSmtpSocket(host, port, secure) {
   return new Promise((resolve, reject) => {
     const socket = secure
-      ? tls.connect({ host, port, servername: host, rejectUnauthorized: false })
+      ? tls.connect({ host, port, servername: host, rejectUnauthorized: !SMTP_ALLOW_INSECURE_TLS })
       : net.createConnection({ host, port });
     socket.setTimeout(20000, () => socket.destroy(new Error("SMTP connection timed out")));
     socket.once(secure ? "secureConnect" : "connect", () => resolve(socket));
@@ -9611,6 +9625,17 @@ function defaultAccountPasswordHash(username) {
   const password = firstEnvValue(`INNER_${keyName}_PASSWORD`, `${keyName}_PASSWORD`, "INNER_DEFAULT_ADMIN_PASSWORD");
   if (password) return hashPassword(String(password));
   return hashPassword(crypto.randomBytes(24).toString("base64url"));
+}
+
+function defaultAccountCredentialConfigured(username) {
+  const keyName = String(username || "").toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  return Boolean(firstEnvValue(`INNER_${keyName}_PASSWORD_HASH`, `${keyName}_PASSWORD_HASH`, `INNER_${keyName}_PASSWORD`, `${keyName}_PASSWORD`));
+}
+
+function shouldProvisionDefaultAccount(username) {
+  const clean = normalizeUsername(username).toLowerCase();
+  if (clean === "admin") return true;
+  return DEFAULT_PRIVILEGED_ACCOUNTS_ENABLED || defaultAccountCredentialConfigured(clean);
 }
 
 function verifyPassword(password, passwordRecord) {

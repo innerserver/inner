@@ -3864,6 +3864,27 @@ function handleSocketMessage(message) {
     return;
   }
 
+  if (message.type === "screen:update") {
+    mergeScreenPeers(message.roomId || "screen:global", message.peers || []);
+    const peer = state.peers.get(message.from) || {
+      id: message.from,
+      username: message.fromUser,
+    };
+    peer.sharing = message.sharing;
+    peer.screenRoomId = message.sharing ? message.roomId || "screen:global" : "";
+    state.peers.set(message.from, peer);
+    if (!message.sharing && state.remoteFrom === message.from) clearRemoteVideo(message.roomId);
+    if (state.localStream && state.screenRoomId === (message.roomId || state.screenRoomId)) {
+      offerScreenToRoom(state.screenRoomId).catch(() => {});
+    } else {
+      requestActiveScreenShares();
+    }
+    renderPeers();
+    renderScreen();
+    renderDmCall();
+    return;
+  }
+
   if (message.type === "screen:viewer-ready") {
     if (state.localStream && message.from && message.from !== state.clientId) {
       makeFreshScreenOffer(message.from, message.roomId || state.screenRoomId || "screen:global").catch(() => {});
@@ -4871,6 +4892,22 @@ function requestActiveScreenShares(peers = Array.from(state.peers.values())) {
       sendWs({ type: "screen:viewer-ready", target: peer.id, targetUser: peer.username || "", roomId });
       setTimeout(() => sendWs({ type: "screen:viewer-ready", target: peer.id, targetUser: peer.username || "", roomId }), 900);
     });
+}
+
+function mergeScreenPeers(roomId, peers = []) {
+  const activeIds = new Set();
+  peers.forEach((peer) => {
+    if (!peer || !peer.id || peer.id === state.clientId) return;
+    activeIds.add(peer.id);
+    const previous = state.peers.get(peer.id) || {};
+    state.peers.set(peer.id, { ...previous, ...peer });
+  });
+  if (isDmCallRoom(roomId)) return;
+  state.peers.forEach((peer, peerId) => {
+    if (peer.screenRoomId === roomId && !activeIds.has(peerId)) {
+      state.peers.set(peerId, { ...peer, sharing: false, screenRoomId: "" });
+    }
+  });
 }
 
 function startScreenWatchLoop() {

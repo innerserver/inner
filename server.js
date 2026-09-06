@@ -5080,11 +5080,12 @@ async function handleWsMessage(client, message) {
     client.screenRoomId = client.sharing ? roomInfo.roomId : "";
     await addSystemLog(client.sharing ? "screen.share.started" : "screen.share.stopped", client.username, { roomId: roomInfo.roomId });
     return broadcastRealtimeRoom({
-      type: "screen:status",
+      type: "screen:update",
       from: client.id,
       fromUser: client.username,
       roomId: roomInfo.roomId,
       sharing: client.sharing,
+      peers: realtimeRoomPeers(roomInfo),
     }, roomInfo);
   }
 }
@@ -5281,11 +5282,12 @@ async function handleHttpRealtimeMessage(client, message) {
     client.screenRoomId = client.sharing ? roomInfo.roomId : "";
     await addSystemLog(client.sharing ? "screen.share.started" : "screen.share.stopped", client.username, { roomId: roomInfo.roomId, transport: "http" });
     return broadcastRealtimeRoom({
-      type: "screen:status",
+      type: "screen:update",
       from: client.id,
       fromUser: client.username,
       roomId: roomInfo.roomId,
       sharing: client.sharing,
+      peers: realtimeRoomPeers(roomInfo),
     }, roomInfo);
   }
 }
@@ -5477,6 +5479,14 @@ function voicePeers(roomId) {
   pruneHttpRealtime();
   return realtimeClients()
     .filter((client) => client.voiceRoomId === roomId)
+    .map(peerSummary);
+}
+
+function realtimeRoomPeers(roomInfo, exceptId = "") {
+  pruneHttpRealtime();
+  return realtimeClients()
+    .filter((client) => client.id !== exceptId)
+    .filter((client) => !roomInfo || !roomInfo.private || roomInfo.participants.has(client.username))
     .map(peerSummary);
 }
 

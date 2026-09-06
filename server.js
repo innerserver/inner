@@ -1172,13 +1172,14 @@ async function routeApi(req, res, requestUrl) {
   if (req.method === "GET" && pathname === "/api/realtime/peers") {
     const user = requireUser(req, res);
     if (!user) return;
+    const clientId = sanitizeRealtimeClientId(requestUrl.searchParams.get("clientId") || "");
     const [users, friends, profiles] = await Promise.all([
       readJson(FILES.users, []),
       readJson(FILES.friends, { requests: [], friendships: [] }),
       readJson(FILES.profiles, {}),
     ]);
     return json(res, 200, {
-      peers: peerList("", user, users, friends).filter((peer) => peer.username !== user.username),
+      peers: peerList(clientId, user, users, friends),
       presence: presenceList(profiles, user, users, friends),
       now: Date.now(),
     });
@@ -4954,6 +4955,7 @@ async function handleWsMessage(client, message) {
     settings.serverEnabled === false &&
     !canAccessWhileServerLocked(client, settings) &&
     (message.type === "signal" ||
+      message.type === "screen:signal" ||
       message.type === "screen:join" ||
       message.type === "screen:status" ||
       message.type === "screen:viewer-ready" ||
@@ -4967,11 +4969,11 @@ async function handleWsMessage(client, message) {
     return sendWs(client, { type: "error", error: "Server is shut down. Only admin, HMD, and dev access is open right now." });
   }
   const screenFeatureError = await featureGateError(settings, "screen", client);
-  if (screenFeatureError && (message.type === "signal" || message.type === "screen:join" || message.type === "screen:status" || message.type === "screen:viewer-ready" || message.type === "screen:request")) {
+  if (screenFeatureError && (message.type === "signal" || message.type === "screen:signal" || message.type === "screen:join" || message.type === "screen:status" || message.type === "screen:viewer-ready" || message.type === "screen:request")) {
     return sendWs(client, { type: "error", error: screenFeatureError });
   }
 
-  if (message.type === "signal") {
+  if (message.type === "signal" || message.type === "screen:signal") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
     const targets = getRealtimeTargets(message.target, message.targetUser);
     if (!targets.length) return;
@@ -4980,7 +4982,7 @@ async function handleWsMessage(client, message) {
       if (!canTargetRealtimeRoom(roomInfo, target)) continue;
       delivered = true;
       deliverRealtime(target, {
-        type: "signal",
+        type: message.type === "screen:signal" ? "screen:signal" : "signal",
         from: client.id,
         fromUser: client.username,
         roomId: roomInfo.roomId,
@@ -5205,6 +5207,7 @@ async function handleHttpRealtimeMessage(client, message) {
     settings.serverEnabled === false &&
     !canAccessWhileServerLocked(client, settings) &&
     (message.type === "signal" ||
+      message.type === "screen:signal" ||
       message.type === "screen:join" ||
       message.type === "screen:status" ||
       message.type === "screen:viewer-ready" ||
@@ -5220,11 +5223,11 @@ async function handleHttpRealtimeMessage(client, message) {
   }
 
   const screenFeatureError = await featureGateError(settings, "screen", client);
-  if (screenFeatureError && (message.type === "signal" || message.type === "screen:join" || message.type === "screen:status" || message.type === "screen:viewer-ready" || message.type === "screen:request")) {
+  if (screenFeatureError && (message.type === "signal" || message.type === "screen:signal" || message.type === "screen:join" || message.type === "screen:status" || message.type === "screen:viewer-ready" || message.type === "screen:request")) {
     return deliverRealtime(client, { type: "error", error: screenFeatureError });
   }
 
-  if (message.type === "signal") {
+  if (message.type === "signal" || message.type === "screen:signal") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
     const targets = getRealtimeTargets(message.target, message.targetUser);
     if (!targets.length) return;
@@ -5233,7 +5236,7 @@ async function handleHttpRealtimeMessage(client, message) {
       if (!canTargetRealtimeRoom(roomInfo, target)) continue;
       delivered = true;
       deliverRealtime(target, {
-        type: "signal",
+        type: message.type === "screen:signal" ? "screen:signal" : "signal",
         from: client.id,
         fromUser: client.username,
         roomId: roomInfo.roomId,

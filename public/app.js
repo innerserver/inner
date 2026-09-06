@@ -3921,7 +3921,7 @@ function handleSocketMessage(message) {
     return;
   }
 
-  if (message.type === "signal") {
+  if (message.type === "signal" || message.type === "screen:signal") {
     handleSignal(message.from, message.fromUser, message.signal, message.roomId).catch((error) => {
       notify(error.message || "Screen share signal failed");
     });
@@ -4537,7 +4537,7 @@ async function flushCandidates(peerId, pc) {
 }
 
 function sendSignal(target, signal, roomId = state.screenRoomId || "screen:global") {
-  sendWs({ type: "signal", target, targetUser: peerUsernameForId(target), roomId, signal });
+  sendWs({ type: "screen:signal", target, targetUser: peerUsernameForId(target), roomId, signal });
 }
 
 function peerUsernameForId(peerId) {
@@ -4769,7 +4769,8 @@ async function pollHttpRealtime() {
 async function refreshRealtimePeers() {
   if (!state.loggedIn) return [];
   try {
-    const data = await api("/api/realtime/peers");
+    const query = state.clientId ? `?clientId=${encodeURIComponent(state.clientId)}` : "";
+    const data = await api(`/api/realtime/peers${query}`);
     if (Array.isArray(data.peers)) {
       state.peers = new Map(data.peers.map((peer) => [peer.id, peer]));
     }
@@ -4802,7 +4803,7 @@ function sendHttpRealtime(payload) {
 }
 
 function queueRealtimePayload(payload) {
-  if (!payload || !["presence:update", "typing", "voice:state", "screen:join", "screen:status", "screen:viewer-ready", "screen:request", "call:invite", "voice:join", "voice:leave", "signal", "voice:signal"].includes(payload.type)) return;
+  if (!payload || !["presence:update", "typing", "voice:state", "screen:join", "screen:status", "screen:viewer-ready", "screen:request", "call:invite", "voice:join", "voice:leave", "signal", "screen:signal", "voice:signal"].includes(payload.type)) return;
   state.wsOutbox.push({ ...payload, queuedAt: Date.now() });
   state.wsOutbox = state.wsOutbox.filter((entry) => Date.now() - entry.queuedAt < 15000).slice(-20);
 }

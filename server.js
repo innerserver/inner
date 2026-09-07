@@ -4975,7 +4975,7 @@ async function handleWsMessage(client, message) {
 
   if (message.type === "signal" || message.type === "screen:signal") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
-    const targets = getRealtimeTargets(message.target, message.targetUser);
+    const targets = getScreenRealtimeTargets(message.target, message.targetUser);
     if (!targets.length) return;
     let delivered = false;
     for (const target of targets) {
@@ -5134,9 +5134,9 @@ async function handleWsMessage(client, message) {
 
   if (message.type === "screen:viewer-ready") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
-    const targets = getRealtimeTargets(message.target, message.targetUser);
+    const targets = getScreenRealtimeTargets(message.target, message.targetUser);
     for (const target of targets) {
-      if (!canTargetRealtimeRoom(roomInfo, target) || target.screenRoomId !== roomInfo.roomId) continue;
+      if (!canTargetRealtimeRoom(roomInfo, target)) continue;
       deliverRealtime(target, {
         type: "screen:viewer-ready",
         from: client.id,
@@ -5231,7 +5231,7 @@ async function handleHttpRealtimeMessage(client, message) {
 
   if (message.type === "signal" || message.type === "screen:signal") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
-    const targets = getRealtimeTargets(message.target, message.targetUser);
+    const targets = getScreenRealtimeTargets(message.target, message.targetUser);
     if (!targets.length) return;
     let delivered = false;
     for (const target of targets) {
@@ -5353,9 +5353,9 @@ async function handleHttpRealtimeMessage(client, message) {
 
   if (message.type === "screen:viewer-ready") {
     const roomInfo = await resolveRealtimeRoom(message.roomId || "screen:global", client);
-    const targets = getRealtimeTargets(message.target, message.targetUser);
+    const targets = getScreenRealtimeTargets(message.target, message.targetUser);
     for (const target of targets) {
-      if (!canTargetRealtimeRoom(roomInfo, target) || target.screenRoomId !== roomInfo.roomId) continue;
+      if (!canTargetRealtimeRoom(roomInfo, target)) continue;
       deliverRealtime(target, {
         type: "screen:viewer-ready",
         from: client.id,
@@ -5432,6 +5432,26 @@ function getRealtimeTargets(id, username = "") {
   const cleanUsername = normalizeUsername(username).toLowerCase();
   if (!cleanUsername) return [];
   return realtimeClients().filter((client) => String(client.username || "").toLowerCase() === cleanUsername);
+}
+
+function getScreenRealtimeTargets(id, username = "") {
+  const targets = [];
+  const seen = new Set();
+  const direct = getRealtimeClient(String(id || ""));
+  if (direct) {
+    targets.push(direct);
+    seen.add(direct.id);
+  }
+  const cleanUsername = normalizeUsername(username).toLowerCase();
+  if (cleanUsername) {
+    for (const client of realtimeClients()) {
+      if (seen.has(client.id)) continue;
+      if (String(client.username || "").toLowerCase() !== cleanUsername) continue;
+      targets.push(client);
+      seen.add(client.id);
+    }
+  }
+  return targets;
 }
 
 function deliverRealtime(client, payload) {
@@ -5584,7 +5604,6 @@ function notifyScreenSharersOfViewer(roomInfo, viewer) {
   if (!viewer || !roomInfo) return;
   for (const target of realtimeClients()) {
     if (target.id === viewer.id) continue;
-    if (target.screenRoomId !== roomInfo.roomId || !target.sharing) continue;
     if (!canTargetRealtimeRoom(roomInfo, target)) continue;
     deliverRealtime(target, {
       type: "screen:viewer-ready",

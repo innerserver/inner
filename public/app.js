@@ -33,6 +33,7 @@ const state = {
   selectedAccountDetails: "",
   accountDetailFiles: { username: "", files: [], loading: false, error: "" },
   moderatorAccounts: [],
+  moderatorAttendance: { roomId: "", date: "", members: [], updatedAt: "", updatedBy: "", loading: false, loadedKey: "" },
   logSearch: "",
   logDate: "",
   files: [],
@@ -555,6 +556,14 @@ function cacheElements() {
     "moderatorRoomControlsPanel",
     "moderatorReportsPanel",
     "moderatorStrikesPanel",
+    "moderatorAttendancePanel",
+    "moderatorAttendanceForm",
+    "moderatorAttendanceRoom",
+    "moderatorAttendanceDate",
+    "loadModeratorAttendanceButton",
+    "saveModeratorAttendanceButton",
+    "moderatorAttendanceSummary",
+    "moderatorAttendanceList",
     "moderatorReportList",
     "moderatorScope",
     "moderatorRoomCount",
@@ -922,6 +931,10 @@ function bindEvents() {
   els.delegatedAdminFeaturesForm.addEventListener("submit", saveDelegatedAdminFeatures);
   els.delegatedAdminUser.addEventListener("change", renderDelegatedAdminFeatures);
   els.moderatorAccountSearchForm.addEventListener("submit", searchModeratorAccounts);
+  if (els.moderatorAttendanceForm) els.moderatorAttendanceForm.addEventListener("submit", saveModeratorAttendance);
+  if (els.loadModeratorAttendanceButton) els.loadModeratorAttendanceButton.addEventListener("click", () => loadModeratorAttendance());
+  if (els.moderatorAttendanceRoom) els.moderatorAttendanceRoom.addEventListener("change", () => loadModeratorAttendance());
+  if (els.moderatorAttendanceDate) els.moderatorAttendanceDate.addEventListener("change", () => loadModeratorAttendance());
   els.accountSearchInput.addEventListener("input", () => {
     state.accountSearch = els.accountSearchInput.value.trim().toLowerCase();
     state.accountShowAll = false;
@@ -7508,6 +7521,7 @@ function renderModeratorPanel() {
   if (els.moderatorRoomControlsPanel) els.moderatorRoomControlsPanel.classList.toggle("hidden", moderator && !roomControlAllowed);
   if (els.moderatorReportsPanel) els.moderatorReportsPanel.classList.toggle("hidden", moderator && !reportAllowed);
   if (els.moderatorStrikesPanel) els.moderatorStrikesPanel.classList.toggle("hidden", moderator && !strikeAllowed);
+  if (els.moderatorAttendancePanel) els.moderatorAttendancePanel.classList.toggle("hidden", !moderator);
 
   if (!els.moderatorRoomList) return;
   els.moderatorRoomList.replaceChildren();
@@ -7527,6 +7541,7 @@ function renderModeratorPanel() {
   if (els.moderatorRoomCount) els.moderatorRoomCount.textContent = String(rooms.length);
   if (els.moderatorReportCount) els.moderatorReportCount.textContent = String(openReports);
   if (els.moderatorLimitCount) els.moderatorLimitCount.textContent = String(activeLimits);
+  renderModeratorAttendancePanel(rooms);
   if (!rooms.length) {
     els.moderatorRoomList.append(emptyBlock("No rooms available"));
     return;
@@ -7554,6 +7569,175 @@ function renderModeratorPanel() {
     card.append(actions);
     els.moderatorRoomList.append(card);
   });
+}
+
+function renderModeratorAttendancePanel(rooms = state.rooms || []) {
+  if (!els.moderatorAttendancePanel || !isModerator() || hasBuiltInControlAccess()) return;
+  const sortedRooms = (rooms || []).slice().sort((left, right) => String(left.name || left.id).localeCompare(String(right.name || right.id)));
+  const attendance = state.moderatorAttendance;
+  if (!attendance.date) attendance.date = localInputDate();
+  if (!attendance.roomId && sortedRooms[0]) attendance.roomId = sortedRooms[0].id || "main";
+  if (els.moderatorAttendanceRoom) {
+    const previous = els.moderatorAttendanceRoom.value || attendance.roomId;
+    els.moderatorAttendanceRoom.replaceChildren(
+      ...sortedRooms.map((room) => optionElement(room.id || "main", room.name || room.id || "Room"))
+    );
+    els.moderatorAttendanceRoom.value = sortedRooms.some((room) => (room.id || "main") === previous) ? previous : attendance.roomId;
+    attendance.roomId = els.moderatorAttendanceRoom.value || attendance.roomId;
+  }
+  if (els.moderatorAttendanceDate) setInputIfNotFocused(els.moderatorAttendanceDate, attendance.date || localInputDate());
+  renderModeratorAttendanceRows();
+  const key = `${attendance.roomId}:${attendance.date}`;
+  if (state.activeView === "moderator" && attendance.roomId && attendance.date && attendance.loadedKey !== key && !attendance.loading) {
+    loadModeratorAttendance({ silent: true }).catch(() => {});
+  }
+}
+
+function renderModeratorAttendanceRows() {
+  const attendance = state.moderatorAttendance;
+  if (!els.moderatorAttendanceList || !els.moderatorAttendanceSummary) return;
+  els.moderatorAttendanceList.replaceChildren();
+  if (attendance.loading) {
+    els.moderatorAttendanceSummary.textContent = "Loading attendance";
+    els.moderatorAttendanceList.append(emptyBlock("Loading room members"));
+    return;
+  }
+  const members = Array.isArray(attendance.members) ? attendance.members : [];
+  const counts = members.reduce((acc, member) => {
+    const status = member.status || "unmarked";
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {});
+  els.moderatorAttendanceSummary.textContent = members.length
+    ? `${members.length} member${members.length === 1 ? "" : "s"} · present ${counts.present || 0} · absent ${counts.absent || 0} · late ${counts.late || 0} · excused ${counts.excused || 0}`
+    : "No members in this room";
+  if (attendance.updatedAt) {
+    els.moderatorAttendanceSummary.textContent += ` · saved by ${attendance.updatedBy || "moderator"} ${formatDate(attendance.updatedAt)}`;
+  }
+  if (!members.length) {
+    els.moderatorAttendanceList.append(emptyBlock("No room members found"));
+    return;
+  }
+  members.forEach((member) => {
+    const row = document.createElement("article");
+    row.className = "attendance-row";
+    row.dataset.status = member.status || "unmarked";
+    const info = document.createElement("div");
+    info.className = "attendance-member";
+    const name = document.createElement("strong");
+    name.textContent = member.displayName && member.displayName !== member.username ? `${member.displayName} (${member.username})` : member.username;
+    const meta = document.createElement("span");
+    meta.textContent = [member.grade ? `Grade ${member.grade}` : "", member.role || "member"].filter(Boolean).join(" · ");
+    info.append(name, meta);
+    const status = document.createElement("select");
+    status.className = "attendance-status";
+    status.dataset.attendanceUser = member.username;
+    status.replaceChildren(
+      optionElement("", "Unmarked"),
+      optionElement("present", "Present"),
+      optionElement("absent", "Absent"),
+      optionElement("late", "Late"),
+      optionElement("excused", "Excused")
+    );
+    status.value = member.status || "";
+    status.addEventListener("change", () => {
+      member.status = status.value;
+      row.dataset.status = status.value || "unmarked";
+      renderModeratorAttendanceSummaryOnly();
+    });
+    const note = document.createElement("input");
+    note.className = "attendance-note";
+    note.dataset.attendanceNote = member.username;
+    note.maxLength = 180;
+    note.placeholder = "Note";
+    note.value = member.note || "";
+    note.addEventListener("input", () => {
+      member.note = note.value;
+    });
+    row.append(info, status, note);
+    els.moderatorAttendanceList.append(row);
+  });
+}
+
+function renderModeratorAttendanceSummaryOnly() {
+  if (!els.moderatorAttendanceSummary) return;
+  const members = Array.isArray(state.moderatorAttendance.members) ? state.moderatorAttendance.members : [];
+  const counts = members.reduce((acc, member) => {
+    const status = member.status || "unmarked";
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {});
+  els.moderatorAttendanceSummary.textContent = members.length
+    ? `${members.length} member${members.length === 1 ? "" : "s"} · present ${counts.present || 0} · absent ${counts.absent || 0} · late ${counts.late || 0} · excused ${counts.excused || 0}`
+    : "No members in this room";
+}
+
+async function loadModeratorAttendance(options = {}) {
+  if (!isModerator() || hasBuiltInControlAccess()) return;
+  const roomId = els.moderatorAttendanceRoom ? els.moderatorAttendanceRoom.value : state.moderatorAttendance.roomId;
+  const date = els.moderatorAttendanceDate ? els.moderatorAttendanceDate.value : state.moderatorAttendance.date || localInputDate();
+  if (!roomId || !date) return;
+  state.moderatorAttendance = { ...state.moderatorAttendance, roomId, date, loading: true };
+  renderModeratorAttendanceRows();
+  try {
+    const data = await api(`/api/moderation/attendance?roomId=${encodeURIComponent(roomId)}&date=${encodeURIComponent(date)}`);
+    state.moderatorAttendance = {
+      roomId,
+      date: data.date || date,
+      members: data.members || [],
+      updatedAt: data.updatedAt || "",
+      updatedBy: data.updatedBy || "",
+      loading: false,
+      loadedKey: `${roomId}:${data.date || date}`,
+    };
+    renderModeratorAttendanceRows();
+    if (!options.silent) notify("Attendance loaded");
+  } catch (error) {
+    state.moderatorAttendance.loading = false;
+    renderModeratorAttendanceRows();
+    notify(error.message || "Could not load attendance");
+  }
+}
+
+async function saveModeratorAttendance(event) {
+  if (event) event.preventDefault();
+  if (!isModerator() || hasBuiltInControlAccess()) return notify("Moderator access required");
+  const roomId = els.moderatorAttendanceRoom ? els.moderatorAttendanceRoom.value : state.moderatorAttendance.roomId;
+  const date = els.moderatorAttendanceDate ? els.moderatorAttendanceDate.value : state.moderatorAttendance.date || localInputDate();
+  const members = Array.isArray(state.moderatorAttendance.members) ? state.moderatorAttendance.members : [];
+  const records = members.map((member) => ({
+    username: member.username,
+    status: member.status || "",
+    note: member.note || "",
+  }));
+  try {
+    if (els.saveModeratorAttendanceButton) els.saveModeratorAttendanceButton.disabled = true;
+    const data = await api("/api/moderation/attendance", {
+      method: "POST",
+      json: { roomId, date, records },
+    });
+    state.moderatorAttendance = {
+      roomId,
+      date: data.date || date,
+      members: data.members || [],
+      updatedAt: data.updatedAt || "",
+      updatedBy: data.updatedBy || "",
+      loading: false,
+      loadedKey: `${roomId}:${data.date || date}`,
+    };
+    renderModeratorAttendanceRows();
+    notify("Attendance saved");
+  } catch (error) {
+    notify(error.message || "Could not save attendance");
+  } finally {
+    if (els.saveModeratorAttendanceButton) els.saveModeratorAttendanceButton.disabled = false;
+  }
+}
+
+function localInputDate() {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
 }
 
 function renderModeratorAuditLogs() {

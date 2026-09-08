@@ -10,9 +10,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-230-screen-target-fallback-calls-ui" />
-    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-230-screen-target-fallback-calls-ui" />
-    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-230-screen-target-fallback-calls-ui" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-231-moderator-attendance" />
+    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-231-moderator-attendance" />
+    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-231-moderator-attendance" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -680,6 +680,17 @@
               <div id="moderatorFeatureLockSlot"></div>
               <div id="moderatorFeatureLockPanelSlot"></div>
             </div>
+            <section id="moderatorAttendancePanel" class="status-panel moderator-attendance-panel">
+              <div class="panel-title-row"><div><h3>Attendance</h3><p class="panel-note">Choose a room and mark each member for the selected date.</p></div></div>
+              <form id="moderatorAttendanceForm" class="attendance-toolbar">
+                <label>Room<select id="moderatorAttendanceRoom"></select></label>
+                <label>Date<input id="moderatorAttendanceDate" type="date" /></label>
+                <button id="loadModeratorAttendanceButton" class="secondary-button compact-button" type="button">Load</button>
+                <button id="saveModeratorAttendanceButton" class="primary-button compact-button" type="submit">Save</button>
+              </form>
+              <div id="moderatorAttendanceSummary" class="attendance-summary">No room selected</div>
+              <div id="moderatorAttendanceList" class="attendance-list"></div>
+            </section>
             <section id="moderatorReportsPanel" class="status-panel moderator-reports-panel">
               <div class="panel-title-row"><div><h3>Reports</h3><p class="panel-note">Review member reports and keep the queue moving.</p></div></div>
               <div id="moderatorReportList" class="account-list"></div>
@@ -1153,7 +1164,7 @@
     <script src="/session-guard.js?v=connectifi-210-dm-recovery" defer></script>
     <script src="/status-guard.js?v=connectifi-210-dm-recovery" defer></script>
     <script src="/ui-boot.js?v=connectifi-210-dm-recovery" defer></script>
-    <script src="/app.js?v=connectifi-230-screen-target-fallback-calls-ui" defer></script>
+    <script src="/app.js?v=connectifi-231-moderator-attendance" defer></script>
     <script src="/force-logout.js?v=connectifi-210-dm-recovery" defer></script>
   </body>
 </html>

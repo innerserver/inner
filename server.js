@@ -86,6 +86,7 @@ const FILES = {
   friends: path.join(DATA_DIR, "friends.json"),
   invites: path.join(DATA_DIR, "invites.json"),
   reports: path.join(DATA_DIR, "reports.json"),
+  attendance: path.join(DATA_DIR, "attendance.json"),
   readReceipts: path.join(DATA_DIR, "read-receipts.json"),
   moderationLogs: path.join(DATA_DIR, "moderation-logs.json"),
   logs: path.join(DATA_DIR, "logs.json"),
@@ -457,6 +458,7 @@ async function ensureStorage() {
   await ensureJson(FILES.friends, { requests: [], friendships: [] });
   await ensureJson(FILES.invites, []);
   await ensureJson(FILES.reports, []);
+  await ensureJson(FILES.attendance, []);
   await ensureJson(FILES.readReceipts, {});
   await ensureJson(FILES.moderationLogs, []);
   await ensureJson(FILES.logs, []);
@@ -1774,6 +1776,70 @@ async function routeApi(req, res, requestUrl) {
       automod: canUseModerationCapability(user, settings, "auto-moderation") && !fastState ? automod : {},
       announcements: safeAnnouncements(announcements, user, rooms),
       presence: presenceList(profiles, user, users, friends),
+    });
+  }
+
+  if (req.method === "GET" && pathname === "/api/moderation/attendance") {
+    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
+    const roomId = String(requestUrl.searchParams.get("roomId") || "main").trim().slice(0, 80) || "main";
+    const date = sanitizeAttendanceDate(requestUrl.searchParams.get("date") || "") || localDateKey();
+    const [rooms, users, profiles, attendance] = await Promise.all([
+      readJson(FILES.rooms, []),
+      readJson(FILES.users, []),
+      readJson(FILES.profiles, {}),
+      readJson(FILES.attendance, []),
+    ]);
+    const room = rooms.find((entry) => String(entry.id || "") === roomId);
+    if (!room) return json(res, 404, { error: "Room not found" });
+    if (!canAccessRoom(room, user)) return json(res, 403, { error: "Room access required" });
+    const session = findAttendanceSession(attendance, roomId, date);
+    return json(res, 200, {
+      room: safeRoom(room),
+      date,
+      members: attendanceMembersForRoom(room, users, profiles, session),
+      updatedAt: session ? session.updatedAt || "" : "",
+      updatedBy: session ? session.updatedBy || "" : "",
+    });
+  }
+
+  if (req.method === "POST" && pathname === "/api/moderation/attendance") {
+    if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
+    const body = await readJsonBody(req);
+    const roomId = String(body.roomId || "main").trim().slice(0, 80) || "main";
+    const date = sanitizeAttendanceDate(body.date || "") || localDateKey();
+    const [rooms, users, profiles, attendance] = await Promise.all([
+      readJson(FILES.rooms, []),
+      readJson(FILES.users, []),
+      readJson(FILES.profiles, {}),
+      readJson(FILES.attendance, []),
+    ]);
+    const room = rooms.find((entry) => String(entry.id || "") === roomId);
+    if (!room) return json(res, 404, { error: "Room not found" });
+    if (!canAccessRoom(room, user)) return json(res, 403, { error: "Room access required" });
+    const allowedMembers = new Set(attendanceMembersForRoom(room, users, profiles).map((member) => member.username));
+    const records = sanitizeAttendanceRecords(body.records, allowedMembers);
+    const now = new Date().toISOString();
+    const existingIndex = attendance.findIndex((entry) => String(entry.roomId || "") === roomId && String(entry.date || "") === date);
+    const session = {
+      id: existingIndex === -1 ? crypto.randomUUID() : String(attendance[existingIndex].id || crypto.randomUUID()),
+      roomId,
+      date,
+      records,
+      updatedAt: now,
+      updatedBy: user.username,
+    };
+    if (existingIndex === -1) attendance.push(session);
+    else attendance[existingIndex] = session;
+    await Promise.all([
+      writeJson(FILES.attendance, attendance.slice(-1200)),
+      addSystemLog("attendance.saved", user.username, { roomId, date, count: records.length }, req),
+    ]);
+    return json(res, 200, {
+      room: safeRoom(room),
+      date,
+      members: attendanceMembersForRoom(room, users, profiles, session),
+      updatedAt: session.updatedAt,
+      updatedBy: session.updatedBy,
     });
   }
 
@@ -6458,6 +6524,78 @@ function safeRooms(rooms) {
 
 function safeRoomsForUser(rooms, user) {
   return (rooms || []).filter((room) => canAccessRoom(room, user)).map(safeRoom);
+}
+
+function findAttendanceSession(attendance, roomId, date) {
+  return (Array.isArray(attendance) ? attendance : []).find((entry) =>
+    String(entry.roomId || "") === roomId && String(entry.date || "") === date
+  ) || null;
+}
+
+function attendanceMembersForRoom(room, users = [], profiles = {}, session = null) {
+  const saved = new Map((session && Array.isArray(session.records) ? session.records : []).map((record) => [normalizeUsername(record.username), record]));
+  return (users || [])
+    .filter((entry) => attendanceUserBelongsToRoom(room, entry))
+    .sort((left, right) => {
+      const gradeOrder = String(normalizeGrade(left.grade || "")).localeCompare(String(normalizeGrade(right.grade || "")));
+      if (gradeOrder) return gradeOrder;
+      return String(left.username || "").localeCompare(String(right.username || ""));
+    })
+    .map((entry) => {
+      const username = normalizeUsername(entry.username);
+      const profile = profiles[username] || {};
+      const record = saved.get(username) || {};
+      return {
+        username,
+        displayName: String(profile.displayName || username).slice(0, 80),
+        role: effectiveRole(entry),
+        grade: normalizeGrade(entry.grade || profile.grade || ""),
+        status: sanitizeAttendanceStatus(record.status || ""),
+        note: String(record.note || "").slice(0, 180),
+      };
+    });
+}
+
+function attendanceUserBelongsToRoom(room, user) {
+  const username = normalizeUsername(user && user.username);
+  if (!username) return false;
+  if (builtInManagerUsernames.has(username.toLowerCase())) return false;
+  if (!room || room.id === "main") return true;
+  if (!room.private && !room.inviteOnly && !room.passwordHash) return true;
+  const allowed = new Set([
+    ...(room.allowedUsers || []),
+    ...(room.moderators || []),
+    room.createdBy,
+  ].map(normalizeUsername).filter(Boolean));
+  return allowed.has(username);
+}
+
+function sanitizeAttendanceRecords(source, allowedMembers) {
+  const allowedStatuses = new Set(["present", "absent", "late", "excused"]);
+  return (Array.isArray(source) ? source : [])
+    .map((entry) => ({
+      username: normalizeUsername(entry && entry.username),
+      status: sanitizeAttendanceStatus(entry && entry.status),
+      note: String(entry && entry.note || "").trim().slice(0, 180),
+    }))
+    .filter((entry) => entry.username && allowedMembers.has(entry.username) && (allowedStatuses.has(entry.status) || entry.note))
+    .slice(0, 500);
+}
+
+function sanitizeAttendanceStatus(value) {
+  const status = String(value || "").trim().toLowerCase();
+  return ["present", "absent", "late", "excused"].includes(status) ? status : "";
+}
+
+function sanitizeAttendanceDate(value) {
+  const date = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "";
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date ? date : "";
+}
+
+function localDateKey(date = new Date()) {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
 function effectivePersistentLogin(user, settings, rooms = []) {

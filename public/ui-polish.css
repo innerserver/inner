@@ -1626,6 +1626,92 @@ body[data-theme="glass"] .file-card {
   display: contents;
 }
 
+#moderatorView .moderator-attendance-panel {
+  grid-column: span 2;
+  min-width: 0;
+}
+
+#moderatorView .attendance-toolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(150px, 190px) auto auto;
+  gap: 10px;
+  align-items: end;
+}
+
+#moderatorView .attendance-toolbar label {
+  min-width: 0;
+}
+
+#moderatorView .attendance-toolbar select,
+#moderatorView .attendance-toolbar input {
+  width: 100%;
+}
+
+#moderatorView .attendance-summary {
+  margin-top: 10px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+#moderatorView .attendance-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  max-height: min(52dvh, 560px);
+  overflow: auto;
+  padding-right: 2px;
+}
+
+#moderatorView .attendance-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, 150px) minmax(180px, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+#moderatorView .attendance-row[data-status="present"] {
+  border-color: color-mix(in srgb, #168a5a 42%, var(--line));
+}
+
+#moderatorView .attendance-row[data-status="absent"] {
+  border-color: color-mix(in srgb, #b94040 46%, var(--line));
+}
+
+#moderatorView .attendance-row[data-status="late"] {
+  border-color: color-mix(in srgb, #b7791f 48%, var(--line));
+}
+
+#moderatorView .attendance-row[data-status="excused"] {
+  border-color: color-mix(in srgb, #2f6f9f 45%, var(--line));
+}
+
+#moderatorView .attendance-member {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+#moderatorView .attendance-member strong,
+#moderatorView .attendance-member span {
+  overflow-wrap: anywhere;
+}
+
+#moderatorView .attendance-member span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+#moderatorView .attendance-status,
+#moderatorView .attendance-note {
+  min-width: 0;
+}
+
 @media (max-width: 860px) {
   #dmsView .section-header {
     gap: 12px;
@@ -1658,6 +1744,15 @@ body[data-theme="glass"] .file-card {
   }
 
   #voiceView > .call-grid {
+    grid-template-columns: 1fr;
+  }
+
+  #moderatorView .moderator-attendance-panel {
+    grid-column: 1;
+  }
+
+  #moderatorView .attendance-toolbar,
+  #moderatorView .attendance-row {
     grid-template-columns: 1fr;
   }
 }

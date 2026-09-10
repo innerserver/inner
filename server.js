@@ -269,6 +269,8 @@ const allowedExtensions = new Set([
   ".mun",
 ]);
 const dangerousUploadExtensions = new Set([".exe", ".bat", ".cmd", ".scr", ".ps1", ".msi", ".com", ".vbs", ".jar", ".sh", ".app", ".dll"]);
+const scriptableUploadExtensions = new Set([".html", ".htm", ".xhtml", ".svg", ".js", ".mjs", ".cjs", ".css", ".wasm", ".php", ".phtml", ".asp", ".aspx", ".jsp"]);
+const inlineSafeUploadKinds = new Set(["image", "video", "audio", "pdf"]);
 
 const vpnLocations = [
   "United States",
@@ -2004,7 +2006,7 @@ async function routeApi(req, res, requestUrl) {
       storedName: sanitizeFileName(draft.storedName || `${draft.id}${extension}`),
       category: normalizeCategory(draft.category || "document"),
       kind: classifyFile(extension, draft.mimeType),
-      mimeType: mimeTypes[extension] || draft.mimeType || "application/octet-stream",
+      mimeType: uploadContentType(extension, classifyFile(extension, draft.mimeType)),
       size: Number(cloudinary.bytes || draft.size || 0),
       user: user.username,
       private: Boolean(draft.private),
@@ -4187,6 +4189,7 @@ async function saveUpload(req, res, user) {
     await addSystemLog("file.upload.blocked", user.username, { name: originalName, reason: validationError }, req);
     return json(res, 400, { error: validationError });
   }
+  await markUploadNonExecutable(target);
 
   const fileRecord = createUploadRecord({
     req,
@@ -4198,9 +4201,10 @@ async function saveUpload(req, res, user) {
     providedType,
     privateUpload,
     size: written,
-    url: `/uploads/${encodeURIComponent(storedName)}`,
+    url: "",
     persistence: inlineEnabled ? "disk+inline" : "disk",
   });
+  fileRecord.url = `/api/files/${fileRecord.id}/download`;
 
   if (preferB2 && b2Configured()) {
     try {
@@ -4217,7 +4221,7 @@ async function saveUpload(req, res, user) {
       fileRecord.cloudStorage = "";
       fileRecord.cloudStorageError = error.message || "Backblaze B2 upload failed";
       fileRecord.persistence = inlineEnabled ? "disk+inline" : "disk";
-      fileRecord.url = `/uploads/${encodeURIComponent(storedName)}`;
+      fileRecord.url = `/api/files/${fileRecord.id}/download`;
     }
   } else if (cloudinaryConfigured() && UPLOAD_PROVIDER !== "mongodb") {
     try {
@@ -4236,7 +4240,7 @@ async function saveUpload(req, res, user) {
       fileRecord.cloudStorage = "";
       fileRecord.cloudStorageError = error.message || "Cloudinary upload failed";
       fileRecord.persistence = inlineEnabled ? "disk+inline" : "disk";
-      fileRecord.url = `/uploads/${encodeURIComponent(storedName)}`;
+      fileRecord.url = `/api/files/${fileRecord.id}/download`;
     }
   } else if (persistence.ready) {
     try {
@@ -4249,7 +4253,7 @@ async function saveUpload(req, res, user) {
       fileRecord.cloudStorage = "";
       fileRecord.cloudStorageError = error.message || "MongoDB/GridFS upload failed";
       fileRecord.persistence = inlineEnabled ? "disk+inline" : "disk";
-      fileRecord.url = `/uploads/${encodeURIComponent(storedName)}`;
+      fileRecord.url = `/api/files/${fileRecord.id}/download`;
     }
   }
 
@@ -4283,13 +4287,14 @@ async function resolveChatAttachment(attachment) {
 function createUploadRecord({ req, user, originalName, storedName, category, extension, providedType, privateUpload, size, url, persistence: persistenceLabel }) {
   const releaseAt = canManage(user) ? normalizeReleaseAt(req.headers["x-file-release-at"]) : "";
   const releaseRoom = canManage(user) ? String(req.headers["x-file-release-room"] || "").trim().slice(0, 80) : "";
+  const kind = classifyFile(extension, providedType);
   return {
     id: crypto.randomUUID(),
     originalName,
     storedName,
     category,
-    kind: classifyFile(extension, providedType),
-    mimeType: mimeTypes[extension] || providedType || "application/octet-stream",
+    kind,
+    mimeType: uploadContentType(extension, kind),
     size,
     user: user.username,
     sourceIp: getClientIp(req),
@@ -4630,6 +4635,7 @@ async function uploadBufferToB2(storedName, buffer, record) {
   const tempName = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}-${path.basename(storedName)}`;
   const tempPath = path.join(UPLOAD_DIR, tempName);
   await fsp.writeFile(tempPath, buffer);
+  await markUploadNonExecutable(tempPath);
   try {
     return await uploadLocalFileToB2(storedName, tempPath, record);
   } finally {
@@ -4646,13 +4652,13 @@ async function proxyB2Upload(req, res, record) {
   if (req.headers.range) requestHeaders.Range = req.headers.range;
   const upstream = await fetch(b2Url, { headers: requestHeaders }).catch(() => null);
   if (!upstream || !upstream.ok) return false;
-  const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
-  const dispositionType = requestUrl.searchParams.get("download") === "1" ? "attachment" : "inline";
+  const extension = path.extname(record.originalName || record.storedName || "").toLowerCase();
   const headers = {
-    "Content-Type": upstream.headers.get("content-type") || record.mimeType || "application/octet-stream",
-    "Content-Disposition": `${dispositionType}; filename="${String(record.originalName || "upload").replaceAll('"', "")}"`,
+    "Content-Type": uploadContentType(extension, record.kind || classifyFile(extension, record.mimeType)),
+    "Content-Disposition": safeContentDisposition(record, req),
     "Accept-Ranges": upstream.headers.get("accept-ranges") || "bytes",
     "Cache-Control": record.private ? "no-store" : "private, max-age=60",
+    "X-Content-Type-Options": "nosniff",
   };
   const length = upstream.headers.get("content-length");
   const range = upstream.headers.get("content-range");
@@ -6804,7 +6810,9 @@ function sanitizeInnerDocHtml(value) {
     .replace(/<\s*(script|style|iframe|object|embed|link|meta)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "")
     .replace(/<\s*(script|style|iframe|object|embed|link|meta)[^>]*\/?\s*>/gi, "")
     .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    .replace(/\s(href|src)\s*=\s*(['"]?)\s*javascript:[^'"\s>]*/gi, "");
+    .replace(/\s(srcdoc|formaction|action)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/\s(href|src|xlink:href)\s*=\s*(['"]?)\s*(javascript:|data:text\/html|data:image\/svg\+xml)[^'"\s>]*/gi, "")
+    .replace(/\sstyle\s*=\s*("[^"]*(javascript:|expression\s*\(|url\s*\(\s*['\"]?\s*javascript:)[^"]*"|'[^']*(javascript:|expression\s*\(|url\s*\(\s*['\"]?\s*javascript:)[^']*'|[^\s>]*(javascript:|expression\s*\(|url\s*\(\s*['\"]?\s*javascript:)[^\s>]*)/gi, "");
 }
 
 function innerDocHtmlExport(doc) {
@@ -10477,10 +10485,8 @@ async function serveFileRecord(req, res, record, targetPath = "") {
   try {
     const stat = await fsp.stat(target);
     const extension = path.extname(target).toLowerCase();
-    const contentType = record.mimeType || mimeTypes[extension] || "application/octet-stream";
-    const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
-    const dispositionType = requestUrl.searchParams.get("download") === "1" ? "attachment" : "inline";
-    const disposition = `${dispositionType}; filename="${String(record.originalName || record.storedName || "upload").replaceAll('"', "")}"`;
+    const contentType = uploadContentType(extension, record.kind || classifyFile(extension, record.mimeType));
+    const disposition = safeContentDisposition(record, req);
     const range = req.headers.range;
 
     if (range) {
@@ -10496,6 +10502,7 @@ async function serveFileRecord(req, res, record, targetPath = "") {
             "Accept-Ranges": "bytes",
             "Content-Range": `bytes ${start}-${end}/${stat.size}`,
             "Cache-Control": record.private ? "no-store" : "private, max-age=60",
+            "X-Content-Type-Options": "nosniff",
           });
           fs.createReadStream(target, { start, end }).pipe(res);
           return;
@@ -10509,6 +10516,7 @@ async function serveFileRecord(req, res, record, targetPath = "") {
       "Content-Disposition": disposition,
       "Accept-Ranges": "bytes",
       "Cache-Control": record.private ? "no-store" : "private, max-age=60",
+      "X-Content-Type-Options": "nosniff",
     });
     fs.createReadStream(target).pipe(res);
   } catch (error) {
@@ -10541,10 +10549,9 @@ async function serveCloudUpload(req, res, record) {
   const file = await findCloudUpload(record);
   if (!file) return false;
 
-  const contentType = record.mimeType || file.contentType || "application/octet-stream";
-  const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
-  const dispositionType = requestUrl.searchParams.get("download") === "1" ? "attachment" : "inline";
-  const disposition = `${dispositionType}; filename="${String(record.originalName || "upload").replaceAll('"', "")}"`;
+  const extension = path.extname(record.originalName || record.storedName || "").toLowerCase();
+  const contentType = uploadContentType(extension, record.kind || classifyFile(extension, record.mimeType || file.contentType));
+  const disposition = safeContentDisposition(record, req);
   const size = Number(file.length || record.size || 0);
   const range = req.headers.range;
   let status = 200;
@@ -10554,6 +10561,7 @@ async function serveCloudUpload(req, res, record) {
     "Content-Type": contentType,
     "Content-Disposition": disposition,
     "Accept-Ranges": "bytes",
+    "X-Content-Type-Options": "nosniff",
   };
 
   if (range && size > 0) {
@@ -10590,13 +10598,12 @@ async function proxyCloudinaryUpload(req, res, record) {
   if (req.headers.range) requestHeaders.Range = req.headers.range;
   const upstream = await fetch(record.cloudinarySecureUrl, { headers: requestHeaders }).catch(() => null);
   if (!upstream || !upstream.ok) return false;
-  const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
-  const dispositionType = requestUrl.searchParams.get("download") === "1" ? "attachment" : "inline";
   const headers = {
-    "Content-Type": upstream.headers.get("content-type") || record.mimeType || "application/octet-stream",
-    "Content-Disposition": `${dispositionType}; filename="${String(record.originalName || "upload").replaceAll('"', "")}"`,
+    "Content-Type": uploadContentType(path.extname(record.originalName || record.storedName || "").toLowerCase(), record.kind || ""),
+    "Content-Disposition": safeContentDisposition(record, req),
     "Accept-Ranges": upstream.headers.get("accept-ranges") || "bytes",
     "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
   };
   const length = upstream.headers.get("content-length");
   const range = upstream.headers.get("content-range");
@@ -10656,10 +10663,9 @@ async function deleteCloudUpload(record) {
 }
 
 function serveUploadBuffer(req, res, record, buffer) {
-  const contentType = record.mimeType || "application/octet-stream";
-  const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
-  const dispositionType = requestUrl.searchParams.get("download") === "1" ? "attachment" : "inline";
-  const disposition = `${dispositionType}; filename="${String(record.originalName || "upload").replaceAll('"', "")}"`;
+  const extension = path.extname(record.originalName || record.storedName || "").toLowerCase();
+  const contentType = uploadContentType(extension, record.kind || classifyFile(extension, record.mimeType));
+  const disposition = safeContentDisposition(record, req);
   const range = req.headers.range;
 
   if (range) {
@@ -10674,6 +10680,7 @@ function serveUploadBuffer(req, res, record, buffer) {
           "Content-Disposition": disposition,
           "Accept-Ranges": "bytes",
           "Content-Range": `bytes ${start}-${end}/${buffer.length}`,
+          "X-Content-Type-Options": "nosniff",
         });
         res.end(buffer.subarray(start, end + 1));
         return;
@@ -10686,6 +10693,7 @@ function serveUploadBuffer(req, res, record, buffer) {
     "Content-Length": buffer.length,
     "Content-Disposition": disposition,
     "Accept-Ranges": "bytes",
+    "X-Content-Type-Options": "nosniff",
   });
   res.end(buffer);
 }
@@ -10741,9 +10749,8 @@ function formatServerBytes(bytes) {
 
 function isAllowedUploadExtension(extension) {
   const value = String(extension || "").toLowerCase();
-  if (!value || dangerousUploadExtensions.has(value)) return false;
-  if (allowedExtensions.has(value)) return true;
-  return /^\.[a-z0-9]{1,12}$/.test(value);
+  if (!value || dangerousUploadExtensions.has(value) || scriptableUploadExtensions.has(value)) return false;
+  return allowedExtensions.has(value);
 }
 
 async function validateUploadBytes(filePath, extension, mimeType) {
@@ -10759,7 +10766,7 @@ async function validateUploadBytes(filePath, extension, mimeType) {
 }
 
 function validateUploadBuffer(buffer, extension, mimeType) {
-  if (dangerousUploadExtensions.has(extension)) return "Dangerous executable uploads are blocked";
+  if (dangerousUploadExtensions.has(extension) || scriptableUploadExtensions.has(extension)) return "Dangerous executable uploads are blocked";
   const head = Buffer.isBuffer(buffer) ? buffer.subarray(0, 16) : Buffer.alloc(0);
   if (!head.length) return "File is empty";
   const hex = head.toString("hex");
@@ -10779,18 +10786,43 @@ function validateUploadBuffer(buffer, extension, mimeType) {
     ".ogg": () => ascii.startsWith("OggS"),
   };
   if (expected[extension] && !expected[extension]()) return "File content does not match its extension";
-  if (String(mimeType || "").includes("x-msdownload")) return "Executable uploads are blocked";
+  const lowerMime = String(mimeType || "").toLowerCase();
+  if (lowerMime.includes("x-msdownload") || lowerMime.includes("text/html") || lowerMime.includes("image/svg")) return "Executable uploads are blocked";
   return "";
+}
+
+async function markUploadNonExecutable(filePath) {
+  await fsp.chmod(filePath, 0o600).catch(() => {});
 }
 
 function classifyFile(extension, mimeType) {
   if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif"].includes(extension)) return "image";
   if ([".mp4", ".webm", ".mov", ".avi", ".mkv"].includes(extension)) return "video";
   if ([".mp3", ".wav", ".ogg", ".m4a"].includes(extension)) return "audio";
-  if (String(mimeType || "").startsWith("image/")) return "image";
-  if (String(mimeType || "").startsWith("video/")) return "video";
-  if (String(mimeType || "").startsWith("audio/")) return "audio";
+  if (extension === ".pdf") return "pdf";
   return "document";
+}
+
+function uploadContentType(extension, kind = "") {
+  if (scriptableUploadExtensions.has(String(extension || "").toLowerCase())) return "application/octet-stream";
+  const mapped = mimeTypes[String(extension || "").toLowerCase()];
+  if (mapped) return mapped;
+  return "application/octet-stream";
+}
+
+function uploadDispositionType(record, req) {
+  const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
+  if (requestUrl.searchParams.get("download") === "1") return "attachment";
+  const extension = path.extname(record && record.originalName || record && record.storedName || "").toLowerCase();
+  const kind = record && record.kind ? String(record.kind) : classifyFile(extension, record && record.mimeType);
+  return inlineSafeUploadKinds.has(kind) && !scriptableUploadExtensions.has(extension) ? "inline" : "attachment";
+}
+
+function safeContentDisposition(record, req) {
+  const fileName = String(record && (record.originalName || record.storedName) || "upload")
+    .replace(/[\r\n"]/g, "_")
+    .slice(0, 180) || "upload";
+  return `${uploadDispositionType(record, req)}; filename="${fileName}"`;
 }
 
 main().catch((error) => {

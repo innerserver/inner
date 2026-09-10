@@ -6733,8 +6733,10 @@ function normalizeInnerDocHtml(value) {
     template.content.querySelectorAll("*").forEach((node) => {
       [...node.attributes].forEach((attr) => {
         const name = attr.name.toLowerCase();
-        const value = String(attr.value || "");
-        if (name.startsWith("on") || value.toLowerCase().includes("javascript:")) node.removeAttribute(attr.name);
+        const value = String(attr.value || "").trim().toLowerCase();
+        const dangerousUrl = value.startsWith("javascript:") || value.startsWith("data:text/html") || value.startsWith("data:image/svg+xml");
+        const dangerousStyle = name === "style" && (value.includes("javascript:") || value.includes("expression("));
+        if (name.startsWith("on") || ["srcdoc", "formaction", "action"].includes(name) || dangerousUrl || dangerousStyle) node.removeAttribute(attr.name);
       });
     });
     return template.innerHTML;
@@ -8434,7 +8436,18 @@ function renderServiceScale() {
     const row = document.createElement("label");
     row.className = "scale-row";
     const text = document.createElement("span");
-    text.innerHTML = `<strong>${title}</strong><small>${detail}</small><a href="${url}" target="_blank" rel="noopener">${provider} pricing</a><em>Estimate: $${estimatedCost}/mo - Rs ${formatInr(estimatedCost)}/mo</em>`;
+    const labelTitle = document.createElement("strong");
+    labelTitle.textContent = title;
+    const labelDetail = document.createElement("small");
+    labelDetail.textContent = detail;
+    const pricing = document.createElement("a");
+    pricing.href = url;
+    pricing.target = "_blank";
+    pricing.rel = "noopener";
+    pricing.textContent = `${provider} pricing`;
+    const estimate = document.createElement("em");
+    estimate.textContent = `Estimate: $${estimatedCost}/mo - Rs ${formatInr(estimatedCost)}/mo`;
+    text.append(labelTitle, labelDetail, pricing, estimate);
     const output = document.createElement("b");
     output.textContent = `${value}%`;
     const input = document.createElement("input");

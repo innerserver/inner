@@ -1112,7 +1112,7 @@ async function routeApi(req, res, requestUrl) {
         cloudStorageReady: cloudStorageConfigured() || persistence.ready,
         cloudStorageRequired: cloudStorageRequired(),
         localhostMode: LOCALHOST_MODE,
-        cloudinaryConfigured: cloudinaryConfigured(),
+        cloudinaryConfigured: cloudinaryUploadEnabled(),
         backblazeConfigured: b2Configured(),
         error: persistence.error,
       },
@@ -1958,7 +1958,7 @@ async function routeApi(req, res, requestUrl) {
     if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
     const featureError = await featureGateError(settings, "files", user);
     if (featureError) return json(res, 423, { error: featureError });
-    if (!cloudinaryConfigured() || UPLOAD_PROVIDER === "mongodb") return json(res, 503, { error: "Direct Cloudinary uploads are not configured" });
+    if (!cloudinaryUploadEnabled()) return json(res, 503, { error: "Direct Cloudinary uploads are not configured" });
     const body = await readJsonBody(req);
     const originalName = sanitizeFileName(body.originalName || "upload.bin");
     const extension = path.extname(originalName).toLowerCase();
@@ -1995,7 +1995,7 @@ async function routeApi(req, res, requestUrl) {
     if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
     const featureError = await featureGateError(settings, "files", user);
     if (featureError) return json(res, 423, { error: featureError });
-    if (!cloudinaryConfigured() || UPLOAD_PROVIDER === "mongodb") return json(res, 503, { error: "Direct Cloudinary uploads are not configured" });
+    if (!cloudinaryUploadEnabled()) return json(res, 503, { error: "Direct Cloudinary uploads are not configured" });
     const body = await readJsonBody(req);
     const draft = body.draft || {};
     const cloudinary = body.cloudinary || {};
@@ -4114,9 +4114,9 @@ async function saveUpload(req, res, user) {
   }
 
   const storedName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${extension}`;
-  const preferB2 = UPLOAD_PROVIDER === "b2" || UPLOAD_PROVIDER === "backblaze";
-  const mustAvoidLocalDisk = cloudStorageRequired() && cloudinaryConfigured() && !preferB2 && UPLOAD_PROVIDER !== "mongodb";
-  if (cloudStorageRequired() && !cloudinaryConfigured() && !b2Configured() && !persistence.ready) {
+  const preferB2 = shouldUseB2Uploads();
+  const mustAvoidLocalDisk = cloudStorageRequired() && cloudinaryUploadEnabled() && !preferB2 && UPLOAD_PROVIDER !== "mongodb";
+  if (cloudStorageRequired() && !cloudinaryUploadEnabled() && !b2Configured() && !persistence.ready) {
     await addSystemLog("file.upload.fallback", user.username, { name: originalName, reason: "cloud storage missing; using local fallback" }, req);
   }
 
@@ -4234,7 +4234,7 @@ async function saveUpload(req, res, user) {
       fileRecord.persistence = inlineEnabled ? "disk+inline" : "disk";
       fileRecord.url = `/api/files/${fileRecord.id}/download`;
     }
-  } else if (cloudinaryConfigured() && UPLOAD_PROVIDER !== "mongodb") {
+  } else if (cloudinaryUploadEnabled()) {
     try {
       const cloudFile = await uploadLocalFileToCloudinary(storedName, target, fileRecord);
       fileRecord.cloudStorage = "cloudinary";
@@ -4784,19 +4784,27 @@ function cloudinaryConfigured() {
   return Boolean(CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET);
 }
 
+function cloudinaryUploadEnabled() {
+  return cloudinaryConfigured() && UPLOAD_PROVIDER === "cloudinary";
+}
+
 function b2Configured() {
   return Boolean(B2_KEY_ID && B2_APPLICATION_KEY && B2_BUCKET_NAME);
 }
 
+function shouldUseB2Uploads() {
+  return b2Configured() && (!UPLOAD_PROVIDER || ["b2", "backblaze", "backblaze-b2"].includes(UPLOAD_PROVIDER));
+}
+
 function cloudStorageConfigured() {
-  return cloudinaryConfigured() || b2Configured();
+  return b2Configured() || cloudinaryUploadEnabled();
 }
 
 function storageModeLabel() {
   if (b2Configured() && persistence.ready) return "backblaze-b2+mongodb-gridfs";
   if (b2Configured()) return "backblaze-b2";
-  if (cloudinaryConfigured() && persistence.ready) return "cloudinary+mongodb-gridfs";
-  if (cloudinaryConfigured()) return "cloudinary";
+  if (cloudinaryUploadEnabled() && persistence.ready) return "cloudinary+mongodb-gridfs";
+  if (cloudinaryUploadEnabled()) return "cloudinary";
   if (persistence.ready) return "mongodb-gridfs";
   return "local-disk";
 }
@@ -7626,7 +7634,7 @@ function safeUploadConfig(settings) {
   return {
     maxBytes,
     maxLabel: formatServerBytes(maxBytes),
-    directCloudinary: cloudinaryConfigured() && !["b2", "backblaze", "mongodb"].includes(UPLOAD_PROVIDER),
+    directCloudinary: cloudinaryUploadEnabled() && !b2Configured(),
     cloudRequired: cloudStorageRequired(),
     provider: storageModeLabel(),
   };
@@ -8888,8 +8896,8 @@ async function storageSummary() {
     dataDir: DATA_DIR,
     persistenceMode: storageModeLabel(),
     cloudStorageReady: cloudStorageConfigured() || persistence.ready,
-    cloudinaryConfigured: cloudinaryConfigured(),
-    cloudinaryFolder: cloudinaryConfigured() ? CLOUDINARY_FOLDER : "",
+    cloudinaryConfigured: cloudinaryUploadEnabled(),
+    cloudinaryFolder: cloudinaryUploadEnabled() ? CLOUDINARY_FOLDER : "",
     backblazeConfigured: b2Configured(),
     backblazeBucket: b2Configured() ? B2_BUCKET_NAME : "",
     cloudStorageError: persistence.error,
@@ -8921,7 +8929,7 @@ function buildLocalhostState() {
 }
 
 async function migrateExistingUploadsToCloud() {
-  if (!persistence.ready && !cloudinaryConfigured() && !b2Configured()) return;
+  if (!persistence.ready && !cloudinaryUploadEnabled() && !b2Configured()) return;
   const files = await readJson(FILES.uploads, []);
   if (!Array.isArray(files) || !files.length) return;
 
@@ -8929,7 +8937,7 @@ async function migrateExistingUploadsToCloud() {
   for (const record of files) {
     if (!record || !record.storedName) continue;
     const localPath = path.join(UPLOAD_DIR, record.storedName);
-    if ((UPLOAD_PROVIDER === "b2" || UPLOAD_PROVIDER === "backblaze") && b2Configured() && record.cloudStorage !== "backblaze-b2") {
+    if (shouldUseB2Uploads() && record.cloudStorage !== "backblaze-b2") {
       try {
         if (fs.existsSync(localPath)) {
           const b2File = await uploadLocalFileToB2(record.storedName, localPath, record);
@@ -8960,7 +8968,7 @@ async function migrateExistingUploadsToCloud() {
         console.error("[persistence] backblaze migration failed:", record.originalName || record.storedName, persistence.error);
       }
     }
-    if (cloudinaryConfigured() && record.cloudStorage !== "cloudinary") {
+    if (cloudinaryUploadEnabled() && !shouldUseB2Uploads() && record.cloudStorage !== "cloudinary") {
       try {
         if (fs.existsSync(localPath)) {
           const cloudFile = await uploadLocalFileToCloudinary(record.storedName, localPath, record);

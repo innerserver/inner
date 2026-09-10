@@ -82,16 +82,16 @@ npm start
 
 Render gives the public app an HTTPS URL automatically. Open the `https://...onrender.com` link, not the internal `http://` server log link. The included `render.yaml` also enables `INNER_FORCE_HTTPS=true`, so public HTTP requests are redirected to HTTPS.
 
-Render Free does not preserve local filesystem uploads or JSON data across restarts. This app uses MongoDB for JSON data when `MONGODB_URI` is set, so accounts, messages, settings, upload metadata, logs, read receipts, and profiles survive redeploys. Uploaded file bytes can use Cloudinary first, with MongoDB GridFS still supported as a fallback.
+Render Free does not preserve local filesystem uploads or JSON data across restarts. This app uses MongoDB for JSON data when `MONGODB_URI` is set, so accounts, messages, settings, upload metadata, logs, read receipts, and profiles survive redeploys. Uploaded file bytes use Backblaze B2 when the B2 variables below are configured, with MongoDB GridFS still supported as a fallback.
 
 Recommended cloud upload setup:
 
 ```text
-CLOUDINARY_CLOUD_NAME=your-cloud-name
-CLOUDINARY_API_KEY=your-api-key
-CLOUDINARY_API_SECRET=your-api-secret
-CLOUDINARY_FOLDER=inner_uploads
-INNER_UPLOAD_PROVIDER=cloudinary
+INNER_UPLOAD_PROVIDER=backblaze
+INNER_B2_KEY_ID=your_keyID
+INNER_B2_APPLICATION_KEY=your_applicationKey
+INNER_B2_BUCKET_NAME=your_bucket_name
+INNER_B2_BUCKET_ID=optional_bucket_id
 INNER_REQUIRE_CLOUD_STORAGE=true
 ```
 
@@ -105,7 +105,7 @@ INNER_DATA_DIR=/tmp/inner-data
 INNER_UPLOAD_INLINE_LIMIT=0
 ```
 
-With `INNER_REQUIRE_CLOUD_STORAGE=true`, uploads are intentionally refused unless Cloudinary or MongoDB/GridFS is connected. That prevents fake-success uploads that vanish later after redeploys. When Cloudinary is configured, browsers upload straight to Cloudinary and then Inner saves the file record. Long videos do not pass through Render, so Render request timeouts, disk limits, and memory restarts are avoided. If a very large video still fails, check the Cloudinary response and your Cloudinary plan/upload size limits. Localhost mode disables that requirement for the desktop/local version.
+With `INNER_REQUIRE_CLOUD_STORAGE=true`, uploads are intentionally refused unless Backblaze B2 or MongoDB/GridFS is connected. That prevents fake-success uploads that vanish later after redeploys. With `INNER_UPLOAD_PROVIDER=backblaze`, Inner stores uploaded file bytes in B2 and keeps file metadata in MongoDB. Localhost mode disables that requirement for the desktop/local version.
 
 Dashboard announcements:
 
@@ -214,7 +214,7 @@ Report emails use the addresses saved in the Admin server panel first, then fall
 
 ## Notes
 
-Uploaded files and JSON data are stored under `data/` locally. In cloud mode, JSON records are stored in MongoDB when `MONGODB_URI` is configured, and file bytes are stored in Cloudinary when the Cloudinary variables are configured. MongoDB GridFS remains available if you set `INNER_UPLOAD_PROVIDER=mongodb`. Messages, DMs, side rooms, uploaded file records, account password changes, feature locks, backups, server settings, read receipts, logs, and VPN profile settings remain after redeploys when cloud persistence is configured.
+Uploaded files and JSON data are stored under `data/` locally. In cloud mode, JSON records are stored in MongoDB when `MONGODB_URI` is configured, and uploaded file bytes are stored in Backblaze B2 when the B2 variables are configured. MongoDB GridFS remains available if you set `INNER_UPLOAD_PROVIDER=mongodb`. Messages, DMs, side rooms, uploaded file records, account password changes, feature locks, backups, server settings, read receipts, logs, and VPN profile settings remain after redeploys when cloud persistence is configured.
 
 Sessions expire automatically after inactivity unless an admin enables persistent login for that account. To store data somewhere else, start the server with `INNER_DATA_DIR` pointed at another folder.
 

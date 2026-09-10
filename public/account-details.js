@@ -6,23 +6,32 @@
   const username = String(params.get("user") || "").trim();
 
   function line(label, value) {
-    if (value === undefined || value === null || value === "") return "";
-    return `<div class="detail-line"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`;
+    if (value === undefined || value === null || value === "") return null;
+    const row = document.createElement("div");
+    row.className = "detail-line";
+    const labelNode = document.createElement("span");
+    labelNode.textContent = label;
+    const valueNode = document.createElement("strong");
+    valueNode.textContent = String(value);
+    row.append(labelNode, valueNode);
+    return row;
   }
 
   function section(name, rows) {
-    const content = rows.filter(Boolean).join("");
-    return `<article class="detail-section"><h2>${escapeHtml(name)}</h2>${content || "<p>No saved data.</p>"}</article>`;
-  }
-
-  function escapeHtml(value) {
-    return String(value || "").replace(/[&<>"']/g, (char) => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;",
-    }[char]));
+    const article = document.createElement("article");
+    article.className = "detail-section";
+    const heading = document.createElement("h2");
+    heading.textContent = name;
+    article.append(heading);
+    const content = rows.flat().filter(Boolean);
+    if (content.length) {
+      article.append(...content);
+    } else {
+      const empty = document.createElement("p");
+      empty.textContent = "No saved data.";
+      article.append(empty);
+    }
+    return article;
   }
 
   function formatDate(value) {
@@ -58,15 +67,21 @@
         line("Recent login count", history.length),
       ]);
     }
+    const details = document.createElement("details");
+    details.className = "detail-login-history";
+    const summary = document.createElement("summary");
+    summary.textContent = `Last ${history.length || 10} login IPs and devices`;
+    details.append(summary);
     const rows = history.length
-      ? history.map((entry) => [
+      ? history.flatMap((entry) => [
           line("Time", formatDate(entry.loggedInAt)),
           line("IP", entry.ip),
           line("Device", entry.device),
           line("Approx location", formatApprox(entry.approximateLocation)),
-        ].join(""))
+        ])
       : [line("History", "No previous login history has been recorded yet.")];
-    return `<details class="detail-login-history"><summary>Last ${history.length || 10} login IPs and devices</summary>${section("", rows)}</details>`;
+    details.append(section("", rows));
+    return details;
   }
 
   if (!username) {
@@ -87,7 +102,7 @@
 
     title.textContent = `${user.username} details`;
     subtitle.textContent = `${user.role || "member"}${user.grade || profile.grade ? ` - Grade ${user.grade || profile.grade}` : ""}`;
-    body.innerHTML = [
+    body.replaceChildren(
       section("Identity and contact", [
         line("Display name", user.displayName || profile.displayName),
         line("Username", user.username),
@@ -111,7 +126,7 @@
       ]),
       loginHistorySection(user),
       section("Browser/search history", history.length
-        ? history.map((entry) => {
+        ? history.flatMap((entry) => {
             const details = entry.details || {};
             return [
               line(details.query ? "Search" : "Opened", details.query || details.url || details.host || "Browser open"),
@@ -121,10 +136,10 @@
               line("IP", entry.ip),
               line("Device", entry.userAgent),
               line("Time", formatDate(entry.createdAt)),
-            ].join("");
+            ];
           })
-        : [line("History", "No Inner Browser opens logged for this account.")]),
-    ].join("");
+        : [line("History", "No Inner Browser opens logged for this account.")])
+    );
   } catch (error) {
     body.textContent = error.message || "Could not load account details.";
   }

@@ -289,8 +289,9 @@ async function main() {
 
   const server = createInnerServer((req, res) => {
     route(req, res).catch((error) => {
-      console.error(error);
-      json(res, 500, { error: "Internal server error" });
+      console.error(safeErrorMessage(error));
+      const status = isClientBodyError(error) ? 400 : 500;
+      json(res, status, { error: status === 400 ? error.message : "Internal server error" });
     });
   });
 
@@ -930,8 +931,12 @@ async function route(req, res) {
 async function routeApi(req, res, requestUrl) {
   const pathname = requestUrl.pathname;
 
-  if (requiresCsrfProtection(req) && getCookie(req, SESSION_COOKIE) && !isSameOriginRequest(req)) {
+  const csrfSessionUser = requiresCsrfProtection(req) ? getSessionUser(req) : null;
+  if (csrfSessionUser && !isSameOriginRequest(req)) {
     return json(res, 403, { error: "Cross-site request blocked" });
+  }
+  if (csrfSessionUser && !isValidCsrfRequest(req)) {
+    return json(res, 403, { error: "Invalid security token" });
   }
 
   if (req.method === "POST" && pathname === "/api/login") {
@@ -998,6 +1003,7 @@ async function routeApi(req, res, requestUrl) {
     sessions.set(token, {
       username: user.username,
       role: effectiveRole(user),
+      csrfToken: crypto.randomBytes(32).toString("base64url"),
       tempAdminUntil: user.tempAdminUntil || "",
       tempAdminPreviousRole: user.tempAdminPreviousRole || "",
       email: user.email || "",
@@ -1075,7 +1081,7 @@ async function routeApi(req, res, requestUrl) {
     }
 
     res.setHeader("Set-Cookie", sessionCookie(token, req, persistent ? Math.floor(SESSION_PERSISTENT_MS / 1000) : null));
-    json(res, 200, { user: safeUser(user) });
+    json(res, 200, { user: safeUser(user), csrfToken: sessionCsrfToken(token) });
     void addSystemLog("login.success", user.username, { role: normalizeRole(user.role), persistent, persistentReason: persistentLoginReason(user, settings, rooms) }, req).catch((error) => {
       console.error("Login audit log failed:", error.message || error);
     });
@@ -1649,7 +1655,7 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "GET" && pathname === "/api/me") {
-    return json(res, 200, { user: safeUser(user, user) });
+    return json(res, 200, { user: safeUser(user, user), csrfToken: csrfTokenForRequest(req) });
   }
 
   if (req.method === "GET" && pathname === "/api/state") {
@@ -1738,6 +1744,7 @@ async function routeApi(req, res, requestUrl) {
       .map((entry) => safeDm(entry, user));
     const visiblePeople = statePeopleForUser(users, profiles, user, friends, normalizedMessages, visibleDms);
     return json(res, 200, {
+      csrfToken: csrfTokenForRequest(req),
       user: safeUser(user, user),
       settings: safeSettings(settings, user),
       rtcConfig: await buildRtcConfigForRequest(req),
@@ -1999,6 +2006,10 @@ async function routeApi(req, res, requestUrl) {
     if (!isAllowedUploadExtension(extension)) return json(res, 400, { error: "Unsupported or unsafe file type" });
     const cloudinaryError = validateCloudinaryUploadResult(cloudinary, draft);
     if (cloudinaryError) return json(res, 400, { error: cloudinaryError });
+    const scaledUploadBytes = Math.round(MAX_UPLOAD_BYTES * serviceScaleMultiplier(settings, "uploads"));
+    const uploadedBytes = Number(cloudinary.bytes || draft.size || 0);
+    if (!Number.isFinite(uploadedBytes) || uploadedBytes <= 0) return json(res, 400, { error: "Uploaded file size is invalid" });
+    if (uploadedBytes > scaledUploadBytes) return json(res, 413, { error: `File is larger than ${formatServerBytes(scaledUploadBytes)}` });
 
     const fileRecord = {
       ...draft,
@@ -2007,7 +2018,7 @@ async function routeApi(req, res, requestUrl) {
       category: normalizeCategory(draft.category || "document"),
       kind: classifyFile(extension, draft.mimeType),
       mimeType: uploadContentType(extension, classifyFile(extension, draft.mimeType)),
-      size: Number(cloudinary.bytes || draft.size || 0),
+      size: uploadedBytes,
       user: user.username,
       private: Boolean(draft.private),
       createdAt: draft.createdAt || new Date().toISOString(),
@@ -4650,7 +4661,7 @@ async function proxyB2Upload(req, res, record) {
   const b2Url = new URL(`${auth.downloadUrl}/file/${encodeURIComponent(B2_BUCKET_NAME)}/${String(record.b2FileName || "").split("/").map(encodeURIComponent).join("/")}`);
   const requestHeaders = { Authorization: auth.authorizationToken };
   if (req.headers.range) requestHeaders.Range = req.headers.range;
-  const upstream = await fetch(b2Url, { headers: requestHeaders }).catch(() => null);
+  const upstream = await fetch(b2Url, { headers: requestHeaders, signal: AbortSignal.timeout(8000) }).catch(() => null);
   if (!upstream || !upstream.ok) return false;
   const extension = path.extname(record.originalName || record.storedName || "").toLowerCase();
   const headers = {
@@ -6072,7 +6083,9 @@ function applySecurityHeaders(req, res) {
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "geolocation=(self), camera=(self), microphone=(self), display-capture=(self), payment=()");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
-  res.setHeader("Content-Security-Policy", "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' ws: wss: https:; frame-src 'self' https: http:");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+  res.setHeader("Content-Security-Policy", "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' ws: wss: https:; worker-src 'self' blob:; manifest-src 'self'; frame-src 'self' https: http:");
   if (isHttpsRequest(req)) res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 }
 
@@ -6089,6 +6102,24 @@ function isSameOriginRequest(req) {
   } catch (error) {
     return false;
   }
+}
+
+function sessionCsrfToken(sessionToken) {
+  const session = sessions.get(sessionToken);
+  return session && session.csrfToken ? session.csrfToken : "";
+}
+
+function csrfTokenForRequest(req) {
+  return sessionCsrfToken(getCookie(req, SESSION_COOKIE));
+}
+
+function isValidCsrfRequest(req) {
+  const expected = csrfTokenForRequest(req);
+  const provided = String(req.headers["x-csrf-token"] || req.headers["x-inner-csrf"] || "").trim();
+  if (!expected || !provided) return false;
+  const expectedBuffer = Buffer.from(expected);
+  const providedBuffer = Buffer.from(provided);
+  return expectedBuffer.length === providedBuffer.length && crypto.timingSafeEqual(expectedBuffer, providedBuffer);
 }
 
 function loginRateKey(req, username) {
@@ -8659,7 +8690,7 @@ async function addSystemLog(action, actor, details = {}, req = null) {
     id: crypto.randomUUID(),
     action: String(action || "event").slice(0, 120),
     actor: String(actor || "system").slice(0, 80),
-    details,
+    details: redactLogDetails(details),
     sourceIp: req ? getClientIp(req) : "",
     sourceHost: req ? String(req.headers.host || "").slice(0, 120) : "",
     createdAt: new Date().toISOString(),
@@ -8668,6 +8699,34 @@ async function addSystemLog(action, actor, details = {}, req = null) {
   const next = logs.slice(0, 3000);
   await writeJson(FILES.logs, next);
   broadcastManagerLogs("logs:update", "logs", next.slice(0, 300));
+}
+
+function redactLogDetails(value, depth = 0) {
+  if (depth > 6) return "[redacted-depth]";
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.slice(0, 80).map((entry) => redactLogDetails(entry, depth + 1));
+  if (typeof value !== "object") return typeof value === "string" ? redactSensitiveText(value).slice(0, 1000) : value;
+  const next = {};
+  for (const [key, raw] of Object.entries(value)) {
+    const cleanKey = String(key || "").slice(0, 80);
+    if (isSensitiveLogKey(cleanKey)) {
+      next[cleanKey] = "[redacted]";
+    } else {
+      next[cleanKey] = redactLogDetails(raw, depth + 1);
+    }
+  }
+  return next;
+}
+
+function isSensitiveLogKey(key) {
+  return /(password|passwd|pwd|token|secret|credential|authorization|cookie|session|api[_-]?key|private[_-]?key)/i.test(String(key || ""));
+}
+
+function redactSensitiveText(value) {
+  return String(value || "")
+    .replace(/(mongodb(?:\+srv)?:\/\/[^:\s/@]+:)[^@\s]+(@)/gi, "$1[redacted]$2")
+    .replace(/(Authorization:\s*Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, "$1[redacted]")
+    .replace(/((?:api[_-]?key|token|secret|credential|password|passwd|pwd)\s*[:=]\s*)[^\s,;&"]+/gi, "$1[redacted]");
 }
 
 async function ownerFailsafeTriggeredResponse(req, res, actor, trigger) {
@@ -9894,7 +9953,13 @@ function verifyPasswordAsync(password, passwordRecord) {
 async function readJsonBody(req) {
   const body = await readBody(req, MAX_JSON_BYTES);
   if (!body.trim()) return {};
-  return JSON.parse(body);
+  try {
+    return JSON.parse(body);
+  } catch (error) {
+    const parseError = new Error("Invalid JSON body");
+    parseError.statusCode = 400;
+    throw parseError;
+  }
 }
 
 function readBody(req, maxBytes) {
@@ -9914,6 +9979,14 @@ function readBody(req, maxBytes) {
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
+}
+
+function isClientBodyError(error) {
+  return error && (error.statusCode === 400 || /invalid json body|request body too large/i.test(error.message || ""));
+}
+
+function safeErrorMessage(error) {
+  return redactSensitiveText(error && (error.stack || error.message) || String(error || "Unknown error")).slice(0, 2000);
 }
 
 async function readJson(file, fallback) {
@@ -10536,14 +10609,7 @@ async function serveCloudUpload(req, res, record) {
   }
   if (record && record.cloudStorage === "cloudinary" && record.cloudinarySecureUrl) {
     if (!isAllowedCloudinarySecureUrl(record.cloudinarySecureUrl, record.cloudinaryPublicId, record.cloudinaryVersion)) return false;
-    const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
-    if (record.private || requestUrl.searchParams.get("download") === "1") return proxyCloudinaryUpload(req, res, record);
-    res.writeHead(302, {
-      Location: record.cloudinarySecureUrl,
-      "Cache-Control": record.private ? "no-store" : "private, max-age=60",
-    });
-    res.end();
-    return true;
+    return proxyCloudinaryUpload(req, res, record);
   }
   if (!persistence.ready || !persistence.uploadBucket || !record || !record.storedName) return false;
   const file = await findCloudUpload(record);
@@ -10596,7 +10662,7 @@ async function proxyCloudinaryUpload(req, res, record) {
   if (!isAllowedCloudinarySecureUrl(record.cloudinarySecureUrl, record.cloudinaryPublicId, record.cloudinaryVersion)) return false;
   const requestHeaders = {};
   if (req.headers.range) requestHeaders.Range = req.headers.range;
-  const upstream = await fetch(record.cloudinarySecureUrl, { headers: requestHeaders }).catch(() => null);
+  const upstream = await fetch(record.cloudinarySecureUrl, { headers: requestHeaders, signal: AbortSignal.timeout(8000) }).catch(() => null);
   if (!upstream || !upstream.ok) return false;
   const headers = {
     "Content-Type": uploadContentType(path.extname(record.originalName || record.storedName || "").toLowerCase(), record.kind || ""),

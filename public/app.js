@@ -1,5 +1,6 @@
 const state = {
   user: null,
+  csrfToken: "",
   settings: { serverEnabled: true, roomName: "Connectifi" },
   uploadConfig: { directCloudinary: false, maxBytes: 250 * 1024 * 1024, maxLabel: "250 MB" },
   rtcStatus: { turnConfigured: false, turnCredentialConfigured: false, relayOnly: false },
@@ -1404,12 +1405,14 @@ async function handleLogout() {
   closeSocket();
   stopShare({ silent: true });
   await api("/api/logout", { method: "POST" }).catch(() => {});
+  state.csrfToken = "";
   showLogin();
 }
 
 async function loadState() {
   const data = await api("/api/state?fast=1");
   state.user = data.user;
+  state.csrfToken = data.csrfToken || state.csrfToken || "";
   state.settings = data.settings;
   state.uploadConfig = data.uploadConfig || state.uploadConfig;
   if (data.rtcConfig && Array.isArray(data.rtcConfig.iceServers)) {
@@ -2042,6 +2045,7 @@ async function uploadOneFile(file, category, options = {}) {
       "x-file-private": options.private ? "1" : "0",
       "x-file-release-room": els.fileReleaseRoom ? els.fileReleaseRoom.value : "",
       "x-file-release-at": releaseAtHeaderValue(),
+      "X-CSRF-Token": state.csrfToken || "",
     },
     body: file,
   });
@@ -10699,11 +10703,15 @@ function formatMoney(priceCents, currency) {
 }
 
 async function api(path, options = {}) {
+  const method = String(options.method || "GET").toUpperCase();
   const init = {
-    method: options.method || "GET",
+    method,
     credentials: "same-origin",
     headers: options.headers || {},
   };
+  if (!["GET", "HEAD", "OPTIONS"].includes(method) && state.csrfToken) {
+    init.headers = { ...init.headers, "X-CSRF-Token": state.csrfToken };
+  }
 
   if (options.json !== undefined) {
     init.headers = { ...init.headers, "Content-Type": "application/json" };
@@ -10721,6 +10729,7 @@ async function api(path, options = {}) {
     throw startupError;
   }
   const data = await response.json().catch(() => ({}));
+  if (data && data.csrfToken) state.csrfToken = data.csrfToken;
   if (!response.ok) {
     const error = new Error(data.error || `Request failed (${response.status})`);
     error.status = response.status;

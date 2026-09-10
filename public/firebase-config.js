@@ -1,37 +1,11 @@
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-import { getAuth } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getStorage } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
+// Firebase is not used by Connectifi. Keep this module inert so a stale import
+// cannot expose project configuration or open client-side data access.
+export const firebaseApp = null;
+export const firestore = null;
+export const firebaseAuth = null;
+export const firebaseStorage = null;
 
-const firebaseConfig = {
-  apiKey: 'AIzaSyAP2uqcSF-tu8avNQhqRdBVwAcS8rzsDkU',
-  authDomain: 'inner-79133.firebaseapp.com',
-  projectId: 'inner-79133',
-  storageBucket: 'inner-79133.firebasestorage.app',
-  messagingSenderId: '1061388899666',
-  appId: '1:1061388899666:web:5e0626c7f9af28b363d68b'
-};
-
-export const firebaseApp = initializeApp(firebaseConfig);
-export const firestore = getFirestore(firebaseApp);
-export const firebaseAuth = getAuth(firebaseApp);
-export const firebaseStorage = getStorage(firebaseApp);
-
-window.firebaseApp = firebaseApp;
-window.firestore = firestore;
-window.firebaseAuth = firebaseAuth;
-window.firebaseStorage = firebaseStorage;
-
-
-document.addEventListener("DOMContentLoaded",()=>{
- const u=localStorage.getItem("username")||"guest";
- const r=localStorage.getItem("role")||"user";
- const admin=(u==="devshah"||r==="admin");
-
- document.querySelectorAll("[data-feature='admin'],#adminBtn,.admin-btn,.admin-nav,.admin-panel").forEach(el=>{
-   if(!admin){
-      el.remove();
-   }
- });
-
-});
+window.firebaseApp = null;
+window.firestore = null;
+window.firebaseAuth = null;
+window.firebaseStorage = null;

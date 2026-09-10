@@ -20,6 +20,10 @@ async function request(path, { method = "GET", json, cookie, headers = {} } = {}
   return { status: response.status, body, headers: response.headers };
 }
 
+function csrfFrom(response) {
+  return response && response.body && typeof response.body === "object" ? String(response.body.csrfToken || "") : "";
+}
+
 function assert(condition, message, details = {}) {
   if (!condition) {
     const error = new Error(message);
@@ -32,6 +36,7 @@ async function main() {
   const checks = [];
   const adminLogin = await request("/api/login", { method: "POST", json: { username: adminUsername, password: adminPassword } });
   const adminCookie = cookieFrom(adminLogin.headers);
+  const adminCsrf = csrfFrom(adminLogin);
   assert(adminLogin.status === 200 && adminCookie, "admin login failed", adminLogin);
   checks.push("admin login");
 
@@ -39,6 +44,7 @@ async function main() {
     const created = await request("/api/users", {
       method: "POST",
       cookie: adminCookie,
+      headers: { "X-CSRF-Token": adminCsrf, Origin: base },
       json: { username, password: "AuditPass1234", role: "member", grade: key === "c" ? "11A" : "10A", email: `${username}@example.test`, allowPersistentLogin: true },
     });
     assert(created.status === 201, `create ${username} failed`, created);
@@ -47,14 +53,22 @@ async function main() {
 
   const loginA = await request("/api/login", { method: "POST", json: { username: names.a, password: "AuditPass1234" } });
   const cookieA = cookieFrom(loginA.headers);
+  const csrfA = csrfFrom(loginA);
   assert(loginA.status === 200 && cookieA, "user A login failed", loginA);
   const csrfProfile = await request("/api/profile", {
     method: "POST",
     cookie: cookieA,
-    headers: { Origin: "https://evil.example.test" },
+    headers: { Origin: "https://evil.example.test", "X-CSRF-Token": csrfA },
     json: { displayName: "Blocked Cross Site" },
   });
   assert(csrfProfile.status === 403, "cross-origin authenticated POST was not blocked", csrfProfile);
+  const missingTokenProfile = await request("/api/profile", {
+    method: "POST",
+    cookie: cookieA,
+    headers: { Origin: base },
+    json: { displayName: "Blocked Missing Token" },
+  });
+  assert(missingTokenProfile.status === 403, "authenticated POST without CSRF token was not blocked", missingTokenProfile);
   const privateBrowserTargets = [
     "http://127.0.0.1:5181/api/state",
     "http://localhost:5181/api/state",
@@ -69,27 +83,28 @@ async function main() {
   assert((sameGrade.body.people || []).some((person) => person.username === names.b), "same-grade candidate missing", sameGrade.body);
   const exactCross = await request(`/api/friends/candidates?q=${encodeURIComponent(names.c)}`, { cookie: cookieA });
   assert((exactCross.body.people || []).some((person) => person.username === names.c), "exact cross-grade candidate missing", exactCross.body);
-  const blockedCross = await request("/api/friends/request", { method: "POST", cookie: cookieA, json: { to: names.c, search: "" } });
+  const blockedCross = await request("/api/friends/request", { method: "POST", cookie: cookieA, headers: { "X-CSRF-Token": csrfA, Origin: base }, json: { to: names.c, search: "" } });
   assert(blockedCross.status === 403, "cross-grade request was not blocked", blockedCross);
-  const friendRequest = await request("/api/friends/request", { method: "POST", cookie: cookieA, json: { to: names.b, search: "grade:10A" } });
+  const friendRequest = await request("/api/friends/request", { method: "POST", cookie: cookieA, headers: { "X-CSRF-Token": csrfA, Origin: base }, json: { to: names.b, search: "grade:10A" } });
   assert(friendRequest.status === 201, "same-grade request failed", friendRequest);
   checks.push("friend search and request authorization");
 
   const loginB = await request("/api/login", { method: "POST", json: { username: names.b, password: "AuditPass1234" } });
   const cookieB = cookieFrom(loginB.headers);
+  const csrfB = csrfFrom(loginB);
   const stateB = await request("/api/state", { cookie: cookieB });
   const incoming = stateB.body.friends?.incoming?.[0];
   assert(incoming?.from === names.a && incoming?.id, "incoming friend request missing", stateB.body.friends);
-  const accept = await request("/api/friends/respond", { method: "POST", cookie: cookieB, json: { id: incoming.id, action: "accept" } });
+  const accept = await request("/api/friends/respond", { method: "POST", cookie: cookieB, headers: { "X-CSRF-Token": csrfB, Origin: base }, json: { id: incoming.id, action: "accept" } });
   assert(accept.status === 200, "accept friend request failed", accept);
-  const dm = await request("/api/dms", { method: "POST", cookie: cookieA, json: { to: names.b, text: "Private audit DM" } });
+  const dm = await request("/api/dms", { method: "POST", cookie: cookieA, headers: { "X-CSRF-Token": csrfA, Origin: base }, json: { to: names.b, text: "Private audit DM" } });
   assert(dm.status === 201 && dm.body.dm?.id, "direct message send failed", dm);
   const loginC = await request("/api/login", { method: "POST", json: { username: names.c, password: "AuditPass1234" } });
   const cookieC = cookieFrom(loginC.headers);
   const stateC = await request("/api/state", { cookie: cookieC });
   assert(!(stateC.body.dms || []).some((entry) => entry.id === dm.body.dm.id), "unrelated user received a private DM", stateC.body.dms);
   const themeData = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
-  const profile = await request("/api/profile", { method: "POST", cookie: cookieA, json: { displayName: "Audit Alex", grade: "10A", theme: "custom", visualStyle: "city", themeImageUrl: themeData, customTheme: { bg: "#102030", surface: "#ffffff", ink: "#101010", accent: "#2f855a" }, bio: "UI audit profile", status: "online", invisible: false } });
+  const profile = await request("/api/profile", { method: "POST", cookie: cookieA, headers: { "X-CSRF-Token": csrfA, Origin: base }, json: { displayName: "Audit Alex", grade: "10A", theme: "custom", visualStyle: "city", themeImageUrl: themeData, customTheme: { bg: "#102030", surface: "#ffffff", ink: "#101010", accent: "#2f855a" }, bio: "UI audit profile", status: "online", invisible: false } });
   assert(profile.status === 200 && profile.body.profile?.themeImageUrl, "profile theme save failed", profile);
   const finalA = await request("/api/state", { cookie: cookieA });
   assert((finalA.body.friends?.friends || []).some((friend) => friend.username === names.b), "accepted friend missing", finalA.body.friends);

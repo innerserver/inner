@@ -38,6 +38,8 @@ const state = {
   logSearch: "",
   logDate: "",
   files: [],
+  stickers: [],
+  userPins: { messages: [], dms: [] },
   selectedGameUrl: "",
   innerDocs: [],
   selectedInnerDocId: "",
@@ -326,6 +328,8 @@ function cacheElements() {
     "messageAttachment",
     "messageSelfieInput",
     "messageSelfieButton",
+    "messageStickerImport",
+    "messageStickerList",
     "sendMessageButton",
     "dmState",
     "dmPeerSelect",
@@ -361,6 +365,8 @@ function cacheElements() {
     "dmAttachment",
     "dmSelfieInput",
     "dmSelfieButton",
+    "dmStickerImport",
+    "dmStickerList",
     "dmSecret",
     "sendDmButton",
     "secretNavButton",
@@ -780,6 +786,7 @@ function bindEvents() {
   els.messageJumpBottomButton.addEventListener("click", () => scrollToBottom(els.messageList, true));
   els.messageSelfieButton.addEventListener("click", () => els.messageSelfieInput.click());
   els.messageSelfieInput.addEventListener("change", () => sendSelfie("message"));
+  if (els.messageStickerImport) els.messageStickerImport.addEventListener("change", () => importStickersFromInput(els.messageStickerImport));
   els.dmPeerSelect.addEventListener("change", () => {
     state.selectedDmUser = els.dmPeerSelect.value;
     saveUiState();
@@ -795,6 +802,7 @@ function bindEvents() {
   els.dmJumpBottomButton.addEventListener("click", () => scrollToBottom(els.dmList, true));
   els.dmSelfieButton.addEventListener("click", () => els.dmSelfieInput.click());
   els.dmSelfieInput.addEventListener("change", () => sendSelfie("dm"));
+  if (els.dmStickerImport) els.dmStickerImport.addEventListener("change", () => importStickersFromInput(els.dmStickerImport));
   if (els.secretMessageForm) els.secretMessageForm.addEventListener("submit", sendSecretMessage);
   els.dmGroupForm.addEventListener("submit", createDmGroup);
   els.deleteDmGroupButton.addEventListener("click", deleteCurrentDmGroup);
@@ -1426,6 +1434,8 @@ async function loadState() {
   state.dms = data.dms || [];
   state.dmGroups = data.dmGroups || [];
   state.files = data.files || [];
+  state.stickers = data.stickers || [];
+  state.userPins = data.userPins || { messages: [], dms: [] };
   state.innerDocs = data.innerDocs || [];
   if (!state.selectedInnerDocId && state.innerDocs.length) state.selectedInnerDocId = state.innerDocs[0].id;
   state.accountRequests = data.accountRequests || [];
@@ -1706,6 +1716,88 @@ async function sendSelfie(target) {
     input.value = "";
     updateControls();
   }
+}
+
+async function importStickersFromInput(input) {
+  const files = Array.from(input.files || []);
+  if (!files.length) return;
+  const imageFiles = files.filter((file) => /^image\/(webp|png|gif|jpeg|jpg)/i.test(file.type || "") || /\.(webp|png|gif|jpe?g)$/i.test(file.name || ""));
+  if (!imageFiles.length) {
+    input.value = "";
+    return notify("Choose WebP, PNG, GIF, or JPG sticker files");
+  }
+  try {
+    notify(`Importing ${imageFiles.length} sticker${imageFiles.length === 1 ? "" : "s"}`);
+    const uploaded = [];
+    for (const file of imageFiles.slice(0, 80)) {
+      uploaded.push(await uploadOneFile(file, "image", { private: false }));
+    }
+    const data = await api("/api/stickers", {
+      method: "POST",
+      json: { fileIds: uploaded.map((file) => file.id) },
+    });
+    state.stickers = data.stickers || state.stickers;
+    renderStickerPickers();
+    notify(`Imported ${data.imported || uploaded.length} sticker${(data.imported || uploaded.length) === 1 ? "" : "s"}`);
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    input.value = "";
+    updateControls();
+  }
+}
+
+async function sendSticker(sticker, target) {
+  if (!sticker || !sticker.attachment) return;
+  try {
+    const attachment = { ...sticker.attachment, sticker: true };
+    if (target === "dm") {
+      const selected = els.dmPeerSelect.value;
+      if (!selected) return notify("Choose an account or group");
+      const groupId = selected.startsWith("group:") ? selected.slice(6) : "";
+      const data = await api("/api/dms", {
+        method: "POST",
+        json: { to: groupId ? "" : selected, groupId, text: "", attachment, secret: Boolean(els.dmSecret && els.dmSecret.checked) },
+      });
+      addDm(data.dm);
+      renderDms();
+    } else {
+      const data = await api("/api/messages", {
+        method: "POST",
+        json: { roomId: state.selectedRoomId || "main", text: "", attachment },
+      });
+      addMessage(data.message);
+      renderMessages();
+    }
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+function renderStickerPickers() {
+  renderStickerPicker(els.messageStickerList, "message");
+  renderStickerPicker(els.dmStickerList, "dm");
+}
+
+function renderStickerPicker(container, target) {
+  if (!container) return;
+  container.replaceChildren();
+  if (!state.stickers.length) {
+    container.append(emptyBlock("Import WebP, PNG, GIF, or JPG stickers"));
+    return;
+  }
+  state.stickers.forEach((sticker) => {
+    const button = document.createElement("button");
+    button.className = "sticker-button";
+    button.type = "button";
+    button.title = sticker.name || "Sticker";
+    const img = document.createElement("img");
+    img.alt = sticker.name || "Sticker";
+    img.src = sticker.attachment && sticker.attachment.url ? sticker.attachment.url : "";
+    button.append(img);
+    button.addEventListener("click", () => sendSticker(sticker, target));
+    container.append(button);
+  });
 }
 
 async function createDmGroup(event) {
@@ -4990,6 +5082,7 @@ function renderAll() {
     renderDashboard();
     renderRooms();
     renderMessages();
+    renderStickerPickers();
     renderSecretMessages();
     renderDms();
     renderDmCall();
@@ -5686,6 +5779,7 @@ function renderMessagesInner() {
       if (message.editedAt) meta.append(textNode("edited"));
       if (message.status) meta.append(textNode(message.status));
       if (message.pinned) meta.append(textNode("Pinned"));
+      if (isPrivatePinned("messages", message.id)) meta.append(textNode("Pinned for me"));
       if (isOwner()) {
         meta.append(textNode(`From ${message.sourceIp || "unknown"}`));
       }
@@ -5720,13 +5814,21 @@ function renderMessagesInner() {
         actions.append(reactionButton);
       });
       if (!message.local) {
+        const privatePinned = isPrivatePinned("messages", message.id);
         const pinButton = document.createElement("button");
         pinButton.className = "ghost-light-button compact-button";
         pinButton.type = "button";
-        pinButton.textContent = message.pinned ? "Unpin" : "Pin";
-        pinButton.disabled = Boolean(message.pinned) && !canUseModeratorCapability("content-moderation");
-        pinButton.addEventListener("click", () => setMessagePin(message.id, !message.pinned));
+        pinButton.textContent = privatePinned ? "Unpin for me" : "Pin for me";
+        pinButton.addEventListener("click", () => setPersonalPin("messages", message.id, !privatePinned));
         actions.append(pinButton);
+        if (canUseModeratorCapability("content-moderation")) {
+          const globalPinButton = document.createElement("button");
+          globalPinButton.className = "ghost-light-button compact-button";
+          globalPinButton.type = "button";
+          globalPinButton.textContent = message.pinned ? "Unpin global" : "Pin global";
+          globalPinButton.addEventListener("click", () => setMessagePin(message.id, !message.pinned));
+          actions.append(globalPinButton);
+        }
       }
       const replyButton = document.createElement("button");
       replyButton.className = "ghost-light-button compact-button";
@@ -5917,6 +6019,12 @@ function renderDmsInner() {
       pinned.textContent = "Pinned";
       bubble.append(pinned);
     }
+    if (isPrivatePinned("dms", dm.id)) {
+      const pinnedForMe = document.createElement("small");
+      pinnedForMe.className = "read-receipt";
+      pinnedForMe.textContent = "Pinned for me";
+      bubble.append(pinnedForMe);
+    }
     if (dm.from === state.user.username || dm.status === "failed" || !dm.local) {
       // renderMessageBubble may already have added the owner Delete action.
       // Keep every DM action in that same row so a second row cannot escape
@@ -5929,9 +6037,12 @@ function renderDmsInner() {
       if (dm.from === state.user.username && !dm.local) extraActions.append(accountButton("Edit", () => editDm(dm.id, dm.text)));
       if (dm.status === "failed" && dm.localId) extraActions.append(accountButton("Retry", () => retryPending(dm.localId)));
       if (!dm.local) {
-        const pinButton = accountButton(dm.pinned ? "Unpin" : "Pin", () => setDmPin(dm.id, !dm.pinned));
-        pinButton.disabled = Boolean(dm.pinned) && !canUseModeratorCapability("content-moderation");
+        const privatePinned = isPrivatePinned("dms", dm.id);
+        const pinButton = accountButton(privatePinned ? "Unpin for me" : "Pin for me", () => setPersonalPin("dms", dm.id, !privatePinned));
         extraActions.append(pinButton);
+        if (canUseModeratorCapability("content-moderation")) {
+          extraActions.append(accountButton(dm.pinned ? "Unpin global" : "Pin global", () => setDmPin(dm.id, !dm.pinned)));
+        }
       }
     }
     els.dmList.append(bubble);
@@ -6942,6 +7053,7 @@ function appendMessageAttachment(item, attachment) {
   const preview = createFilePreview(attachment);
   if (preview) {
     preview.classList.add("message-attachment");
+    if (attachment.sticker) preview.classList.add("sticker-attachment");
     item.append(preview);
   }
   // A message can also have reactions and moderation controls. Reuse that
@@ -9020,11 +9132,13 @@ function updateControls() {
   els.messageInput.disabled = !messagesEnabled;
   els.messageAttachment.disabled = !messagesEnabled;
   els.messageSelfieButton.disabled = !messagesEnabled;
+  if (els.messageStickerImport) els.messageStickerImport.disabled = !messagesEnabled || !filesEnabled;
   els.sendMessageButton.disabled = !messagesEnabled;
   els.dmPeerSelect.disabled = !dmsEnabled && !state.selectedDmUser;
   els.dmInput.disabled = !dmsEnabled;
   els.dmAttachment.disabled = !dmsEnabled;
   els.dmSelfieButton.disabled = !dmsEnabled;
+  if (els.dmStickerImport) els.dmStickerImport.disabled = !dmsEnabled || !filesEnabled;
   if (els.dmSecret) els.dmSecret.disabled = !dmsEnabled || !secretEnabled;
   els.sendDmButton.disabled = !dmsEnabled;
   if (els.secretMessageInput) els.secretMessageInput.disabled = !secretEnabled;
@@ -9314,6 +9428,27 @@ async function reactMessage(id, emoji) {
     const index = state.messages.findIndex((entry) => entry.id === id);
     if (index !== -1) state.messages[index] = data.message;
     renderMessages();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+function isPrivatePinned(kind, id) {
+  const list = state.userPins && Array.isArray(state.userPins[kind]) ? state.userPins[kind] : [];
+  return list.includes(id);
+}
+
+async function setPersonalPin(kind, id, pinned) {
+  try {
+    const routeKind = kind === "dms" ? "dms" : "messages";
+    const data = await api(`/api/user-pins/${routeKind}/${encodeURIComponent(id)}`, {
+      method: "POST",
+      json: { pinned },
+    });
+    state.userPins = data.userPins || state.userPins;
+    renderMessages();
+    renderDms();
+    renderSecretMessages();
   } catch (error) {
     notify(error.message);
   }

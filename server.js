@@ -74,6 +74,8 @@ const FILES = {
   dms: path.join(DATA_DIR, "dms.json"),
   dmGroups: path.join(DATA_DIR, "dm-groups.json"),
   uploads: path.join(DATA_DIR, "files.json"),
+  stickers: path.join(DATA_DIR, "stickers.json"),
+  userPins: path.join(DATA_DIR, "user-pins.json"),
   accountRequests: path.join(DATA_DIR, "account-requests.json"),
   store: path.join(DATA_DIR, "store.json"),
   aiRequests: path.join(DATA_DIR, "ai-requests.json"),
@@ -451,6 +453,8 @@ async function ensureStorage() {
   await ensureJson(FILES.dms, []);
   await ensureJson(FILES.dmGroups, []);
   await ensureJson(FILES.uploads, []);
+  await ensureJson(FILES.stickers, []);
+  await ensureJson(FILES.userPins, {});
   await ensureJson(FILES.accountRequests, []);
   await ensureJson(FILES.store, { items: [], orders: [] });
   await ensureJson(FILES.aiRequests, []);
@@ -1670,6 +1674,8 @@ async function routeApi(req, res, requestUrl) {
       dms,
       dmGroups,
       files,
+      stickers,
+      userPins,
       accountRequests,
       store,
       aiRequests,
@@ -1699,6 +1705,8 @@ async function routeApi(req, res, requestUrl) {
       readJson(FILES.dms, []),
       readJson(FILES.dmGroups, []),
       readJson(FILES.uploads, []),
+      readJson(FILES.stickers, []),
+      readJson(FILES.userPins, {}),
       canManage(user) && !fastState ? readJson(FILES.accountRequests, []) : [],
       readJson(FILES.store, { items: [], orders: [] }),
       canManage(user) && !fastState ? readJson(FILES.aiRequests, []) : [],
@@ -1757,6 +1765,8 @@ async function routeApi(req, res, requestUrl) {
       dms: visibleDms.slice(-STATE_DM_LIMIT),
       dmGroups: safeDmGroups(dmGroups, user),
       files: safeFileRecords(files, user, rooms).slice(0, STATE_FILE_LIMIT),
+      stickers: safeStickers(stickers, user, files),
+      userPins: safeUserPins(userPins, user),
       accountRequests: canManage(user) && !fastState ? safeAccountRequests(accountRequests, user) : [],
       store: safeStore(store, user),
       innerDocs: safeInnerDocs(innerDocs, user),
@@ -1850,6 +1860,79 @@ async function routeApi(req, res, requestUrl) {
       updatedAt: session.updatedAt,
       updatedBy: session.updatedBy,
     });
+  }
+
+  if (req.method === "GET" && pathname === "/api/stickers") {
+    const stickers = await readJson(FILES.stickers, []);
+    const files = await readJson(FILES.uploads, []);
+    return json(res, 200, { stickers: safeStickers(stickers, user, files) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/stickers") {
+    const body = await readJsonBody(req);
+    const files = await readJson(FILES.uploads, []);
+    const stickers = await readJson(FILES.stickers, []);
+    const ids = Array.from(new Set((Array.isArray(body.fileIds) ? body.fileIds : [body.fileId])
+      .map((entry) => String(entry || "").trim())
+      .filter(Boolean)))
+      .slice(0, 80);
+    if (!ids.length) return json(res, 400, { error: "Choose at least one sticker file" });
+    const existingKeys = new Set(stickers.map((entry) => `${String(entry.owner || "").toLowerCase()}:${String(entry.fileId || "")}`));
+    const now = new Date().toISOString();
+    const created = [];
+    for (const fileId of ids) {
+      const file = files.find((entry) => entry.id === fileId);
+      if (!file || file.user !== user.username) continue;
+      if (!isStickerFileRecord(file)) continue;
+      const key = `${user.username.toLowerCase()}:${file.id}`;
+      if (existingKeys.has(key)) continue;
+      const sticker = {
+        id: crypto.randomUUID(),
+        owner: user.username,
+        fileId: file.id,
+        name: sanitizeStickerName(body.name || file.originalName || "Sticker"),
+        createdAt: now,
+      };
+      stickers.unshift(sticker);
+      existingKeys.add(key);
+      created.push(sticker);
+    }
+    if (!created.length) return json(res, 400, { error: "No supported sticker files were imported" });
+    await writeJson(FILES.stickers, stickers.slice(0, 5000));
+    await addSystemLog("stickers.imported", user.username, { count: created.length }, req);
+    return json(res, 201, { stickers: safeStickers(stickers, user, files), imported: created.length });
+  }
+
+  if (req.method === "DELETE" && pathname.startsWith("/api/stickers/")) {
+    const id = decodeURIComponent(pathname.split("/").pop() || "");
+    const stickers = await readJson(FILES.stickers, []);
+    const next = stickers.filter((entry) => !(entry.id === id && entry.owner === user.username));
+    if (next.length === stickers.length) return json(res, 404, { error: "Sticker not found" });
+    await writeJson(FILES.stickers, next);
+    await addSystemLog("sticker.removed", user.username, { id }, req);
+    const files = await readJson(FILES.uploads, []);
+    return json(res, 200, { stickers: safeStickers(next, user, files) });
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/api/user-pins/")) {
+    const parts = pathname.split("/");
+    const kind = parts[3] === "dms" ? "dms" : parts[3] === "messages" ? "messages" : "";
+    const id = decodeURIComponent(parts[4] || "");
+    if (!kind || !id) return json(res, 404, { error: "Pin target not found" });
+    const body = await readJsonBody(req);
+    const canPin = kind === "messages"
+      ? await canUserAccessMessageId(id, user)
+      : await canUserAccessDmId(id, user);
+    if (!canPin) return json(res, 403, { error: "You do not have access to this item" });
+    const userPins = await readJson(FILES.userPins, {});
+    const next = normalizeUserPins(userPins);
+    const bucket = kind === "messages" ? next.messages : next.dms;
+    const list = new Set(Array.isArray(bucket[user.username]) ? bucket[user.username] : []);
+    if (body.pinned === false) list.delete(id);
+    else list.add(id);
+    bucket[user.username] = Array.from(list).slice(-500);
+    await writeJson(FILES.userPins, next);
+    return json(res, 200, { userPins: safeUserPins(next, user) });
   }
 
   if (req.method === "POST" && pathname === "/api/messages") {
@@ -4292,7 +4375,9 @@ async function resolveChatAttachment(attachment) {
   if (!file) return null;
   if (!["image", "video", "audio"].includes(file.kind)) return null;
   if (file.private) return null;
-  return safeFileRecord(file, null);
+  const safe = safeFileRecord(file, null);
+  if (attachment.sticker === true && isStickerFileRecord(file)) safe.sticker = true;
+  return safe;
 }
 
 function createUploadRecord({ req, user, originalName, storedName, category, extension, providedType, privateUpload, size, url, persistence: persistenceLabel }) {
@@ -6732,6 +6817,20 @@ function canAccessFileRecord(file, user, rooms = []) {
   return room ? canAccessRoom(room, user) : false;
 }
 
+async function canUserAccessMessageId(id, user) {
+  const [messages, rooms] = await Promise.all([readJson(FILES.messages, []), readJson(FILES.rooms, [])]);
+  const message = messages.find((entry) => entry.id === id);
+  if (!message) return false;
+  const room = rooms.find((entry) => entry.id === (message.roomId || "main"));
+  return Boolean(room && canAccessRoom(room, user));
+}
+
+async function canUserAccessDmId(id, user) {
+  const dms = await readJson(FILES.dms, []);
+  const dm = dms.find((entry) => entry.id === id);
+  return Boolean(dm && (canManage(user) || (Array.isArray(dm.participants) && dm.participants.includes(user.username))));
+}
+
 function canAccessSecretMessaging(settings, user) {
   if (!user) return false;
   if (canOwn(user)) return true;
@@ -6792,6 +6891,71 @@ function safeDm(dm, viewer) {
     safe.approximateLocation = dm.approximateLocation || null;
   }
   return safe;
+}
+
+function normalizeUserPins(source = {}) {
+  const cleanBucket = (bucket) => {
+    const next = {};
+    if (!bucket || typeof bucket !== "object" || Array.isArray(bucket)) return next;
+    for (const [username, ids] of Object.entries(bucket)) {
+      const cleanUsername = normalizeUsername(username);
+      if (!cleanUsername) continue;
+      next[cleanUsername] = Array.from(new Set((Array.isArray(ids) ? ids : [])
+        .map((entry) => String(entry || "").trim())
+        .filter(Boolean)))
+        .slice(-500);
+    }
+    return next;
+  };
+  return {
+    messages: cleanBucket(source.messages),
+    dms: cleanBucket(source.dms),
+  };
+}
+
+function safeUserPins(source, user) {
+  const pins = normalizeUserPins(source);
+  const username = user && user.username ? user.username : "";
+  return {
+    messages: pins.messages[username] || [],
+    dms: pins.dms[username] || [],
+  };
+}
+
+function sanitizeStickerName(value) {
+  return String(value || "Sticker").replace(/\.[a-z0-9]+$/i, "").trim().slice(0, 80) || "Sticker";
+}
+
+function isStickerFileRecord(file) {
+  const extension = path.extname(file && (file.originalName || file.storedName) || "").toLowerCase();
+  return file && file.kind === "image" && [".webp", ".png", ".gif", ".jpg", ".jpeg"].includes(extension);
+}
+
+function safeSticker(sticker, filesById) {
+  const file = filesById.get(String(sticker.fileId || ""));
+  if (!file) return null;
+  const safeFile = safeFileRecord(file, null);
+  return {
+    id: String(sticker.id || ""),
+    name: sanitizeStickerName(sticker.name || file.originalName || "Sticker"),
+    fileId: String(sticker.fileId || ""),
+    createdAt: String(sticker.createdAt || ""),
+    attachment: { ...safeFile, sticker: true },
+  };
+}
+
+function safeStickers(stickers, user, files = []) {
+  if (!user) return [];
+  const filesById = new Map((Array.isArray(files) ? files : []).map((file) => [String(file.id || ""), file]));
+  return (Array.isArray(stickers) ? stickers : [])
+    .filter((entry) => entry && entry.owner === user.username)
+    .filter((entry) => {
+      const file = filesById.get(String(entry.fileId || ""));
+      return file && file.user === user.username;
+    })
+    .map((entry) => safeSticker(entry, filesById))
+    .filter(Boolean)
+    .slice(0, 240);
 }
 
 function safeFileRecords(files, user, rooms = []) {

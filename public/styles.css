@@ -1006,6 +1006,43 @@ textarea:focus {
   margin-top: 10px;
 }
 
+.sticker-picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(44px, 1fr));
+  gap: 8px;
+  max-height: 190px;
+  overflow: auto;
+  padding: 8px 0 2px;
+}
+
+.sticker-button {
+  min-height: 54px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 5px;
+}
+
+.sticker-button:hover,
+.sticker-button:focus-visible {
+  border-color: var(--accent);
+}
+
+.sticker-button img {
+  max-width: 48px;
+  max-height: 48px;
+  object-fit: contain;
+}
+
+.sticker-attachment {
+  width: min(170px, 55vw);
+  max-height: 170px;
+  background: transparent;
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;

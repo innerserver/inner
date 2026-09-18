@@ -10,9 +10,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-234-b2-provider-labels" />
-    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-234-b2-provider-labels" />
-    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-234-b2-provider-labels" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-235-stickers-private-pins" />
+    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-235-stickers-private-pins" />
+    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-235-stickers-private-pins" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -239,6 +239,12 @@
                   <input id="messageAttachment" class="menu-file-input" type="file" accept="image/*,video/*,audio/*" form="messageForm" />
                   <input id="messageSelfieInput" class="hidden" type="file" accept="image/*" capture="user" form="messageForm" />
                   <button id="messageSelfieButton" class="secondary-button more-menu-action" type="button">Photo</button>
+                  <details class="message-tools-panel sticker-tools-panel">
+                    <summary>Stickers</summary>
+                    <label class="more-menu-action" for="messageStickerImport">Import stickers</label>
+                    <input id="messageStickerImport" class="menu-file-input" type="file" accept="image/webp,image/png,image/gif,image/jpeg" multiple />
+                    <div id="messageStickerList" class="sticker-picker" aria-label="Room stickers"></div>
+                  </details>
                   <details class="message-tools-panel">
                     <summary>Join room</summary>
                     <form id="inviteJoinForm" class="upload-bar invite-join-bar">
@@ -281,6 +287,12 @@
                   <input id="dmAttachment" class="menu-file-input" type="file" accept="image/*,video/*,audio/*" form="dmForm" />
                   <input id="dmSelfieInput" class="hidden" type="file" accept="image/*" capture="user" form="dmForm" />
                   <button id="dmSelfieButton" class="secondary-button more-menu-action" type="button">Photo</button>
+                  <details class="message-tools-panel sticker-tools-panel">
+                    <summary>Stickers</summary>
+                    <label class="more-menu-action" for="dmStickerImport">Import stickers</label>
+                    <input id="dmStickerImport" class="menu-file-input" type="file" accept="image/webp,image/png,image/gif,image/jpeg" multiple />
+                    <div id="dmStickerList" class="sticker-picker" aria-label="DM stickers"></div>
+                  </details>
                   <button id="openDmAppearanceButton" class="secondary-button more-menu-action" type="button">Chat appearance</button>
                   <label class="switch-row compact-switch more-menu-secret"><input id="dmSecret" type="checkbox" form="dmForm" /><span>Secret message</span></label>
                   <div class="dm-tools-panel">
@@ -1164,7 +1176,7 @@
     <script src="/session-guard.js?v=connectifi-210-dm-recovery" defer></script>
     <script src="/status-guard.js?v=connectifi-210-dm-recovery" defer></script>
     <script src="/ui-boot.js?v=connectifi-210-dm-recovery" defer></script>
-    <script src="/app.js?v=connectifi-234-b2-provider-labels" defer></script>
+    <script src="/app.js?v=connectifi-235-stickers-private-pins" defer></script>
     <script src="/force-logout.js?v=connectifi-210-dm-recovery" defer></script>
   </body>
 </html>

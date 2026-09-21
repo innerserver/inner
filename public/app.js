@@ -39,6 +39,7 @@ const state = {
   logDate: "",
   files: [],
   stickers: [],
+  stickerSearch: { message: "", dm: "" },
   userPins: { messages: [], dms: [] },
   selectedGameUrl: "",
   innerDocs: [],
@@ -329,6 +330,8 @@ function cacheElements() {
     "messageSelfieInput",
     "messageSelfieButton",
     "messageStickerImport",
+    "messageStickerPublic",
+    "messageStickerSearch",
     "messageStickerList",
     "sendMessageButton",
     "dmState",
@@ -366,6 +369,8 @@ function cacheElements() {
     "dmSelfieInput",
     "dmSelfieButton",
     "dmStickerImport",
+    "dmStickerPublic",
+    "dmStickerSearch",
     "dmStickerList",
     "dmSecret",
     "sendDmButton",
@@ -786,7 +791,11 @@ function bindEvents() {
   els.messageJumpBottomButton.addEventListener("click", () => scrollToBottom(els.messageList, true));
   els.messageSelfieButton.addEventListener("click", () => els.messageSelfieInput.click());
   els.messageSelfieInput.addEventListener("change", () => sendSelfie("message"));
-  if (els.messageStickerImport) els.messageStickerImport.addEventListener("change", () => importStickersFromInput(els.messageStickerImport));
+  if (els.messageStickerImport) els.messageStickerImport.addEventListener("change", () => importStickersFromInput(els.messageStickerImport, "message"));
+  if (els.messageStickerSearch) els.messageStickerSearch.addEventListener("input", () => {
+    state.stickerSearch.message = els.messageStickerSearch.value;
+    renderStickerPickers();
+  });
   els.dmPeerSelect.addEventListener("change", () => {
     state.selectedDmUser = els.dmPeerSelect.value;
     saveUiState();
@@ -802,7 +811,11 @@ function bindEvents() {
   els.dmJumpBottomButton.addEventListener("click", () => scrollToBottom(els.dmList, true));
   els.dmSelfieButton.addEventListener("click", () => els.dmSelfieInput.click());
   els.dmSelfieInput.addEventListener("change", () => sendSelfie("dm"));
-  if (els.dmStickerImport) els.dmStickerImport.addEventListener("change", () => importStickersFromInput(els.dmStickerImport));
+  if (els.dmStickerImport) els.dmStickerImport.addEventListener("change", () => importStickersFromInput(els.dmStickerImport, "dm"));
+  if (els.dmStickerSearch) els.dmStickerSearch.addEventListener("input", () => {
+    state.stickerSearch.dm = els.dmStickerSearch.value;
+    renderStickerPickers();
+  });
   if (els.secretMessageForm) els.secretMessageForm.addEventListener("submit", sendSecretMessage);
   els.dmGroupForm.addEventListener("submit", createDmGroup);
   els.deleteDmGroupButton.addEventListener("click", deleteCurrentDmGroup);
@@ -1718,7 +1731,7 @@ async function sendSelfie(target) {
   }
 }
 
-async function importStickersFromInput(input) {
+async function importStickersFromInput(input, target = "message") {
   const files = Array.from(input.files || []);
   if (!files.length) return;
   const imageFiles = files.filter((file) => /^image\/(webp|png|gif|jpeg|jpg)/i.test(file.type || "") || /\.(webp|png|gif|jpe?g)$/i.test(file.name || ""));
@@ -1734,7 +1747,10 @@ async function importStickersFromInput(input) {
     }
     const data = await api("/api/stickers", {
       method: "POST",
-      json: { fileIds: uploaded.map((file) => file.id) },
+      json: {
+        fileIds: uploaded.map((file) => file.id),
+        visibility: stickerImportPublic(target) ? "public" : "private",
+      },
     });
     state.stickers = data.stickers || state.stickers;
     renderStickerPickers();
@@ -1779,22 +1795,45 @@ function renderStickerPickers() {
   renderStickerPicker(els.dmStickerList, "dm");
 }
 
+function stickerImportPublic(target) {
+  return target === "dm"
+    ? Boolean(els.dmStickerPublic && els.dmStickerPublic.checked)
+    : Boolean(els.messageStickerPublic && els.messageStickerPublic.checked);
+}
+
 function renderStickerPicker(container, target) {
   if (!container) return;
   container.replaceChildren();
+  const query = String(state.stickerSearch[target] || "").trim().toLowerCase();
+  const stickers = state.stickers.filter((sticker) => {
+    if (!query) return true;
+    return [
+      sticker.name,
+      sticker.owner,
+      sticker.visibility,
+      sticker.public ? "public" : "private",
+    ].some((value) => String(value || "").toLowerCase().includes(query));
+  });
   if (!state.stickers.length) {
     container.append(emptyBlock("Import WebP, PNG, GIF, or JPG stickers"));
     return;
   }
-  state.stickers.forEach((sticker) => {
+  if (!stickers.length) {
+    container.append(emptyBlock("No stickers match that search"));
+    return;
+  }
+  stickers.forEach((sticker) => {
     const button = document.createElement("button");
     button.className = "sticker-button";
     button.type = "button";
-    button.title = sticker.name || "Sticker";
+    button.title = `${sticker.name || "Sticker"} - ${sticker.public ? "public" : "private"}`;
     const img = document.createElement("img");
     img.alt = sticker.name || "Sticker";
     img.src = sticker.attachment && sticker.attachment.url ? sticker.attachment.url : "";
+    const label = document.createElement("small");
+    label.textContent = sticker.public ? "Public" : "Mine";
     button.append(img);
+    button.append(label);
     button.addEventListener("click", () => sendSticker(sticker, target));
     container.append(button);
   });

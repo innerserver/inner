@@ -1015,6 +1015,11 @@ textarea:focus {
   padding: 8px 0 2px;
 }
 
+.sticker-search {
+  width: 100%;
+  margin-top: 8px;
+}
+
 .sticker-button {
   min-height: 54px;
   border: 1px solid var(--line);
@@ -1023,6 +1028,7 @@ textarea:focus {
   cursor: pointer;
   display: grid;
   place-items: center;
+  gap: 2px;
   padding: 5px;
 }
 
@@ -1035,6 +1041,15 @@ textarea:focus {
   max-width: 48px;
   max-height: 48px;
   object-fit: contain;
+}
+
+.sticker-button small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.68rem;
 }
 
 .sticker-attachment {

@@ -1877,20 +1877,22 @@ async function routeApi(req, res, requestUrl) {
       .filter(Boolean)))
       .slice(0, 80);
     if (!ids.length) return json(res, 400, { error: "Choose at least one sticker file" });
-    const existingKeys = new Set(stickers.map((entry) => `${String(entry.owner || "").toLowerCase()}:${String(entry.fileId || "")}`));
+    const visibility = body.public === true || String(body.visibility || "").toLowerCase() === "public" ? "public" : "private";
+    const existingKeys = new Set(stickers.map((entry) => `${String(entry.owner || "").toLowerCase()}:${String(entry.fileId || "")}:${String(entry.visibility || "private")}`));
     const now = new Date().toISOString();
     const created = [];
     for (const fileId of ids) {
       const file = files.find((entry) => entry.id === fileId);
       if (!file || file.user !== user.username) continue;
       if (!isStickerFileRecord(file)) continue;
-      const key = `${user.username.toLowerCase()}:${file.id}`;
+      const key = `${user.username.toLowerCase()}:${file.id}:${visibility}`;
       if (existingKeys.has(key)) continue;
       const sticker = {
         id: crypto.randomUUID(),
         owner: user.username,
         fileId: file.id,
         name: sanitizeStickerName(body.name || file.originalName || "Sticker"),
+        visibility,
         createdAt: now,
       };
       stickers.unshift(sticker);
@@ -1899,7 +1901,7 @@ async function routeApi(req, res, requestUrl) {
     }
     if (!created.length) return json(res, 400, { error: "No supported sticker files were imported" });
     await writeJson(FILES.stickers, stickers.slice(0, 5000));
-    await addSystemLog("stickers.imported", user.username, { count: created.length }, req);
+    await addSystemLog("stickers.imported", user.username, { count: created.length, visibility }, req);
     return json(res, 201, { stickers: safeStickers(stickers, user, files), imported: created.length });
   }
 
@@ -6935,9 +6937,13 @@ function safeSticker(sticker, filesById) {
   const file = filesById.get(String(sticker.fileId || ""));
   if (!file) return null;
   const safeFile = safeFileRecord(file, null);
+  const visibility = String(sticker.visibility || "private") === "public" ? "public" : "private";
   return {
     id: String(sticker.id || ""),
     name: sanitizeStickerName(sticker.name || file.originalName || "Sticker"),
+    owner: String(sticker.owner || ""),
+    visibility,
+    public: visibility === "public",
     fileId: String(sticker.fileId || ""),
     createdAt: String(sticker.createdAt || ""),
     attachment: { ...safeFile, sticker: true },
@@ -6948,10 +6954,10 @@ function safeStickers(stickers, user, files = []) {
   if (!user) return [];
   const filesById = new Map((Array.isArray(files) ? files : []).map((file) => [String(file.id || ""), file]));
   return (Array.isArray(stickers) ? stickers : [])
-    .filter((entry) => entry && entry.owner === user.username)
+    .filter((entry) => entry && (entry.owner === user.username || String(entry.visibility || "private") === "public"))
     .filter((entry) => {
       const file = filesById.get(String(entry.fileId || ""));
-      return file && file.user === user.username;
+      return file && (file.user === user.username || (String(entry.visibility || "private") === "public" && !file.private));
     })
     .map((entry) => safeSticker(entry, filesById))
     .filter(Boolean)

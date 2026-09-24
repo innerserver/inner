@@ -1028,6 +1028,27 @@ textarea:focus {
   margin: 8px 0;
 }
 
+.sticker-import-help {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+
+.sticker-import-help summary {
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.sticker-import-help ol {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 .sticker-button {
   min-height: 68px;
   border: 1px solid var(--line);

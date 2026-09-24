@@ -1734,12 +1734,12 @@ async function sendSelfie(target) {
 async function importStickersFromInput(input, target = "message") {
   const files = Array.from(input.files || []);
   if (!files.length) return;
-  const imageFiles = files.filter((file) => /^image\/(webp|png|gif|jpeg|jpg)/i.test(file.type || "") || /\.(webp|png|gif|jpe?g)$/i.test(file.name || ""));
-  if (!imageFiles.length) {
-    input.value = "";
-    return notify("Choose WebP, PNG, GIF, or JPG sticker files");
-  }
   try {
+    const imageFiles = await collectStickerImportFiles(files);
+    if (!imageFiles.length) {
+      input.value = "";
+      return notify("Choose WebP, PNG, GIF, JPG, or a ZIP sticker pack");
+    }
     notify(`Importing ${imageFiles.length} sticker${imageFiles.length === 1 ? "" : "s"}`);
     const uploaded = [];
     for (const file of imageFiles.slice(0, 80)) {
@@ -1761,6 +1761,102 @@ async function importStickersFromInput(input, target = "message") {
     input.value = "";
     updateControls();
   }
+}
+
+async function collectStickerImportFiles(files) {
+  const stickers = [];
+  for (const file of files) {
+    if (isStickerImageFile(file)) {
+      stickers.push(file);
+      continue;
+    }
+    if (/\.zip$/i.test(file.name || "") || String(file.type || "").toLowerCase().includes("zip")) {
+      const extracted = await extractStickerZip(file).catch((error) => {
+        notify(error.message || `Could not read ${file.name}`);
+        return [];
+      });
+      stickers.push(...extracted);
+    }
+    if (stickers.length >= 80) break;
+  }
+  return stickers.slice(0, 80);
+}
+
+function isStickerImageFile(file) {
+  return Boolean(file && (/^image\/(webp|png|gif|jpeg|jpg)/i.test(file.type || "") || /\.(webp|png|gif|jpe?g)$/i.test(file.name || "")));
+}
+
+async function extractStickerZip(file) {
+  if (typeof DecompressionStream === "undefined") {
+    throw new Error("ZIP sticker import needs a newer browser. You can still select WebP/PNG/GIF stickers directly.");
+  }
+  const view = new DataView(await file.arrayBuffer());
+  const entries = zipStickerEntries(view).slice(0, 80);
+  const extracted = [];
+  for (const entry of entries) {
+    const bytes = await readZipEntry(view, entry);
+    const type = stickerMimeType(entry.name);
+    extracted.push(new File([bytes], entry.name.split("/").pop() || "sticker.webp", { type }));
+  }
+  return extracted;
+}
+
+function zipStickerEntries(view) {
+  const entries = [];
+  const decoder = new TextDecoder();
+  const maxSearch = Math.max(0, view.byteLength - 66000);
+  let eocd = -1;
+  for (let offset = view.byteLength - 22; offset >= maxSearch; offset -= 1) {
+    if (view.getUint32(offset, true) === 0x06054b50) {
+      eocd = offset;
+      break;
+    }
+  }
+  if (eocd === -1) throw new Error("Could not read this ZIP sticker pack");
+  const count = view.getUint16(eocd + 10, true);
+  let offset = view.getUint32(eocd + 16, true);
+  for (let index = 0; index < count && offset < view.byteLength; index += 1) {
+    if (view.getUint32(offset, true) !== 0x02014b50) break;
+    const method = view.getUint16(offset + 10, true);
+    const compressedSize = view.getUint32(offset + 20, true);
+    const uncompressedSize = view.getUint32(offset + 24, true);
+    const nameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    const localOffset = view.getUint32(offset + 42, true);
+    const nameBytes = new Uint8Array(view.buffer, view.byteOffset + offset + 46, nameLength);
+    const name = decoder.decode(nameBytes).replace(/\\/g, "/");
+    if (isStickerZipName(name) && uncompressedSize <= 8 * 1024 * 1024 && [0, 8].includes(method)) {
+      entries.push({ name, method, compressedSize, uncompressedSize, localOffset });
+    }
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+  return entries;
+}
+
+function isStickerZipName(name) {
+  const clean = String(name || "").toLowerCase();
+  return !clean.endsWith("/") && /\.(webp|png|gif|jpe?g)$/.test(clean) && !clean.includes("__macosx/");
+}
+
+async function readZipEntry(view, entry) {
+  const local = entry.localOffset;
+  if (view.getUint32(local, true) !== 0x04034b50) throw new Error(`Could not read ${entry.name}`);
+  const nameLength = view.getUint16(local + 26, true);
+  const extraLength = view.getUint16(local + 28, true);
+  const dataOffset = local + 30 + nameLength + extraLength;
+  const compressed = new Uint8Array(view.buffer, view.byteOffset + dataOffset, entry.compressedSize);
+  if (entry.method === 0) return compressed;
+  const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+function stickerMimeType(name) {
+  const clean = String(name || "").toLowerCase();
+  if (clean.endsWith(".webp")) return "image/webp";
+  if (clean.endsWith(".png")) return "image/png";
+  if (clean.endsWith(".gif")) return "image/gif";
+  return "image/jpeg";
 }
 
 async function sendSticker(sticker, target) {

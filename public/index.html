@@ -10,9 +10,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-236-public-sticker-search" />
-    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-236-public-sticker-search" />
-    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-236-public-sticker-search" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-237-whatsapp-sticker-import" />
+    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-237-whatsapp-sticker-import" />
+    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-237-whatsapp-sticker-import" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -243,8 +243,8 @@
                     <summary>Stickers</summary>
                     <input id="messageStickerSearch" class="compact-search sticker-search" maxlength="80" placeholder="Search stickers" autocomplete="off" />
                     <label class="switch-row compact-switch"><input id="messageStickerPublic" type="checkbox" /><span>Public import</span></label>
-                    <label class="more-menu-action" for="messageStickerImport">Import stickers</label>
-                    <input id="messageStickerImport" class="menu-file-input" type="file" accept="image/webp,image/png,image/gif,image/jpeg" multiple />
+                    <label class="more-menu-action" for="messageStickerImport">Import stickers or WhatsApp ZIP</label>
+                    <input id="messageStickerImport" class="menu-file-input" type="file" accept="image/webp,image/png,image/gif,image/jpeg,.webp,.png,.gif,.jpg,.jpeg,.zip" multiple />
                     <div id="messageStickerList" class="sticker-picker" aria-label="Room stickers"></div>
                   </details>
                   <details class="message-tools-panel">
@@ -293,8 +293,8 @@
                     <summary>Stickers</summary>
                     <input id="dmStickerSearch" class="compact-search sticker-search" maxlength="80" placeholder="Search stickers" autocomplete="off" />
                     <label class="switch-row compact-switch"><input id="dmStickerPublic" type="checkbox" /><span>Public import</span></label>
-                    <label class="more-menu-action" for="dmStickerImport">Import stickers</label>
-                    <input id="dmStickerImport" class="menu-file-input" type="file" accept="image/webp,image/png,image/gif,image/jpeg" multiple />
+                    <label class="more-menu-action" for="dmStickerImport">Import stickers or WhatsApp ZIP</label>
+                    <input id="dmStickerImport" class="menu-file-input" type="file" accept="image/webp,image/png,image/gif,image/jpeg,.webp,.png,.gif,.jpg,.jpeg,.zip" multiple />
                     <div id="dmStickerList" class="sticker-picker" aria-label="DM stickers"></div>
                   </details>
                   <button id="openDmAppearanceButton" class="secondary-button more-menu-action" type="button">Chat appearance</button>
@@ -1180,7 +1180,7 @@
     <script src="/session-guard.js?v=connectifi-210-dm-recovery" defer></script>
     <script src="/status-guard.js?v=connectifi-210-dm-recovery" defer></script>
     <script src="/ui-boot.js?v=connectifi-210-dm-recovery" defer></script>
-    <script src="/app.js?v=connectifi-236-public-sticker-search" defer></script>
+    <script src="/app.js?v=connectifi-237-whatsapp-sticker-import" defer></script>
     <script src="/force-logout.js?v=connectifi-210-dm-recovery" defer></script>
   </body>
 </html>

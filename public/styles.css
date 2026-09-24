@@ -1008,11 +1008,11 @@ textarea:focus {
 
 .sticker-picker {
   display: grid;
-  grid-template-columns: repeat(4, minmax(44px, 1fr));
+  grid-template-columns: repeat(5, minmax(48px, 1fr));
   gap: 8px;
-  max-height: 190px;
+  max-height: 220px;
   overflow: auto;
-  padding: 8px 0 2px;
+  padding: 10px 0 2px;
 }
 
 .sticker-search {
@@ -1020,8 +1020,16 @@ textarea:focus {
   margin-top: 8px;
 }
 
+.sticker-tools-panel[open] {
+  min-width: min(360px, 82vw);
+}
+
+.sticker-tools-panel .compact-switch {
+  margin: 8px 0;
+}
+
 .sticker-button {
-  min-height: 54px;
+  min-height: 68px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
@@ -1038,8 +1046,8 @@ textarea:focus {
 }
 
 .sticker-button img {
-  max-width: 48px;
-  max-height: 48px;
+  max-width: 58px;
+  max-height: 54px;
   object-fit: contain;
 }
 

@@ -8079,9 +8079,9 @@ function renderModeratorStrikeAccounts() {
 }
 
 async function issueStrike(username) {
-  const severityInput = window.prompt(`Strike severity for ${username}: serious, bad, or not bad`, "bad") || "";
+  const severityInput = window.prompt(`Enter seriousness color for ${username}: green, yellow, or red`, "yellow") || "";
   const severity = normalizeStrikeSeverityInput(severityInput);
-  if (!severity) return notify("Strike cancelled: choose serious, bad, or not bad");
+  if (!severity) return notify("Strike cancelled: choose green, yellow, or red");
   const reason = window.prompt(`Strike reason for ${username}`) || "";
   if (!reason.trim()) return;
   try {
@@ -8101,15 +8101,15 @@ function normalizeStrikeSeverityInput(value) {
   const clean = String(value || "").trim().toLowerCase().replace(/_/g, "-");
   if (["serious", "red", "high", "major"].includes(clean)) return "serious";
   if (["bad", "yellow", "medium"].includes(clean)) return "bad";
-  if (["not bad", "not-bad", "green", "low", "minor"].includes(clean)) return "not-bad";
+  if (["not serious", "not-serious", "not-bad", "green", "low", "minor"].includes(clean)) return "not-serious";
   return "";
 }
 
 function strikeSeverityLabel(value) {
   const severity = normalizeStrikeSeverityInput(value) || "bad";
-  if (severity === "serious") return "Serious";
-  if (severity === "not-bad") return "Not bad";
-  return "Bad";
+  if (severity === "serious") return "Red - requires immediate attention";
+  if (severity === "not-serious") return "Green - not serious";
+  return "Yellow - serious";
 }
 
 function strikeSeverityClass(value) {

@@ -9286,15 +9286,15 @@ function cleanEmailAddress(value) {
 function normalizeStrikeSeverity(value) {
   const clean = String(value || "").trim().toLowerCase().replace(/_/g, "-");
   if (["serious", "red", "high", "major"].includes(clean)) return "serious";
-  if (["not-bad", "not bad", "green", "low", "minor", "soft"].includes(clean)) return "not-bad";
+  if (["not-serious", "not serious", "not-bad", "green", "low", "minor", "soft"].includes(clean)) return "not-serious";
   return "bad";
 }
 
 function strikeSeverityLabel(value) {
   const severity = normalizeStrikeSeverity(value);
-  if (severity === "serious") return "Serious";
-  if (severity === "not-bad") return "Not bad";
-  return "Bad";
+  if (severity === "serious") return "Red - requires immediate attention";
+  if (severity === "not-serious") return "Green - not serious";
+  return "Yellow - serious";
 }
 
 function strikeEmailRecipients(settings) {
@@ -9308,7 +9308,7 @@ function sendSeriousStrikeEmail(settings, account, strike, issuedBy) {
   const recipients = strikeEmailRecipients(settings);
   return sendDirectEmail(recipients, "Connectifi serious strike issued", [
     `Account: ${account.username}`,
-    "Severity: Serious (red)",
+    "Severity: Red - requires immediate attention",
     `Reason: ${strike.reason}`,
     `Issued by: ${issuedBy}`,
     `Time: ${strike.createdAt}`,

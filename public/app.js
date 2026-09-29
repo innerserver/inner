@@ -7639,6 +7639,8 @@ function renderUsers() {
     if (user.bannedUntil) meta.append(textNode(`Ban until ${formatDate(user.bannedUntil)}`));
     if (user.banReason) meta.append(textNode(user.banReason));
     meta.append(textNode(`Strikes ${user.strikeCount || 0}`));
+    const strikeList = renderStrikeSummary(user.strikes);
+    if (strikeList) meta.append(strikeList);
 
     const actions = document.createElement("div");
     actions.className = "account-action-groups";
@@ -8052,7 +8054,7 @@ function renderModeratorStrikeAccounts() {
     const card = adminCard(account.username, `${account.strikeCount || 0} strikes`, [
       `Role ${account.role || "member"}`,
       account.grade ? `Grade ${account.grade}` : "",
-      ...(account.strikes || []).slice(-3).reverse().map((strike) => `${formatDate(strike.createdAt)} - ${strike.reason}`),
+      renderStrikeSummary(account.strikes),
     ].filter(Boolean));
     const actions = document.createElement("div");
     actions.className = "account-actions";
@@ -8077,18 +8079,56 @@ function renderModeratorStrikeAccounts() {
 }
 
 async function issueStrike(username) {
+  const severityInput = window.prompt(`Strike severity for ${username}: serious, bad, or not bad`, "bad") || "";
+  const severity = normalizeStrikeSeverityInput(severityInput);
+  if (!severity) return notify("Strike cancelled: choose serious, bad, or not bad");
   const reason = window.prompt(`Strike reason for ${username}`) || "";
   if (!reason.trim()) return;
   try {
-    const data = await api("/api/moderation/strikes", { method: "POST", json: { username, reason } });
+    const data = await api("/api/moderation/strikes", { method: "POST", json: { username, reason, severity } });
     state.moderatorAccounts = state.moderatorAccounts.map((entry) => entry.username === username ? data.user : entry);
     if (isOwner()) state.users = state.users.map((entry) => entry.username === username ? { ...entry, ...data.user } : entry);
     renderModeratorStrikeAccounts();
     renderUsers();
-    notify(data.thresholdReset ? `${username} reached three strikes: email sent and strikes reset` : `${username} now has ${data.user.strikeCount} strikes`);
+    const seriousNote = data.seriousAlertSent ? " Serious strike email sent." : "";
+    notify(data.thresholdReset ? `${username} reached three strikes: email sent and strikes reset.${seriousNote}` : `${username} now has ${data.user.strikeCount} strikes.${seriousNote}`);
   } catch (error) {
     notify(error.message);
   }
+}
+
+function normalizeStrikeSeverityInput(value) {
+  const clean = String(value || "").trim().toLowerCase().replace(/_/g, "-");
+  if (["serious", "red", "high", "major"].includes(clean)) return "serious";
+  if (["bad", "yellow", "medium"].includes(clean)) return "bad";
+  if (["not bad", "not-bad", "green", "low", "minor"].includes(clean)) return "not-bad";
+  return "";
+}
+
+function strikeSeverityLabel(value) {
+  const severity = normalizeStrikeSeverityInput(value) || "bad";
+  if (severity === "serious") return "Serious";
+  if (severity === "not-bad") return "Not bad";
+  return "Bad";
+}
+
+function strikeSeverityClass(value) {
+  return `strike-${normalizeStrikeSeverityInput(value) || "bad"}`;
+}
+
+function renderStrikeSummary(strikes) {
+  const recent = Array.isArray(strikes) ? strikes.slice(-3).reverse() : [];
+  if (!recent.length) return null;
+  const list = document.createElement("div");
+  list.className = "strike-list";
+  recent.forEach((strike) => {
+    const chip = document.createElement("span");
+    chip.className = `strike-chip ${strikeSeverityClass(strike && strike.severity)}`;
+    chip.textContent = `${strikeSeverityLabel(strike && strike.severity)}: ${strike && strike.reason ? strike.reason : "Strike"}`;
+    chip.title = `${formatDate(strike && strike.createdAt)}${strike && strike.issuedBy ? ` by ${strike.issuedBy}` : ""}`;
+    list.append(chip);
+  });
+  return list;
 }
 
 async function removeAccountStrikes(username, strikeId = "", all = false) {

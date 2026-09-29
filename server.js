@@ -3654,6 +3654,7 @@ async function routeApi(req, res, requestUrl) {
     const body = await readJsonBody(req);
     const username = normalizeUsername(body.username);
     const reason = String(body.reason || "").trim().slice(0, 240);
+    const severity = normalizeStrikeSeverity(body.severity);
     if (!username || !reason) return json(res, 400, { error: "Choose an account and provide a strike reason" });
     const users = await readJson(FILES.users, []);
     const index = users.findIndex((entry) => String(entry.username || "").toLowerCase() === username);
@@ -3661,16 +3662,23 @@ async function routeApi(req, res, requestUrl) {
     if (canOwn(users[index]) && !canOwn(user)) return json(res, 403, { error: "Only an owner admin can strike an owner admin account" });
     const strikes = Array.isArray(users[index].strikes) ? users[index].strikes : [];
     const before = strikes.length;
-    const strike = { id: crypto.randomUUID(), issuedBy: user.username, reason, createdAt: new Date().toISOString() };
+    const strike = { id: crypto.randomUUID(), issuedBy: user.username, reason, severity, createdAt: new Date().toISOString() };
     users[index] = { ...users[index], strikes: [...strikes, strike].slice(-50), updatedAt: strike.createdAt, updatedBy: user.username };
-    await addModerationLog(user.username, "user:strike", username, reason);
-    await addSystemLog("user.strike.issued", user.username, { username, count: users[index].strikes.length, reason }, req);
+    await addModerationLog(user.username, "user:strike", username, `${strikeSeverityLabel(severity)}: ${reason}`);
+    await addSystemLog("user.strike.issued", user.username, { username, count: users[index].strikes.length, reason, severity }, req);
+    let seriousAlertSent = false;
+    if (severity === "serious") {
+      sendSeriousStrikeEmail(settings, users[index], strike, user.username).catch(() => {});
+      seriousAlertSent = true;
+      await addSystemLog("user.strike.serious.email", user.username, { username, reason, severity }, req);
+    }
     let thresholdReset = false;
     if (before < 3 && users[index].strikes.length >= 3) {
       const recipients = Array.isArray(settings.strikeEmails) ? settings.strikeEmails.map(cleanEmailAddress).filter(Boolean) : [];
       sendDirectEmail(recipients, "Connectifi account reached three strikes", [
         `Account: ${users[index].username}`,
         `Strike count: ${users[index].strikes.length}`,
+        `Latest severity: ${strikeSeverityLabel(severity)}`,
         `Latest reason: ${reason}`,
         `Issued by: ${user.username}`,
         `Time: ${strike.createdAt}`,
@@ -3688,7 +3696,7 @@ async function routeApi(req, res, requestUrl) {
     }
     await writeJson(FILES.users, users);
     broadcastManagers({ type: "users:update", users: users.map((entry) => safeUser(entry, user)) });
-    return json(res, 200, { user: safeUser(users[index], user), strikes: users[index].strikes, thresholdReset });
+    return json(res, 200, { user: safeUser(users[index], user), strikes: users[index].strikes, thresholdReset, seriousAlertSent });
   }
 
   if (req.method === "POST" && pathname === "/api/moderation/strikes/remove") {
@@ -6311,6 +6319,7 @@ function safeUser(user, viewer = null) {
         id: String(strike.id || ""),
         issuedBy: String(strike.issuedBy || ""),
         reason: String(strike.reason || ""),
+        severity: normalizeStrikeSeverity(strike.severity),
         createdAt: String(strike.createdAt || ""),
       })) : [])
       : [],
@@ -8776,11 +8785,11 @@ async function issueMutedWordStrike(user, req) {
   const issuedAt = new Date().toISOString();
   const reason = "Muted word used";
   const strikes = Array.isArray(users[index].strikes) ? users[index].strikes : [];
-  const strike = { id: crypto.randomUUID(), issuedBy: "automod", reason, createdAt: issuedAt };
+  const strike = { id: crypto.randomUUID(), issuedBy: "automod", reason, severity: "bad", createdAt: issuedAt };
   const nextStrikes = [...strikes, strike].slice(-50);
   users[index] = { ...users[index], strikes: nextStrikes, updatedAt: issuedAt, updatedBy: "automod" };
-  await addModerationLog("automod", "user:strike", users[index].username, reason);
-  await addSystemLog("user.strike.issued", "automod", { username: users[index].username, count: nextStrikes.length, reason }, req);
+  await addModerationLog("automod", "user:strike", users[index].username, `Bad: ${reason}`);
+  await addSystemLog("user.strike.issued", "automod", { username: users[index].username, count: nextStrikes.length, reason, severity: "bad" }, req);
 
   let thresholdReset = false;
   if (strikes.length < 3 && nextStrikes.length >= 3) {
@@ -8788,6 +8797,7 @@ async function issueMutedWordStrike(user, req) {
     sendDirectEmail(recipients, "Connectifi account reached three strikes", [
       `Account: ${users[index].username}`,
       `Strike count: ${nextStrikes.length}`,
+      "Latest severity: Bad",
       `Latest reason: ${reason}`,
       "Issued by: automod",
       `Time: ${issuedAt}`,
@@ -9271,6 +9281,38 @@ function recipientsForEmailRoute(settings, route) {
 function cleanEmailAddress(value) {
   const email = String(value || "").trim();
   return email.includes("@") ? email : "";
+}
+
+function normalizeStrikeSeverity(value) {
+  const clean = String(value || "").trim().toLowerCase().replace(/_/g, "-");
+  if (["serious", "red", "high", "major"].includes(clean)) return "serious";
+  if (["not-bad", "not bad", "green", "low", "minor", "soft"].includes(clean)) return "not-bad";
+  return "bad";
+}
+
+function strikeSeverityLabel(value) {
+  const severity = normalizeStrikeSeverity(value);
+  if (severity === "serious") return "Serious";
+  if (severity === "not-bad") return "Not bad";
+  return "Bad";
+}
+
+function strikeEmailRecipients(settings) {
+  return (Array.isArray(settings && settings.strikeEmails) ? settings.strikeEmails : REPORT_EMAILS)
+    .map(cleanEmailAddress)
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
+function sendSeriousStrikeEmail(settings, account, strike, issuedBy) {
+  const recipients = strikeEmailRecipients(settings);
+  return sendDirectEmail(recipients, "Connectifi serious strike issued", [
+    `Account: ${account.username}`,
+    "Severity: Serious (red)",
+    `Reason: ${strike.reason}`,
+    `Issued by: ${issuedBy}`,
+    `Time: ${strike.createdAt}`,
+  ].join("\n"), { route: "loginFailures", contactType: "security" });
 }
 
 function sanitizeAcceptedEmailDomains(source = []) {

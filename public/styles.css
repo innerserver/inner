@@ -1695,6 +1695,37 @@ body.dark .report-dashboard-alert {
   overflow-wrap: anywhere;
 }
 
+.strike-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.strike-chip {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  display: inline-flex;
+  max-width: 100%;
+  padding: 4px 8px;
+  overflow-wrap: anywhere;
+}
+
+.strike-serious {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(185, 28, 28, 0.42);
+}
+
+.strike-bad {
+  background: rgba(234, 179, 8, 0.18);
+  border-color: rgba(161, 98, 7, 0.38);
+}
+
+.strike-not-bad {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(21, 128, 61, 0.38);
+}
+
 .switch-row {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;

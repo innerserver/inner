@@ -8079,13 +8079,10 @@ function renderModeratorStrikeAccounts() {
 }
 
 async function issueStrike(username) {
-  const severityInput = window.prompt(`Enter seriousness color for ${username}: green, yellow, or red`, "yellow") || "";
-  const severity = normalizeStrikeSeverityInput(severityInput);
-  if (!severity) return notify("Strike cancelled: choose green, yellow, or red");
-  const reason = window.prompt(`Strike reason for ${username}`) || "";
-  if (!reason.trim()) return;
+  const details = await requestStrikeDetails(username);
+  if (!details) return;
   try {
-    const data = await api("/api/moderation/strikes", { method: "POST", json: { username, reason, severity } });
+    const data = await api("/api/moderation/strikes", { method: "POST", json: { username, reason: details.reason, severity: details.severity } });
     state.moderatorAccounts = state.moderatorAccounts.map((entry) => entry.username === username ? data.user : entry);
     if (isOwner()) state.users = state.users.map((entry) => entry.username === username ? { ...entry, ...data.user } : entry);
     renderModeratorStrikeAccounts();
@@ -8095,6 +8092,94 @@ async function issueStrike(username) {
   } catch (error) {
     notify(error.message);
   }
+}
+
+function requestStrikeDetails(username) {
+  return new Promise((resolve) => {
+    let selectedSeverity = "bad";
+    const overlay = document.createElement("div");
+    overlay.className = "strike-modal-backdrop";
+    const modal = document.createElement("section");
+    modal.className = "strike-modal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-label", `Issue strike for ${username}`);
+
+    const title = document.createElement("h3");
+    title.textContent = `Issue strike for ${username}`;
+    const helper = document.createElement("p");
+    helper.textContent = "Enter seriousness level";
+
+    const colorRow = document.createElement("div");
+    colorRow.className = "strike-color-picker";
+    const choices = [
+      ["not-serious", "Green", "Not serious"],
+      ["bad", "Yellow", "Serious"],
+      ["serious", "Red", "Requires immediate attention"],
+    ].map(([value, color, label]) => {
+      const option = document.createElement("div");
+      option.className = "strike-color-option";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `strike-color-choice strike-${value}`;
+      button.dataset.severity = value;
+      button.setAttribute("aria-pressed", value === selectedSeverity ? "true" : "false");
+      button.setAttribute("aria-label", `${color}: ${label}`);
+      const dot = document.createElement("span");
+      dot.className = "strike-color-dot";
+      const text = document.createElement("span");
+      text.textContent = color;
+      const small = document.createElement("small");
+      small.textContent = label;
+      button.append(dot);
+      option.append(button, text, small);
+      button.addEventListener("click", () => {
+        selectedSeverity = value;
+        choices.forEach((entry) => entry.button.setAttribute("aria-pressed", entry.button === button ? "true" : "false"));
+      });
+      return { button, option };
+    });
+    colorRow.append(...choices.map((entry) => entry.option));
+
+    const reason = document.createElement("textarea");
+    reason.className = "strike-reason-input";
+    reason.maxLength = 240;
+    reason.placeholder = "Reason for strike";
+    reason.setAttribute("aria-label", "Strike reason");
+
+    const actions = document.createElement("div");
+    actions.className = "strike-modal-actions";
+    const cancel = accountButton("Cancel", () => close(null));
+    const submit = accountButton("Issue strike", () => {
+      const cleanReason = reason.value.trim();
+      if (!cleanReason) {
+        notify("Add a strike reason");
+        reason.focus();
+        return;
+      }
+      close({ severity: selectedSeverity, reason: cleanReason });
+    });
+    submit.classList.add("primary-button");
+    actions.append(cancel, submit);
+
+    const close = (value) => {
+      document.removeEventListener("keydown", onKeyDown);
+      overlay.remove();
+      resolve(value);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") close(null);
+    };
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) close(null);
+    });
+    document.addEventListener("keydown", onKeyDown);
+
+    modal.append(title, helper, colorRow, reason, actions);
+    overlay.append(modal);
+    document.body.append(overlay);
+    reason.focus();
+  });
 }
 
 function normalizeStrikeSeverityInput(value) {

@@ -1726,6 +1726,112 @@ body.dark .report-dashboard-alert {
   border-color: rgba(21, 128, 61, 0.38);
 }
 
+.strike-modal-backdrop {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.46);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 18px;
+  position: fixed;
+  z-index: 220;
+}
+
+.strike-modal {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  display: grid;
+  gap: 14px;
+  max-width: 520px;
+  padding: 18px;
+  width: min(100%, 520px);
+}
+
+.strike-modal h3,
+.strike-modal p {
+  margin: 0;
+}
+
+.strike-modal p {
+  color: var(--muted);
+}
+
+.strike-color-picker {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.strike-color-option {
+  align-items: center;
+  color: var(--ink);
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  min-width: 0;
+  text-align: center;
+}
+
+.strike-color-option small {
+  color: var(--muted);
+  line-height: 1.25;
+}
+
+.strike-color-choice {
+  align-items: center;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  color: var(--ink);
+  display: inline-grid;
+  height: 68px;
+  justify-items: center;
+  padding: 0;
+  place-items: center;
+  width: 68px;
+}
+
+.strike-color-choice[aria-pressed="true"] {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.14);
+}
+
+.strike-color-dot {
+  border: 3px solid rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--line);
+  display: block;
+  height: 44px;
+  width: 44px;
+}
+
+.strike-color-choice.strike-not-serious .strike-color-dot {
+  background: #22c55e;
+}
+
+.strike-color-choice.strike-bad .strike-color-dot {
+  background: #eab308;
+}
+
+.strike-color-choice.strike-serious .strike-color-dot {
+  background: #ef4444;
+}
+
+.strike-reason-input {
+  resize: vertical;
+  width: 100%;
+}
+
+.strike-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .switch-row {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;

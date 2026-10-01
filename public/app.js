@@ -1479,6 +1479,7 @@ async function loadState() {
   state.aiRequests = data.aiRequests || [];
   state.aiConfigured = Boolean(data.aiConfigured);
   state.loggedIn = true;
+  window.refreshQuestionnaires?.(true);
   state.lastReportAlertCount = activeReports().length;
   state.activeView = viewFromPath() || "dashboard";
   applyProfileTheme();
@@ -3885,6 +3886,21 @@ function handleSocketMessage(message) {
     return;
   }
 
+  if (message.type === "class:update") {
+    state.user.grade = message.grade;
+    state.selectedRoomId = message.roomId || "main";
+    state.messages = state.messages.filter((entry) => state.rooms.some((room) => room.id === entry.roomId));
+    renderRooms();
+    renderMessages();
+    refreshStateFromServer().catch(() => {});
+    window.refreshQuestionnaires?.(true);
+    return;
+  }
+  if (message.type === "questionnaires:update") {
+    window.refreshQuestionnaires?.(true);
+    return;
+  }
+
   if (message.type === "dm:new") {
     const incoming = state.user && message.dm && !message.dm.secret && message.dm.from !== state.user.username;
     addDm(message.dm);
@@ -5418,6 +5434,7 @@ function renderDashboard() {
   renderDashboardAnnouncements();
   renderDashboardReportAlerts();
   renderDashboardProfileAlerts();
+  window.refreshQuestionnaires?.();
   renderOnboarding();
   els.dashboardGrid.replaceChildren(
     metricCard("Messages", state.messages.length, "Persistent room history"),
@@ -5839,6 +5856,7 @@ function renderRooms() {
 function canAccessVisibleRoom(room) {
   if (!room || !state.user) return false;
   if (room.id === "main" || isModerator()) return true;
+  if (room.classGrade) return room.classGrade === state.user.grade;
   if (!room.private && !room.inviteOnly && !room.requiresPassword) return true;
   return Array.isArray(room.allowedUsers) && room.allowedUsers.includes(state.user.username);
 }
@@ -10973,6 +10991,10 @@ async function saveProfile(event) {
     });
     state.profiles = data.profiles || state.profiles;
     state.user = { ...state.user, ...(data.user || {}), email: els.profileEmail ? els.profileEmail.value.trim() : state.user.email, phone: els.profilePhone ? els.profilePhone.value.trim() : state.user.phone };
+    state.rooms = data.rooms || state.rooms;
+    if (data.classRoomId) state.selectedRoomId = data.classRoomId;
+    await refreshStateFromServer();
+    window.refreshQuestionnaires?.(true);
     renderProfile();
     renderDashboard();
     applyProfileTheme();

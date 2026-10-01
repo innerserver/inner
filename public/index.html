@@ -10,9 +10,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-241-strike-color-circles" />
-    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-241-strike-color-circles" />
-    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-241-strike-color-circles" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-242-class-questionnaires" />
+    <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-242-class-questionnaires" />
+    <link rel="stylesheet" href="/ui-polish.css?v=connectifi-242-class-questionnaires" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -197,6 +197,10 @@
           <div id="dashboardAnnouncementList" class="announcement-list"></div>
           <div id="dashboardReportList" class="dashboard-alert-list"></div>
           <div id="dashboardProfileUpdateList" class="dashboard-alert-list"></div>
+          <section id="questionnairePanel" class="questionnaire-panel">
+            <div class="panel-title-row"><h3>Questionnaires</h3><div class="button-row"><button id="refreshQuestionnaires" type="button" class="secondary-button compact-button">Refresh</button><button id="createQuestionnaire" type="button" class="primary-button compact-button hidden">Create questionnaire</button></div></div>
+            <div id="questionnaireList" class="account-list"></div>
+          </section>
           <div id="onboardingPanel" class="onboarding-panel status-panel hidden">
             <div class="panel-title-row">
               <div>
@@ -1198,7 +1202,8 @@
     <script src="/session-guard.js?v=connectifi-210-dm-recovery" defer></script>
     <script src="/status-guard.js?v=connectifi-210-dm-recovery" defer></script>
     <script src="/ui-boot.js?v=connectifi-210-dm-recovery" defer></script>
-    <script src="/app.js?v=connectifi-241-strike-color-circles" defer></script>
+    <script src="/app.js?v=connectifi-242-class-questionnaires" defer></script>
+    <script src="/questionnaires.js?v=connectifi-242-class-questionnaires" defer></script>
     <script src="/force-logout.js?v=connectifi-210-dm-recovery" defer></script>
   </body>
 </html>

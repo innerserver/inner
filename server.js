@@ -89,6 +89,7 @@ const FILES = {
   invites: path.join(DATA_DIR, "invites.json"),
   reports: path.join(DATA_DIR, "reports.json"),
   attendance: path.join(DATA_DIR, "attendance.json"),
+  questionnaires: path.join(DATA_DIR, "questionnaires.json"),
   readReceipts: path.join(DATA_DIR, "read-receipts.json"),
   moderationLogs: path.join(DATA_DIR, "moderation-logs.json"),
   logs: path.join(DATA_DIR, "logs.json"),
@@ -466,6 +467,7 @@ async function ensureStorage() {
   await ensureJson(FILES.invites, []);
   await ensureJson(FILES.reports, []);
   await ensureJson(FILES.attendance, []);
+  await ensureJson(FILES.questionnaires, []);
   await ensureJson(FILES.readReceipts, {});
   await ensureJson(FILES.moderationLogs, []);
   await ensureJson(FILES.logs, []);
@@ -989,6 +991,7 @@ async function routeApi(req, res, requestUrl) {
       return json(res, 403, { error: `Account is temporarily banned until ${new Date(user.bannedUntil).toLocaleString()}` });
     }
 
+    await syncClassRoom(user);
     const [settings, rooms] = await Promise.all([
       readJson(FILES.settings, {}),
       readJson(FILES.rooms, []),
@@ -1798,6 +1801,10 @@ async function routeApi(req, res, requestUrl) {
     });
   }
 
+  if (pathname === "/api/questionnaires" || /^\/api\/questionnaires\/[^/]+\/(responses|close)$/.test(pathname)) {
+    return handleQuestionnaires(req, res, user, pathname);
+  }
+
   if (req.method === "GET" && pathname === "/api/moderation/attendance") {
     if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
     const roomId = String(requestUrl.searchParams.get("roomId") || "main").trim().slice(0, 80) || "main";
@@ -2243,8 +2250,11 @@ async function routeApi(req, res, requestUrl) {
       broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     }
     await writeJson(FILES.profiles, profiles);
+    const classRoom = normalizeGrade(user.grade) !== next.grade
+      ? await syncClassRoom(users[userIndex] || user)
+      : { rooms: await readJson(FILES.rooms, []), roomId: "" };
     await broadcastProfileUpdate(profiles, users);
-    return json(res, 200, { profile: next, profiles: safeProfiles(profiles, users, user), user: safeUser(users[userIndex] || user, user) });
+    return json(res, 200, { profile: next, profiles: safeProfiles(profiles, users, user), user: safeUser(users[userIndex] || user, user), rooms: safeRoomsForUser(classRoom.rooms, users[userIndex] || user), classRoomId: classRoom.roomId });
   }
 
   if (req.method === "POST" && pathname === "/api/friends/request") {
@@ -3564,6 +3574,7 @@ async function routeApi(req, res, requestUrl) {
       }
       : settings;
     await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles), permanentPromotion ? writeJson(FILES.settings, nextSettings) : Promise.resolve()]);
+    if (gradeChanged) await syncClassRoom(users[index]);
     if (previous.role !== users[index].role || previous.allowPersistentLogin !== users[index].allowPersistentLogin || tempAdminMinutes || clearTempAdmin) {
       expireUserSessions(username);
     }
@@ -6654,9 +6665,127 @@ function sanitizeRoom(room) {
 
 function safeRoom(room) {
   const safe = sanitizeRoom(room);
+  safe.classGrade = classRoomGrade(room);
   delete safe.passwordHash;
   safe.requiresPassword = Boolean(room && room.passwordHash);
   return safe;
+}
+
+function classRoomGrade(room) {
+  if (!room || room.id === "main") return "";
+  const name = String(room.name || "").trim();
+  return normalizeGrade(room.classGrade || (/^(?:(class|grade)\s*)?(6|7|8|9|10|11|12)\s*[abc]?$/i.test(name) ? name.replace(/^(class|grade)\s*/i, "") : ""));
+}
+
+let classRoomWriteQueue = Promise.resolve();
+function syncClassRoom(user) {
+  const operation = classRoomWriteQueue.then(() => syncClassRoomNow(user));
+  classRoomWriteQueue = operation.catch(() => {});
+  return operation;
+}
+
+async function syncClassRoomNow(user) {
+  const rooms = await readJson(FILES.rooms, []);
+  const grade = normalizeGrade(user.grade);
+  let room = grade && rooms.find((entry) => classRoomGrade(entry) === grade);
+  let changed = false;
+  if (grade && !room && !canModerate(user)) {
+    room = sanitizeRoom({ id: crypto.randomUUID(), name: `Class ${grade}`, classGrade: grade, private: true, category: "Classes", createdBy: "system", createdAt: new Date().toISOString() });
+    rooms.push(room);
+    changed = true;
+  }
+  for (const entry of rooms) {
+    const entryGrade = classRoomGrade(entry);
+    if (!entryGrade) continue;
+    const allowed = normalizeUsernameList(entry.allowedUsers);
+    const next = allowed.filter((name) => name !== user.username);
+    if (entryGrade === grade && !canModerate(user)) next.push(user.username);
+    if (JSON.stringify(allowed) !== JSON.stringify(next)) {
+      entry.allowedUsers = next;
+      changed = true;
+    }
+  }
+  for (const session of sessions.values()) if (session.username === user.username) session.grade = grade;
+  for (const client of wsClients.values()) if (client.username === user.username) client.grade = grade;
+  if (changed) await writeJson(FILES.rooms, rooms);
+  broadcastRoomsUpdate(rooms);
+  for (const client of wsClients.values()) {
+    if (client.username === user.username) sendWs(client, { type: "class:update", grade, roomId: room ? room.id : "main" });
+  }
+  return { rooms, roomId: room ? room.id : "main" };
+}
+
+let questionnaireWriteQueue = Promise.resolve();
+function questionnaireAudience(form, user, rooms) {
+  if (form.scope === "grade") {
+    const grade = normalizeGrade(user.grade);
+    return grade === form.target || (/^\d+$/.test(form.target) && grade.replace(/[ABC]$/, "") === form.target);
+  }
+  const room = rooms.find((entry) => entry.id === form.target);
+  return Boolean(room && attendanceUserBelongsToRoom(room, user) && canAccessRoom(room, user));
+}
+
+async function handleQuestionnaires(req, res, sessionUser, pathname) {
+  const users = await readJson(FILES.users, []);
+  let user = users.find((entry) => entry.username === sessionUser.username) || sessionUser;
+  let rooms = await readJson(FILES.rooms, []);
+  if (req.method === "GET" && pathname === "/api/questionnaires") {
+    const forms = await readJson(FILES.questionnaires, []);
+    return json(res, 200, { questionnaires: forms.filter((form) => form.createdBy === user.username || canManage(user) || questionnaireAudience(form, user, rooms)).map((form) => {
+      const own = form.responses.find((entry) => entry.username === user.username);
+      const manager = canManage(user) || (canModerate(user) && form.createdBy === user.username);
+      const eligible = users.filter((entry) => effectiveRole(entry) === "member" && questionnaireAudience(form, entry, rooms));
+      return { ...form, canManage: manager, canRespond: !form.closed && questionnaireAudience(form, user, rooms), submitted: Boolean(own), ownResponse: own || null, responses: manager ? form.responses : [], recipientCount: manager ? eligible.length : undefined, pending: manager ? eligible.filter((entry) => !form.responses.some((response) => response.username === entry.username)).map((entry) => entry.username) : undefined };
+    }) });
+  }
+  if (!["POST"].includes(req.method)) return json(res, 405, { error: "Method not allowed" });
+  const body = await readJsonBody(req);
+  if (!body || typeof body !== "object" || Array.isArray(body)) return json(res, 400, { error: "Invalid questionnaire request" });
+  // Serialize submissions so simultaneous members cannot overwrite each other.
+  const operation = questionnaireWriteQueue.then(async () => {
+    const currentUsers = await readJson(FILES.users, []);
+    user = currentUsers.find((entry) => entry.username === sessionUser.username);
+    if (!user) return json(res, 403, { error: "Account no longer available" });
+    rooms = await readJson(FILES.rooms, []);
+    const forms = await readJson(FILES.questionnaires, []);
+    if (pathname === "/api/questionnaires") {
+      if (!canModerate(user)) return json(res, 403, { error: "Teacher or moderator access required" });
+      const title = String(body.title || "").trim().slice(0, 120);
+      const scope = body.scope === "grade" ? "grade" : "room";
+      const target = scope === "grade" ? normalizeGrade(body.target) : String(body.target || "").slice(0, 80);
+      const targetRoom = rooms.find((entry) => entry.id === target);
+      if (!title || !target || (scope === "room" && (!targetRoom || !canAccessRoom(targetRoom, user)))) return json(res, 400, { error: "Enter a title and valid room or grade" });
+      if (!Array.isArray(body.questions) || body.questions.length > 50 || body.questions.some((entry) => !entry || typeof entry !== "object" || Array.isArray(entry) || (Array.isArray(entry.options) && entry.options.length > 20))) return json(res, 400, { error: "Use up to 50 questions with up to 20 options each" });
+      const questions = (Array.isArray(body.questions) ? body.questions : []).slice(0, 50).map((entry) => ({ id: crypto.randomUUID(), label: String(entry.label || "").trim().slice(0, 500), type: ["text", "paragraph", "choice", "checkbox"].includes(entry.type) ? entry.type : "text", required: Boolean(entry.required), options: [...new Set((Array.isArray(entry.options) ? entry.options : []).map((value) => String(value).trim().slice(0, 200)).filter(Boolean))].slice(0, 20) }));
+      if (!questions.length || questions.some((entry) => !entry.label || (["choice", "checkbox"].includes(entry.type) && entry.options.length < 2))) return json(res, 400, { error: "Add questions; choice questions need at least two different options" });
+      forms.unshift({ id: crypto.randomUUID(), title, description: String(body.description || "").trim().slice(0, 2000), scope, target, targetName: scope === "room" ? targetRoom.name : `Grade ${target}`, questions, responses: [], createdBy: user.username, createdAt: new Date().toISOString(), closed: false });
+    } else {
+      const match = pathname.match(/^\/api\/questionnaires\/([^/]+)\/(responses|close)$/);
+      const form = forms.find((entry) => entry.id === match[1]);
+      if (!form) return json(res, 404, { error: "Questionnaire not found" });
+      if (match[2] === "close") {
+        if (!canManage(user) && !(canModerate(user) && form.createdBy === user.username)) return json(res, 403, { error: "Only the sender can close this questionnaire" });
+        form.closed = true;
+      } else {
+        if (form.closed) return json(res, 409, { error: "This questionnaire is closed" });
+        if (!questionnaireAudience(form, user, rooms)) return json(res, 403, { error: "This questionnaire is for another room or grade" });
+        if (form.responses.some((entry) => entry.username === user.username)) return json(res, 409, { error: "You have already submitted this questionnaire" });
+        const answers = {};
+        for (const question of form.questions) {
+          const raw = body.answers && body.answers[question.id];
+          const answer = question.type === "checkbox" ? [...new Set((Array.isArray(raw) ? raw : []).map(String))] : String(raw || "").trim();
+          if ((question.required && !answer.length) || (Array.isArray(answer) ? answer.some((value) => !question.options.includes(value)) : answer.length > 5000 || (question.type === "choice" && answer && !question.options.includes(answer)))) return json(res, 400, { error: `Check your answer to: ${question.label}` });
+          answers[question.id] = answer;
+        }
+        form.responses.push({ username: user.username, grade: normalizeGrade(user.grade), answers, submittedAt: new Date().toISOString() });
+      }
+    }
+    await writeJson(FILES.questionnaires, forms);
+    for (const client of wsClients.values()) sendWs(client, { type: "questionnaires:update" });
+    return json(res, 200, { ok: true });
+  });
+  questionnaireWriteQueue = operation.catch(() => {});
+  return operation;
 }
 
 function safeRooms(rooms) {
@@ -6702,6 +6831,7 @@ function attendanceUserBelongsToRoom(room, user) {
   if (!username) return false;
   if (builtInManagerUsernames.has(username.toLowerCase())) return false;
   if (!room || room.id === "main") return true;
+  if (classRoomGrade(room)) return classRoomGrade(room) === normalizeGrade(user.grade);
   if (!room.private && !room.inviteOnly && !room.passwordHash) return true;
   const allowed = new Set([
     ...(room.allowedUsers || []),
@@ -6766,6 +6896,7 @@ function persistentLoginReason(user, settings, rooms = []) {
 function canAccessRoom(room, user) {
   if (!room || !user) return false;
   if (room.id === "main" || canManage(user) || canModerate(user)) return true;
+  if (classRoomGrade(room)) return classRoomGrade(room) === normalizeGrade(user.grade);
   if (room.passwordHash && !normalizeUsernameList(room.allowedUsers).includes(user.username)) return false;
   if (!room.private && !room.inviteOnly) return true;
   const allowed = new Set([...(room.allowedUsers || []), ...(room.moderators || []), room.createdBy].filter(Boolean));
@@ -10419,6 +10550,7 @@ async function createBackup(username) {
       bots,
       plugins,
       automod,
+      questionnaires: await readJson(FILES.questionnaires, []),
     },
   };
   await writeJson(path.join(BACKUP_DIR, fileName), backup);
@@ -10480,6 +10612,7 @@ async function restoreBackup(fileName, username) {
     ["bots", FILES.bots, []],
     ["plugins", FILES.plugins, []],
     ["automod", FILES.automod, {}],
+    ["questionnaires", FILES.questionnaires, []],
   ];
   for (const [key, file, fallback] of map) {
     await writeJson(file, data[key] === undefined ? fallback : data[key]);

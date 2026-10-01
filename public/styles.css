@@ -4974,6 +4974,25 @@ body {
   }
 }
 
+.questionnaire-panel { padding-block: 20px; border-block: 1px solid var(--line); margin-block: 16px; color: var(--ink); }
+.questionnaire-panel .panel-title-row { flex-wrap: wrap; gap: 12px; }
+.questionnaire-dialog { width: min(720px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow-y: auto; color: var(--ink); background: var(--surface); }
+.questionnaire-editor, .questionnaire-questions { display: grid; gap: 16px; min-width: 0; }
+.questionnaire-editor { margin-top: 16px; }
+.questionnaire-question { min-width: 0; margin: 0; padding: 16px 0; border: 0; border-top: 1px solid var(--line); display: grid; gap: 12px; }
+.questionnaire-question legend { max-width: 100%; white-space: normal; overflow-wrap: anywhere; font-weight: 600; }
+.questionnaire-editor label { display: grid; gap: 6px; color: var(--ink); }
+.questionnaire-editor label:has(input[type="checkbox"]), .questionnaire-editor label:has(input[type="radio"]) { display: flex; align-items: center; gap: 10px; flex-direction: row-reverse; justify-content: flex-end; overflow-wrap: anywhere; }
+.questionnaire-editor input:not([type="checkbox"]):not([type="radio"]), .questionnaire-editor textarea, .questionnaire-editor select { width: 100%; min-width: 0; box-sizing: border-box; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+.questionnaire-editor input[type="checkbox"], .questionnaire-editor input[type="radio"] { width: 18px; height: 18px; flex-shrink: 0; }
+.questionnaire-card { min-width: 0; overflow-wrap: anywhere; }
+.questionnaire-card p, .questionnaire-question p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.questionnaire-editor [hidden] { display: none; }
+@media (max-width: 640px) {
+  .questionnaire-panel .button-row { flex-wrap: wrap; }
+  .questionnaire-dialog { padding: 16px; }
+}
+
 /* v154 final precedence: desktop header returns to the document flow. */
 #appView.app-loading > .workspace > .view.active,
 #appView.app-loading > .workspace > .site-notice {

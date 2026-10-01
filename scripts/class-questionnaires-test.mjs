@@ -14,6 +14,7 @@ const alice = data.users[1];
 const session = { username: "alice", grade: "8A" };
 const peer = { username: "alice", grade: "8A" };
 const context = vm.createContext({
+  URL,
   crypto: { randomUUID }, FILES: { users: "users", rooms: "rooms", questionnaires: "questionnaires" },
   sessions: new Map([["session", session]]), wsClients: new Map([["peer", peer]]), builtInManagerUsernames: new Set(),
   normalizeUsername: (name) => String(name || "").toLowerCase(), normalizeUsernameList: (names) => Array.isArray(names) ? names : [],
@@ -29,6 +30,7 @@ vm.runInContext([
   block("function sanitizeRoom(", "function safeRoom("),
   block("function classRoomGrade(", "function safeRooms("),
   block("function attendanceUserBelongsToRoom(", "function sanitizeAttendanceRecords("),
+  block("function sanitizeAttendanceDate(", "function localDateKey("),
   block("function canAccessRoom(", "function safeAnnouncements("),
 ].join("\n"), context);
 
@@ -81,3 +83,25 @@ alice.grade = "10A";
 await context.syncClassRoom(alice);
 assert.equal((await call("alice", undefined, undefined, "GET")).body.questionnaires.length, 0);
 console.log("PASS room audience and questionnaire access after changing class");
+
+const registration = { title: "MUN signup", kind: "mun", scope: "grade", target: "10", questions: [
+  { label: "Email", type: "email", required: true }, { label: "Phone", type: "tel", required: false },
+  { label: "Committee", type: "dropdown", required: true, options: ["UNGA", "UNSC"] },
+  { label: "Experience count", type: "number", required: true }, { label: "Date", type: "date", required: true },
+  { label: "Time", type: "time", required: true }, { label: "Website", type: "url", required: false },
+  { label: "Confirm", type: "checkbox", required: true, options: ["Confirmed"] },
+] };
+assert.equal((await call("teacher", undefined, registration)).status, 200);
+const signup = data.questionnaires[0];
+assert.equal(signup.kind, "mun");
+assert.equal(signup.questions[2].type, "dropdown");
+const signupPath = `/api/questionnaires/${signup.id}/responses`;
+const validValues = ["delegate@example.com", "+91 98765 43210", "UNGA", 0, "2026-10-01", "09:30", "https://example.com", ["Confirmed"]];
+const signupAnswers = Object.fromEntries(signup.questions.map((question, index) => [question.id, validValues[index]]));
+for (const [index, invalid] of [[0, "not-an-email"], [1, "abc"], [2, "Not a committee"], [3, "NaN"], [4, "2026-02-30"], [5, "25:00"], [6, "javascript:alert(1)"], [7, []]]) {
+  const result = await call("alice", signupPath, { answers: { ...signupAnswers, [signup.questions[index].id]: invalid } });
+  assert.equal(result.status, 400, `invalid ${signup.questions[index].type} rejected`);
+}
+assert.equal((await call("alice", signupPath, { answers: signupAnswers })).status, 200);
+assert.equal(data.questionnaires[0].responses[0].answers[signup.questions[3].id], "0");
+console.log("PASS signup types, dropdown options, contact/date/time/URL validation, zero numeric answer, single confirmation checkbox");

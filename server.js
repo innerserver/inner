@@ -6756,9 +6756,10 @@ async function handleQuestionnaires(req, res, sessionUser, pathname) {
       const targetRoom = rooms.find((entry) => entry.id === target);
       if (!title || !target || (scope === "room" && (!targetRoom || !canAccessRoom(targetRoom, user)))) return json(res, 400, { error: "Enter a title and valid room or grade" });
       if (!Array.isArray(body.questions) || body.questions.length > 50 || body.questions.some((entry) => !entry || typeof entry !== "object" || Array.isArray(entry) || (Array.isArray(entry.options) && entry.options.length > 20))) return json(res, 400, { error: "Use up to 50 questions with up to 20 options each" });
-      const questions = (Array.isArray(body.questions) ? body.questions : []).slice(0, 50).map((entry) => ({ id: crypto.randomUUID(), label: String(entry.label || "").trim().slice(0, 500), type: ["text", "paragraph", "choice", "checkbox"].includes(entry.type) ? entry.type : "text", required: Boolean(entry.required), options: [...new Set((Array.isArray(entry.options) ? entry.options : []).map((value) => String(value).trim().slice(0, 200)).filter(Boolean))].slice(0, 20) }));
-      if (!questions.length || questions.some((entry) => !entry.label || (["choice", "checkbox"].includes(entry.type) && entry.options.length < 2))) return json(res, 400, { error: "Add questions; choice questions need at least two different options" });
-      forms.unshift({ id: crypto.randomUUID(), title, description: String(body.description || "").trim().slice(0, 2000), scope, target, targetName: scope === "room" ? targetRoom.name : `Grade ${target}`, questions, responses: [], createdBy: user.username, createdAt: new Date().toISOString(), closed: false });
+      const questions = body.questions.map((entry) => ({ id: crypto.randomUUID(), label: String(entry.label || "").trim().slice(0, 500), type: ["text", "paragraph", "choice", "checkbox", "dropdown", "email", "tel", "number", "date", "time", "url"].includes(entry.type) ? entry.type : "text", required: Boolean(entry.required), options: [...new Set((Array.isArray(entry.options) ? entry.options : []).map((value) => String(value).trim().slice(0, 200)).filter(Boolean))].slice(0, 20) }));
+      if (!questions.length || questions.some((entry) => !entry.label || (["choice", "dropdown"].includes(entry.type) && entry.options.length < 2) || (entry.type === "checkbox" && !entry.options.length))) return json(res, 400, { error: "Add questions; choices and dropdowns need two options, checkboxes need at least one" });
+      const kind = ["questionnaire", "signup", "mun", "feedback"].includes(body.kind) ? body.kind : "questionnaire";
+      forms.unshift({ id: crypto.randomUUID(), title, kind, description: String(body.description || "").trim().slice(0, 2000), scope, target, targetName: scope === "room" ? targetRoom.name : `Grade ${target}`, questions, responses: [], createdBy: user.username, createdAt: new Date().toISOString(), closed: false });
     } else {
       const match = pathname.match(/^\/api\/questionnaires\/([^/]+)\/(responses|close)$/);
       const form = forms.find((entry) => entry.id === match[1]);
@@ -6773,8 +6774,24 @@ async function handleQuestionnaires(req, res, sessionUser, pathname) {
         const answers = {};
         for (const question of form.questions) {
           const raw = body.answers && body.answers[question.id];
-          const answer = question.type === "checkbox" ? [...new Set((Array.isArray(raw) ? raw : []).map(String))] : String(raw || "").trim();
-          if ((question.required && !answer.length) || (Array.isArray(answer) ? answer.some((value) => !question.options.includes(value)) : answer.length > 5000 || (question.type === "choice" && answer && !question.options.includes(answer)))) return json(res, 400, { error: `Check your answer to: ${question.label}` });
+          if (question.type === "checkbox" ? raw !== undefined && !Array.isArray(raw) : raw !== undefined && typeof raw !== "string" && typeof raw !== "number") return json(res, 400, { error: `Check your answer to: ${question.label}` });
+          const answer = question.type === "checkbox" ? [...new Set((Array.isArray(raw) ? raw : []).map(String))] : String(raw ?? "").trim();
+          let invalid = question.required && !answer.length;
+          if (Array.isArray(answer)) invalid ||= answer.some((value) => !question.options.includes(value));
+          else {
+            invalid ||= answer.length > 5000 || (["choice", "dropdown"].includes(question.type) && answer && !question.options.includes(answer));
+            if (answer) {
+              if (question.type === "email") invalid ||= answer.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answer);
+              if (question.type === "tel") invalid ||= !/^\+?[\d\s().-]{5,40}$/.test(answer) || answer.replace(/\D/g, "").length < 5;
+              if (question.type === "number") invalid ||= !/^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(answer) || !Number.isFinite(Number(answer));
+              if (question.type === "date") invalid ||= !sanitizeAttendanceDate(answer);
+              if (question.type === "time") invalid ||= !/^([01]\d|2[0-3]):[0-5]\d$/.test(answer);
+              if (question.type === "url") {
+                try { const link = new URL(answer); invalid ||= !["https:", "http:"].includes(link.protocol) || Boolean(link.username || link.password); } catch { invalid = true; }
+              }
+            }
+          }
+          if (invalid) return json(res, 400, { error: `Check your answer to: ${question.label}` });
           answers[question.id] = answer;
         }
         form.responses.push({ username: user.username, grade: normalizeGrade(user.grade), answers, submittedAt: new Date().toISOString() });

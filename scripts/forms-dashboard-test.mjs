@@ -19,7 +19,7 @@ class Element {
   append(...nodes) { for (const node of nodes) { node.parent = this; this.children.push(node); } }
   replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
   addEventListener(name, handler) { this.events[name] = handler; }
-  setAttribute() {}
+  setAttribute(name, value) { this.attributes ||= {}; this.attributes[name] = value; }
   focus() {}
   remove() { if (this.parent) this.parent.children = this.parent.children.filter((node) => node !== this); }
   contains(node) { return this === node || this.children.some((child) => child.contains(node)); }
@@ -69,9 +69,32 @@ const labels = walk(editor).filter((node) => node.tagName === "label" && node.te
 assert.equal(labels.length, 10);
 assert.equal(labels.includes("First committee preference"), true);
 assert.equal(labels.includes("Registration confirmation"), true);
+const up = walk(editor).filter((node) => node.title === "Move question up");
+up[1].events.click();
+assert.equal(walk(editor).find((node) => node.tagName === "label" && node.textContent === "Question").children[0].value, "Contact email");
+walk(editor).find((node) => node.title === "Move question down").events.click();
+assert.equal(walk(editor).find((node) => node.tagName === "label" && node.textContent === "Question").children[0].value, "Delegate full name");
+walk(editor).find((node) => node.title === "Duplicate question").events.click();
+assert.equal(walk(editor).filter((node) => node.tagName === "label" && node.textContent === "Question").length, 11);
+walk(editor).filter((node) => node.title === "Remove question").at(-1).events.click();
+walk(editor).find((node) => node.textContent === "Preview").events.click();
+assert.equal(walk(body).filter((node) => node.tagName === "form").length, 2);
+walk(body).filter((node) => node.title === "Close form").at(-1).events.click();
 await editor.onsubmit({ preventDefault() {} });
 assert.equal(sent.kind, "mun");
 assert.equal(sent.title, "MUN registration");
 assert.equal(sent.questions.filter((question) => question.type === "dropdown").length, 2);
 assert.equal(sent.questions.some((question) => question.type === "checkbox" && question.options.length === 1 && question.required), true);
 console.log("PASS staff controls available with empty dashboard, editable MUN template and signup payload");
+
+forms = [{ id: "results", title: "MUN results", kind: "mun", canManage: true, canRespond: false, closed: true, pending: ["bob"], questions: [{ id: "committee", label: "Committee", type: "dropdown", options: ["UNGA", "UNSC"] }], responses: [{ username: "alice", grade: "9A", submittedAt: "2026-10-10T08:00:00Z", answers: { committee: "UNGA" } }] }];
+await context.window.refreshQuestionnaires(true);
+nodes.manageQuestionnaires.onclick();
+walk(body).find((node) => node.textContent === "Results").events.click();
+assert.equal(walk(body).filter((node) => node.tagName === "progress").length, 2);
+const individual = walk(body).find((node) => node.textContent === "Individual");
+individual.events.click();
+assert.equal(individual.attributes["aria-selected"], "true");
+assert.equal(walk(body).some((node) => node.tagName === "option" && node.textContent === "alice | 9A"), true);
+assert.equal(walk(body).some((node) => node.tagName === "p" && node.textContent === "UNGA"), true);
+console.log("PASS question ordering, duplication, preview, results summary counts and individual respondent answers");

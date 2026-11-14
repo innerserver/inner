@@ -11,6 +11,18 @@ const crypto = require("crypto");
 const os = require("os");
 const { Readable } = require("stream");
 const { URL } = require("url");
+const { WebSocketServer } = require("ws");
+const ipaddr = require("ipaddr.js");
+
+const websocketServer = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024, perMessageDeflate: false });
+const securityRateLimits = new Map();
+let activePasswordOperations = 0;
+let activeUploads = 0;
+let activeBrowserFetches = 0;
+const userUploadCounts = new Map();
+const passwordResetClaims = new Set();
+const AUTH_IP_REQUEST_LIMIT = Math.max(10, Number(process.env.INNER_AUTH_IP_REQUEST_LIMIT || 600));
+const TRUST_PROXY = process.env.INNER_TRUST_PROXY === undefined ? Boolean(process.env.RENDER) : isTruthy(process.env.INNER_TRUST_PROXY);
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 3000);
@@ -293,12 +305,25 @@ async function main() {
   const server = createInnerServer((req, res) => {
     route(req, res).catch((error) => {
       console.error(safeErrorMessage(error));
-      const status = isClientBodyError(error) ? 400 : 500;
-      json(res, status, { error: status === 400 ? error.message : "Internal server error" });
+      if (res.destroyed || res.writableEnded) return;
+      if (res.headersSent) return res.destroy();
+      const status = [400, 403, 408, 413, 429, 503].includes(error.statusCode) ? error.statusCode : isClientBodyError(error) ? 400 : 500;
+      if ([400, 408, 413].includes(status)) res.setHeader("Connection", "close");
+      json(res, status, { error: status < 500 ? error.message : status === 503 ? "Service temporarily busy. Please try again." : "Internal server error" });
     });
   });
 
-  server.on("upgrade", handleUpgrade);
+  server.headersTimeout = 15000;
+  server.requestTimeout = 120000;
+  server.keepAliveTimeout = 5000;
+  server.maxRequestsPerSocket = 1000;
+  server.maxHeadersCount = 100;
+  server.on("upgrade", (req, socket, head) => {
+    handleUpgrade(req, socket, head).catch((error) => {
+      console.error(safeErrorMessage(error));
+      socket.destroy();
+    });
+  });
   startWsHeartbeat();
   startOwnerCheckinScheduler();
 
@@ -433,8 +458,8 @@ async function initPersistence() {
     persistence.mode = "local";
     persistence.ready = false;
     persistence.error = error.message || "MongoDB connection failed";
-    console.error("[persistence] MongoDB/GridFS failed:", persistence.error);
-    console.log("MongoDB failure bypassed.");
+    console.error("[persistence] MongoDB/GridFS failed:", safeErrorMessage(error));
+    throw new Error("Configured database is unavailable. Startup stopped to protect stored accounts and permissions.");
   }
 }
 
@@ -893,8 +918,11 @@ async function route(req, res) {
     return redirectToHttps(req, res);
   }
 
-  const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
-  const pathname = decodeURIComponent(requestUrl.pathname);
+  let requestUrl, pathname;
+  try {
+    requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
+    pathname = decodeURIComponent(requestUrl.pathname);
+  } catch { return text(res, 400, "Invalid request URL"); }
 
   if ((req.method === "GET" || req.method === "HEAD") && pathname === "/") {
     return serveStatic(req, res, path.join(PUBLIC_DIR, "index.html"));
@@ -936,6 +964,19 @@ async function route(req, res) {
 
 async function routeApi(req, res, requestUrl) {
   const pathname = requestUrl.pathname;
+
+  if (requiresCsrfProtection(req) && (
+    req.headers["sec-fetch-site"] === "cross-site" ||
+    (req.headers.origin && !isSameOriginRequest(req))
+  )) return json(res, 403, { error: "Cross-site request blocked" });
+
+  // Count requests before body parsing or password hashing, including unknown accounts.
+  if (req.method === "POST" && ["/api/login", "/api/signup", "/api/account-requests", "/api/password-reset/request", "/api/password-reset/complete", "/api/owner-failsafe/unlock"].includes(pathname)) {
+    if (!consumeSecurityRate(`auth:${getClientIp(req)}`, AUTH_IP_REQUEST_LIMIT, 60000)) {
+      res.setHeader("Retry-After", "60");
+      return json(res, 429, { error: "Too many account requests. Please try again later." });
+    }
+  }
 
   const csrfSessionUser = requiresCsrfProtection(req) ? getSessionUser(req) : null;
   if (csrfSessionUser && !isSameOriginRequest(req)) {
@@ -1006,6 +1047,11 @@ async function routeApi(req, res, requestUrl) {
     }
 
     const persistent = effectivePersistentLogin(user, settings, rooms);
+    const previousToken = getCookie(req, SESSION_COOKIE);
+    if (previousToken) revokeSession(previousToken);
+    const accountSessions = [...sessions.entries()].filter(([, entry]) => entry.username === user.username);
+    while (accountSessions.length >= 10) revokeSession(accountSessions.shift()[0]);
+    if (sessions.size >= WS_MAX_CLIENTS * 20) return json(res, 503, { error: "Session capacity reached. Please try again later." });
     const token = crypto.randomBytes(32).toString("hex");
     sessions.set(token, {
       username: user.username,
@@ -1096,9 +1142,7 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "POST" && pathname === "/api/logout") {
-    const token = getCookie(req, SESSION_COOKIE);
-    if (token) sessions.delete(token);
-    res.setHeader("Set-Cookie", sessionCookie("", req, 0));
+    clearSessionForRequest(req, res);
     return json(res, 200, { ok: true });
   }
 
@@ -1121,7 +1165,7 @@ async function routeApi(req, res, requestUrl) {
         localhostMode: LOCALHOST_MODE,
         cloudinaryConfigured: cloudinaryUploadEnabled(),
         backblazeConfigured: b2Configured(),
-        error: persistence.error,
+        error: persistence.error ? "Storage service unavailable" : "",
       },
     });
   }
@@ -1168,7 +1212,7 @@ async function routeApi(req, res, requestUrl) {
     pruneHttpRealtime();
     const clientId = sanitizeRealtimeClientId(requestUrl.searchParams.get("clientId"));
     const client = clientId ? httpRealtimeClients.get(clientId) : null;
-    if (!client || client.username !== user.username) return json(res, 404, { error: "Realtime fallback is not connected" });
+    if (!client || client.username !== user.username || client.sessionToken !== getCookie(req, SESSION_COOKIE)) return json(res, 404, { error: "Realtime fallback is not connected" });
     client.lastSeenAt = Date.now();
     const since = Math.max(0, Number(requestUrl.searchParams.get("since") || 0));
     const events = httpRealtimeEvents
@@ -1236,6 +1280,8 @@ async function routeApi(req, res, requestUrl) {
       String(entry.email || "").toLowerCase() === lookup
     );
     const generic = { ok: true, message: "If that account has an email saved, a reset link was sent." };
+    const resetIdentity = target ? String(target.username).toLowerCase() : lookup;
+    if (!consumeSecurityRate(`reset:${resetIdentity}`, 1, 300000)) return json(res, 200, generic);
     if (!target || !String(target.email || "").includes("@")) {
       await addSystemLog("password.reset.request.skipped", lookup.slice(0, 80), { reason: "No account/email match" }, req);
       return json(res, 200, generic);
@@ -1262,28 +1308,31 @@ async function routeApi(req, res, requestUrl) {
     if (nextPassword.length < MIN_PASSWORD_LENGTH) return json(res, 400, { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
     const [id, rawToken] = tokenValue.split(".");
     if (!id || !rawToken) return json(res, 400, { error: "Reset link is invalid" });
+    if (passwordResetClaims.has(id)) return json(res, 409, { error: "This reset link is already being processed" });
+    if (passwordResetClaims.size >= 100) return json(res, 503, { error: "Password reset service is busy. Please try again." });
+    passwordResetClaims.add(id);
+    try {
     const settings = await readJson(FILES.settings, {});
     if (settings.passwordResetEnabled === false) return json(res, 423, { error: "Password reset is turned off. Contact an admin." });
     const [resets, users] = await Promise.all([readJson(FILES.passwordResets, []), readJson(FILES.users, [])]);
     const resetIndex = resets.findIndex((entry) => entry.id === id);
     const reset = resets[resetIndex];
-    if (!reset || reset.usedAt || Date.parse(reset.expiresAt || "") < Date.now()) return json(res, 400, { error: "Reset link expired. Request a new one." });
+    if (!reset || reset.usedAt || !Number.isFinite(Date.parse(reset.expiresAt || "")) || Date.parse(reset.expiresAt) <= Date.now()) return json(res, 400, { error: "Reset link expired. Request a new one." });
     if (!(await verifyPasswordAsync(rawToken, reset.tokenHash))) return json(res, 400, { error: "Reset link is invalid" });
     const userIndex = users.findIndex((entry) => String(entry.username || "").toLowerCase() === String(reset.username || "").toLowerCase());
     if (userIndex === -1) return json(res, 404, { error: "Account not found" });
     users[userIndex] = {
       ...users[userIndex],
-      passwordHash: hashPassword(nextPassword),
+      passwordHash: await hashPasswordAsync(nextPassword),
       passwordPreset: "",
       updatedAt: new Date().toISOString(),
       updatedBy: "self-service-reset",
     };
     resets[resetIndex] = { ...reset, usedAt: new Date().toISOString() };
-    await Promise.all([
-      writeJson(FILES.users, users),
-      writeJson(FILES.passwordResets, resets),
-      addSystemLog("password.reset.completed", users[userIndex].username, {}, req),
-    ]);
+    await writeJson(FILES.passwordResets, resets);
+    await writeJson(FILES.users, users);
+    expireUserSessions(users[userIndex].username);
+    await addSystemLog("password.reset.completed", users[userIndex].username, {}, req);
     if (String(users[userIndex].email || "").includes("@")) {
       await sendDirectEmail([users[userIndex].email], "Connectifi password changed", [
         `Hi ${users[userIndex].username},`,
@@ -1300,8 +1349,8 @@ async function routeApi(req, res, requestUrl) {
         }),
       ].join("\n"), { route: "loginFailures", contactType: "security", fromContact: true });
     }
-    expireUserSessions(users[userIndex].username);
     return json(res, 200, { ok: true });
+    } finally { passwordResetClaims.delete(id); }
   }
 
   if (req.method === "POST" && pathname === "/api/account-requests") {
@@ -1348,7 +1397,7 @@ async function routeApi(req, res, requestUrl) {
       phone,
       grade,
       requestedRole: normalizePublicRequestedRole(body.requestedRole),
-      passwordHash: hashPassword(password),
+      passwordHash: await hashPasswordAsync(password),
       passwordSet: true,
       note: body.note,
       location,
@@ -1426,7 +1475,7 @@ async function routeApi(req, res, requestUrl) {
     const account = {
       username,
       role: "member",
-      passwordHash: hashPassword(password),
+      passwordHash: await hashPasswordAsync(password),
       passwordPreset: "",
       contact,
       email,
@@ -1516,7 +1565,7 @@ async function routeApi(req, res, requestUrl) {
       ...settings,
       ownerFailsafe: {
         ...normalizeOwnerFailsafe(settings.ownerFailsafe),
-        recoveryCodeHash: hashPassword(recoveryCode),
+        recoveryCodeHash: await hashPasswordAsync(recoveryCode),
         recoveryCodeMode: "dedicated",
         recoveryCodeUpdatedAt: new Date().toISOString(),
         recoveryCodeUpdatedBy: user.username,
@@ -2042,7 +2091,17 @@ async function routeApi(req, res, requestUrl) {
     if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
     const featureError = await featureGateError(settings, "files", user, { roomId: String(req.headers["x-file-release-room"] || "").trim().slice(0, 80) });
     if (featureError) return json(res, 423, { error: featureError });
-    return saveUpload(req, res, user);
+    const count = userUploadCounts.get(user.username) || 0;
+    if (activeUploads >= 16 || count >= 3) return json(res, 429, { error: "Too many uploads in progress. Please wait for an upload to finish." });
+    activeUploads++;
+    userUploadCounts.set(user.username, count + 1);
+    try { return await saveUpload(req, res, user); }
+    finally {
+      activeUploads--;
+      const remaining = userUploadCounts.get(user.username) - 1;
+      if (remaining) userUploadCounts.set(user.username, remaining);
+      else userUploadCounts.delete(user.username);
+    }
   }
 
   if (req.method === "POST" && pathname === "/api/uploads/direct-cloudinary/sign") {
@@ -2796,7 +2855,7 @@ async function routeApi(req, res, requestUrl) {
       category: String(body.category || "General").trim().slice(0, 80) || "General",
       private: Boolean(body.private),
       inviteOnly: Boolean(body.inviteOnly),
-      passwordHash: String(body.password || "").trim().length >= 1 ? hashPassword(String(body.password || "")) : "",
+      passwordHash: String(body.password || "").trim().length >= 1 ? await hashPasswordAsync(String(body.password || "")) : "",
       allowedUsers: normalizeUsernameList(body.allowedUsers),
       moderators: normalizeUsernameList(body.moderators),
       createdAt: new Date().toISOString(),
@@ -2826,7 +2885,7 @@ async function routeApi(req, res, requestUrl) {
       category: body.category,
       private: Boolean(body.private),
       inviteOnly: Boolean(body.inviteOnly),
-      passwordHash: String(body.password || "").length ? hashPassword(String(body.password || "")) : previous.passwordHash || "",
+      passwordHash: String(body.password || "").length ? await hashPasswordAsync(String(body.password || "")) : previous.passwordHash || "",
       allowedUsers: body.allowedUsers,
       moderators: body.moderators,
       updatedAt: new Date().toISOString(),
@@ -3346,7 +3405,7 @@ async function routeApi(req, res, requestUrl) {
     if (grantedRole === "admin") return json(res, 403, { error: "Creating new admin accounts is locked. Use the existing admin accounts only." });
     if (["hmd", "dev"].includes(grantedRole) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
     if (request.status === "approved") return json(res, 409, { error: "Request already approved" });
-    const nextPasswordHash = password.length >= MIN_PASSWORD_LENGTH ? hashPassword(password) : request.passwordHash;
+    const nextPasswordHash = password.length >= MIN_PASSWORD_LENGTH ? await hashPasswordAsync(password) : request.passwordHash;
     if (!nextPasswordHash) return json(res, 400, { error: "This request has no password. Set one while approving." });
     if (users.some((entry) => entry.username.toLowerCase() === request.username.toLowerCase())) {
       return json(res, 409, { error: "That username already exists" });
@@ -3447,7 +3506,7 @@ async function routeApi(req, res, requestUrl) {
     const account = {
       username,
       role,
-      passwordHash: hashPassword(password),
+      passwordHash: await hashPasswordAsync(password),
       email,
       phone,
       contact,
@@ -4016,7 +4075,7 @@ async function routeApi(req, res, requestUrl) {
       updatedBy: user.username,
     };
     if (String(body.password || "").length > 0) {
-      next.passwordHash = hashPassword(String(body.password));
+      next.passwordHash = await hashPasswordAsync(String(body.password));
     }
     await writeJson(FILES.vpn, next);
     broadcast({ type: "vpn:update", vpn: safeVpn(next) });
@@ -4131,10 +4190,11 @@ async function routeApi(req, res, requestUrl) {
 
     users[index] = {
       ...users[index],
-      passwordHash: hashPassword(nextPassword),
+      passwordHash: await hashPasswordAsync(nextPassword),
       updatedAt: new Date().toISOString(),
     };
     await writeJson(FILES.users, users);
+    expireUserSessions(user.username);
     return json(res, 200, { ok: true });
   }
 
@@ -4152,7 +4212,7 @@ async function routeApi(req, res, requestUrl) {
 
     users[index] = {
       ...users[index],
-      passwordHash: hashPassword(nextPassword),
+      passwordHash: await hashPasswordAsync(nextPassword),
       passwordPreset: "",
       updatedAt: new Date().toISOString(),
       updatedBy: user.username,
@@ -4272,7 +4332,16 @@ async function saveUpload(req, res, user) {
   let inlineChunks = [];
 
   await new Promise((resolve, reject) => {
-    const out = fs.createWriteStream(target, { flags: "wx" });
+    const out = fs.createWriteStream(target, { flags: "wx", mode: 0o600 });
+    const abort = () => out.destroy(new Error("Upload interrupted"));
+    const deadline = setTimeout(() => out.destroy(new Error("Upload timed out")), 120000);
+    deadline.unref();
+    req.once("aborted", abort);
+    out.once("close", () => {
+      clearTimeout(deadline);
+      req.removeListener("aborted", abort);
+      req.unpipe(out);
+    });
 
     req.on("data", (chunk) => {
       written += chunk.length;
@@ -4933,179 +5002,86 @@ function cloudStorageRequired() {
   return REQUIRE_CLOUD_STORAGE;
 }
 
-async function handleUpgrade(req, socket) {
+async function handleUpgrade(req, socket, head = Buffer.alloc(0)) {
   socket.on("error", () => {});
+  socket.setTimeout(10000, () => socket.destroy());
   const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
-  if (requestUrl.pathname !== "/ws") {
-    socket.destroy();
-    return;
-  }
-
-  if (!isSameOriginRequest(req)) {
-    socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
-    socket.destroy();
-    return;
-  }
-
+  if (requestUrl.pathname !== "/ws") return socket.destroy();
+  if (!isSameOriginRequest(req)) return socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
   const user = getSessionUser(req);
-  if (!user) {
-    socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-    socket.destroy();
-    return;
+  if (!user) return socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+  if (!consumeSecurityRate(`upgrade:${getClientIp(req)}`, AUTH_IP_REQUEST_LIMIT, 60000)) {
+    return socket.end("HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n");
   }
-
   const settings = await readJson(FILES.settings, {});
   if (settings.serverEnabled === false && !canAccessWhileServerLocked(user, settings)) {
-    socket.write("HTTP/1.1 423 Locked\r\n\r\n");
-    socket.destroy();
-    return;
+    return socket.end("HTTP/1.1 423 Locked\r\nConnection: close\r\n\r\n");
   }
-
-  if (wsClients.size >= WS_MAX_CLIENTS && !canManage(user)) {
-    socket.write("HTTP/1.1 503 Service Unavailable\r\nRetry-After: 10\r\n\r\n");
-    socket.destroy();
-    return;
+  // Check after asynchronous reads so pending handshakes cannot race the capacity check.
+  if (socket.destroyed) return;
+  if (wsClients.size >= WS_MAX_CLIENTS || !getSessionUser(req)) {
+    return socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
   }
-
-  const key = req.headers["sec-websocket-key"];
-  if (!key) {
-    socket.destroy();
-    return;
-  }
-
-  const accept = crypto
-    .createHash("sha1")
-    .update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
-    .digest("base64");
-
-  socket.write(
-    [
-      "HTTP/1.1 101 Switching Protocols",
-      "Upgrade: websocket",
-      "Connection: Upgrade",
-      `Sec-WebSocket-Accept: ${accept}`,
-      "\r\n",
-    ].join("\r\n")
-  );
-
-  const id = crypto.randomUUID();
-  if (socket.setNoDelay) socket.setNoDelay(true);
-  if (socket.setKeepAlive) socket.setKeepAlive(true, 30000);
-  const client = {
-    id,
-    username: user.username,
-    role: user.role,
-    socket,
-    buffer: Buffer.alloc(0),
-    ip: getClientIp(req),
-    device: deviceSignature(req),
-    network: {},
-    connectedAt: new Date().toISOString(),
-    sharing: false,
-    screenRoomId: "",
-    status: "online",
-    invisible: false,
-    typingRoomId: "",
-    voiceRoomId: "",
-    muted: false,
-    deafened: false,
-    videoEnabled: false,
-    cameraOff: true,
-    lastPongAt: Date.now(),
-    missedHeartbeats: 0,
-  };
-  wsClients.set(id, client);
-  socket.removeAllListeners("error");
-  socket.on("error", () => removeClient(id));
-
-  sendWs(client, {
-    type: "hello",
-    clientId: id,
-    user: safeUser(user),
-    peers: peerList(id, user, await readJson(FILES.users, []), await readJson(FILES.friends, { requests: [], friendships: [] })),
-    presence: presenceList(await readJson(FILES.profiles, {}), user, await readJson(FILES.users, []), await readJson(FILES.friends, { requests: [], friendships: [] })),
-    rtcConfig: await buildRtcConfigForRequest(req),
-    rtcStatus: buildRtcStatus(),
+  websocketServer.handleUpgrade(req, socket, head, (webSocket) => {
+    socket.setTimeout(0);
+    socket.setNoDelay(true);
+    socket.setKeepAlive(true, 30000);
+    const id = crypto.randomUUID();
+    const client = {
+      id, username: user.username, role: user.role, socket, webSocket,
+      sessionToken: getCookie(req, SESSION_COOKIE), ip: getClientIp(req),
+      device: deviceSignature(req), network: {}, connectedAt: new Date().toISOString(),
+      sharing: false, screenRoomId: "", status: "online", invisible: false,
+      typingRoomId: "", voiceRoomId: "", muted: false, deafened: false,
+      videoEnabled: false, cameraOff: true, lastPongAt: Date.now(), missedHeartbeats: 0,
+      messageQueue: [], queuedBytes: 0, processingMessages: false,
+    };
+    wsClients.set(id, client);
+    webSocket.on("error", () => closeWs(client));
+    webSocket.on("close", () => removeClient(id));
+    webSocket.on("pong", () => { client.lastPongAt = Date.now(); client.missedHeartbeats = 0; });
+    webSocket.on("message", (data, binary) => {
+      if (binary || !realtimeSessionActive(client) || client.messageQueue.length >= 256 ||
+          client.queuedBytes + data.length > 4 * 1024 * 1024 ||
+          !consumeSecurityRate(`ws:${id}`, 600, 10000)) return closeWs(client);
+      let message;
+      try {
+        message = JSON.parse(data.toString("utf8"));
+        if (!message || typeof message !== "object" || Array.isArray(message)) return closeWs(client);
+      } catch { return closeWs(client); }
+      client.queuedBytes += data.length;
+      client.messageQueue.push({ message, bytes: data.length });
+      void drainRealtimeMessages(client);
+    });
+    void (async () => {
+      const [users, friends, profiles, rtcConfig] = await Promise.all([
+        readJson(FILES.users, []), readJson(FILES.friends, { requests: [], friendships: [] }),
+        readJson(FILES.profiles, {}), buildRtcConfigForRequest(req),
+      ]);
+      if (!wsClients.has(id) || !realtimeSessionActive(client)) return closeWs(client);
+      sendWs(client, {
+        type: "hello", clientId: id, user: safeUser(user),
+        peers: peerList(id, user, users, friends),
+        presence: presenceList(profiles, user, users, friends), rtcConfig, rtcStatus: buildRtcStatus(),
+      });
+      await broadcastPeerJoined(client, id);
+    })().catch(() => closeWs(client));
   });
-  await broadcastPeerJoined(client, id);
-
-  socket.on("data", (chunk) => handleWsData(client, chunk));
-  socket.on("close", () => removeClient(id));
 }
 
-function handleWsData(client, chunk) {
-  client.buffer = Buffer.concat([client.buffer, chunk]);
-
-  while (client.buffer.length >= 2) {
-    const firstByte = client.buffer[0];
-    const secondByte = client.buffer[1];
-    const opcode = firstByte & 0x0f;
-    const masked = Boolean(secondByte & 0x80);
-    let length = secondByte & 0x7f;
-    let offset = 2;
-
-    if (length === 126) {
-      if (client.buffer.length < offset + 2) return;
-      length = client.buffer.readUInt16BE(offset);
-      offset += 2;
-    } else if (length === 127) {
-      if (client.buffer.length < offset + 8) return;
-      const bigLength = client.buffer.readBigUInt64BE(offset);
-      if (bigLength > BigInt(1024 * 1024)) {
-        closeWs(client);
-        return;
-      }
-      length = Number(bigLength);
-      offset += 8;
+async function drainRealtimeMessages(client) {
+  if (client.processingMessages) return;
+  client.processingMessages = true;
+  try {
+    while (client.messageQueue.length && wsClients.has(client.id) && realtimeSessionActive(client)) {
+      const entry = client.messageQueue.shift();
+      try { await handleWsMessage(client, entry.message); }
+      catch { sendWs(client, { type: "error", error: "Live update failed" }); }
+      finally { client.queuedBytes -= entry.bytes; }
     }
-
-    let mask;
-    if (masked) {
-      if (client.buffer.length < offset + 4) return;
-      mask = client.buffer.subarray(offset, offset + 4);
-      offset += 4;
-    }
-
-    if (client.buffer.length < offset + length) return;
-
-    const payload = client.buffer.subarray(offset, offset + length);
-    client.buffer = client.buffer.subarray(offset + length);
-
-    if (opcode === 0x8) {
-      closeWs(client);
-      return;
-    }
-
-    if (opcode === 0x9) {
-      if (!sendFrame(client.socket, Buffer.alloc(0), 0xA, client)) closeWs(client);
-      continue;
-    }
-
-    if (opcode === 0xA) {
-      client.lastPongAt = Date.now();
-      client.missedHeartbeats = 0;
-      continue;
-    }
-
-    if (opcode !== 0x1) continue;
-
-    const data = Buffer.alloc(payload.length);
-    if (masked && mask) {
-      for (let index = 0; index < payload.length; index += 1) {
-        data[index] = payload[index] ^ mask[index % 4];
-      }
-    } else {
-      payload.copy(data);
-    }
-
-    try {
-      Promise.resolve(handleWsMessage(client, JSON.parse(data.toString("utf8")))).catch((error) => {
-        sendWs(client, { type: "error", error: error.message || "Live update failed" });
-      });
-    } catch (error) {
-      closeWs(client);
-      return;
-    }
+  } finally {
+    client.processingMessages = false;
+    if (!realtimeSessionActive(client)) closeWs(client);
   }
 }
 
@@ -5595,9 +5571,19 @@ function startWsHeartbeat() {
   clearInterval(wsHeartbeatTimer);
   wsHeartbeatTimer = setInterval(() => {
     const now = Date.now();
+    for (const [token, session] of sessions) {
+      if (session.expiresAt <= now) revokeSession(token);
+    }
+    for (const [key, entry] of securityRateLimits) {
+      if (entry.expiresAt <= now) securityRateLimits.delete(key);
+    }
+    for (const [key, entry] of loginRateLimits) {
+      if (now - entry.firstAttemptAt > 15 * 60 * 1000 && entry.blockedUntil <= now) loginRateLimits.delete(key);
+    }
+    pruneHttpRealtime();
     for (const client of Array.from(wsClients.values())) {
-      if (!client.socket || client.socket.destroyed) {
-        removeClient(client.id);
+      if (!client.socket || client.socket.destroyed || !realtimeSessionActive(client)) {
+        closeWs(client);
         continue;
       }
       if (now - Number(client.lastPongAt || client.connectedAt || now) > 90000) {
@@ -5671,7 +5657,7 @@ function enqueueHttpRealtimeEvent(targetId, payload) {
 function pruneHttpRealtime() {
   const now = Date.now();
   for (const [id, client] of httpRealtimeClients) {
-    if (now - Number(client.lastSeenAt || 0) > HTTP_REALTIME_TTL_MS) {
+    if (!realtimeSessionActive(client) || now - Number(client.lastSeenAt || 0) > HTTP_REALTIME_TTL_MS) {
       httpRealtimeClients.delete(id);
       if (client.voiceRoomId) {
         resolveRealtimeRoom(client.voiceRoomId, client, { allowAfterLeave: true })
@@ -5689,6 +5675,13 @@ function upsertHttpRealtimeClient(user, body = {}, req) {
   const requestedId = sanitizeRealtimeClientId(body.clientId);
   const id = requestedId || `http_${crypto.randomUUID()}`;
   const existing = httpRealtimeClients.get(id);
+  const sessionToken = getCookie(req, SESSION_COOKIE);
+  if (existing && (existing.username !== user.username || existing.sessionToken !== sessionToken)) {
+    throw Object.assign(new Error("Realtime client belongs to another session"), { statusCode: 403 });
+  }
+  if (!existing && httpRealtimeClients.size + wsClients.size >= WS_MAX_CLIENTS) {
+    throw Object.assign(new Error("Realtime capacity reached"), { statusCode: 503 });
+  }
   const nowIso = new Date().toISOString();
   const client = existing && existing.username === user.username ? existing : {
     id,
@@ -5711,6 +5704,7 @@ function upsertHttpRealtimeClient(user, body = {}, req) {
     httpFallback: true,
   };
   client.role = user.role;
+  client.sessionToken = sessionToken;
   client.ip = getClientIp(req);
   client.device = deviceSignature(req);
   client.lastSeenAt = Date.now();
@@ -5726,7 +5720,7 @@ function sanitizeRealtimeClientId(value) {
 function expireUserSessions(username) {
   const lower = String(username || "").toLowerCase();
   for (const [token, session] of sessions) {
-    if (String(session.username || "").toLowerCase() === lower) sessions.delete(token);
+    if (String(session.username || "").toLowerCase() === lower) revokeSession(token);
   }
   for (const client of Array.from(wsClients.values())) {
     if (String(client.username || "").toLowerCase() === lower) closeWs(client);
@@ -6038,62 +6032,46 @@ function sendWs(client, payload) {
 }
 
 function sendFrame(socket, payload, opcode, client) {
-  if (!socket || socket.destroyed || !socket.writable || socket.writableEnded) return false;
-  const length = payload.length;
-  let header;
-
-  if (length < 126) {
-    header = Buffer.alloc(2);
-    header[1] = length;
-  } else if (length < 65536) {
-    header = Buffer.alloc(4);
-    header[1] = 126;
-    header.writeUInt16BE(length, 2);
-  } else {
-    header = Buffer.alloc(10);
-    header[1] = 127;
-    header.writeBigUInt64BE(BigInt(length), 2);
-  }
-
-  header[0] = 0x80 | opcode;
+  const ws = client && client.webSocket;
+  if (!ws || ws.readyState !== 1 || !realtimeSessionActive(client)) return false;
+  // Stop slow consumers before queued broadcasts grow without a bound.
+  if (ws.bufferedAmount + payload.length > 4 * 1024 * 1024) return false;
+  const onError = (error) => { if (error) closeWs(client); };
   try {
-    return safeWriteSocket(socket, Buffer.concat([header, payload]), client);
-  } catch (error) {
-    if (client) closeWs(client);
-    return false;
-  }
+    if (opcode === 0x9) ws.ping(payload, false, onError);
+    else if (opcode === 0xA) ws.pong(payload, false, onError);
+    else ws.send(payload, { binary: false }, onError);
+    return true;
+  } catch { return false; }
 }
 
-function safeWriteSocket(socket, data, client) {
-  if (!socket || socket.destroyed || !socket.writable || socket.writableEnded) return false;
-  const onError = (error) => {
-    if (client) closeWs(client);
-  };
-  try {
-    socket.write(data, (error) => {
-      if (error) onError(error);
-    });
-    return !socket.destroyed;
-  } catch (error) {
-    onError(error);
-    return false;
+function realtimeSessionActive(client) {
+  const session = sessions.get(client.sessionToken);
+  return Boolean(session && session.username === client.username && session.expiresAt > Date.now());
+}
+
+function revokeSession(token) {
+  sessions.delete(token);
+  for (const client of [...wsClients.values()]) {
+    if (client.sessionToken === token) closeWs(client);
+  }
+  for (const [id, client] of httpRealtimeClients) {
+    if (client.sessionToken === token) {
+      httpRealtimeClients.delete(id);
+      broadcast({ type: "peer:left", peerId: id, username: client.username });
+    }
   }
 }
 
 function closeWs(client) {
-  if (client.socket && !client.socket.destroyed) {
-    try {
-      client.socket.end();
-    } catch (error) {
-      client.socket.destroy();
-    }
-  }
-  removeClient(client.id);
+  if (client.webSocket) client.webSocket.terminate();
+  else if (client.socket) client.socket.destroy();
+  void removeClient(client.id);
 }
 
 function clearSessionForRequest(req, res) {
   const token = getCookie(req, SESSION_COOKIE);
-  if (token) sessions.delete(token);
+  if (token) revokeSession(token);
   res.setHeader("Set-Cookie", sessionCookie("", req, 0));
 }
 
@@ -6162,7 +6140,7 @@ function getSessionUser(req) {
   const session = sessions.get(token);
   if (!session) return null;
   if (session.expiresAt && session.expiresAt < Date.now()) {
-    sessions.delete(token);
+    revokeSession(token);
     return null;
   }
   if (!session.persistent) session.expiresAt = Date.now() + SESSION_IDLE_MS;
@@ -6187,7 +6165,9 @@ function getCookie(req, name) {
   for (const cookie of cookies) {
     const index = cookie.indexOf("=");
     if (index === -1) continue;
-    if (cookie.slice(0, index) === name) return decodeURIComponent(cookie.slice(index + 1));
+    if (cookie.slice(0, index) === name) {
+      try { return decodeURIComponent(cookie.slice(index + 1)); } catch { return ""; }
+    }
   }
   return "";
 }
@@ -6212,7 +6192,8 @@ function isSameOriginRequest(req) {
   const source = String(req.headers.origin || req.headers.referer || "").trim();
   if (!source) return false;
   try {
-    return new URL(source).host.toLowerCase() === requestHost;
+    const parsed = new URL(source);
+    return !parsed.username && !parsed.password && parsed.origin === `${isHttpsRequest(req) ? "https" : "http"}://${requestHost}`;
   } catch (error) {
     return false;
   }
@@ -6240,6 +6221,24 @@ function loginRateKey(req, username) {
   return `${normalizeIpAddress(getClientIp(req)) || "unknown"}:${normalizeUsername(username) || "unknown"}`;
 }
 
+function consumeSecurityRate(key, limit, windowMs, now = Date.now()) {
+  const previous = securityRateLimits.get(key);
+  if (previous && previous.expiresAt > now) {
+    if (previous.count >= limit) return false;
+    previous.count++;
+    return true;
+  }
+  if (securityRateLimits.size >= 20000) {
+    for (const [entryKey, entry] of securityRateLimits) {
+      if (entry.expiresAt <= now) securityRateLimits.delete(entryKey);
+    }
+    // Fail closed at capacity rather than let arbitrary keys evict active limits.
+    if (!previous && securityRateLimits.size >= 20000) return false;
+  }
+  securityRateLimits.set(key, { count: 1, expiresAt: now + windowMs });
+  return true;
+}
+
 function checkLoginRate(req, username) {
   const entry = loginRateLimits.get(loginRateKey(req, username));
   const now = Date.now();
@@ -6254,7 +6253,7 @@ function registerLoginFailure(req, username) {
   const withinWindow = previous && now - previous.firstAttemptAt <= 15 * 60 * 1000;
   const failures = (withinWindow ? previous.failures : 0) + 1;
   const cooldownMs = failures >= 8 ? 15 * 60 * 1000 : failures >= 5 ? 60 * 1000 : 0;
-  loginRateLimits.set(key, { firstAttemptAt: withinWindow ? previous.firstAttemptAt : now, failures, blockedUntil: now + cooldownMs });
+  if (previous || loginRateLimits.size < 20000) loginRateLimits.set(key, { firstAttemptAt: withinWindow ? previous.firstAttemptAt : now, failures, blockedUntil: now + cooldownMs });
 }
 
 function clearLoginFailures(req, username) {
@@ -6270,7 +6269,7 @@ function sessionCookie(value, req, maxAgeSeconds = null) {
 
 function isHttpsRequest(req) {
   if (req.socket && req.socket.encrypted) return true;
-  const forwarded = firstForwardedValue(req.headers["x-forwarded-proto"]).toLowerCase();
+  const forwarded = TRUST_PROXY ? String(req.headers["x-forwarded-proto"] || "").split(",").pop().trim().toLowerCase() : "";
   return forwarded === "https";
 }
 
@@ -7529,7 +7528,7 @@ async function createPasswordResetRecord(target, req) {
     id: crypto.randomUUID(),
     username: target.username,
     email: target.email,
-    tokenHash: hashPassword(rawToken),
+    tokenHash: await hashPasswordAsync(rawToken),
     usedAt: "",
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
@@ -8273,10 +8272,8 @@ function splitEnvList(value) {
 }
 
 function normalizeIpAddress(value) {
-  return String(value || "")
-    .trim()
-    .replace(/^::ffff:/, "")
-    .replace(/^\[|\]$/g, "");
+  const raw = String(value || "").trim().replace(/^\[|\]$/g, "");
+  try { return ipaddr.process(raw).toString(); } catch { return raw; }
 }
 
 function parseIceServersJson(value) {
@@ -9379,9 +9376,10 @@ async function migrateExistingUploadsToCloud() {
 }
 
 function getClientIp(req) {
-  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-  const raw = forwarded || req.socket.remoteAddress || "";
-  return raw.replace(/^::ffff:/, "");
+  // Trust only the nearest configured proxy's appended address, never a client prefix.
+  const forwarded = TRUST_PROXY ? String(req.headers["x-forwarded-for"] || "").split(",").pop().trim() : "";
+  const raw = net.isIP(forwarded) ? forwarded : req.socket && req.socket.remoteAddress || "";
+  return normalizeIpAddress(raw);
 }
 
 function deviceSignature(req) {
@@ -10044,37 +10042,11 @@ function sanitizeExternalUrl(value) {
 }
 
 function isPrivateBrowserAddress(address) {
-  const normalized = normalizeIpAddress(address);
-  if (!normalized) return true;
-  if (net.isIPv4(normalized)) {
-    const parts = normalized.split(".").map((part) => Number(part));
-    const [a, b] = parts;
-    return (
-      a === 0 ||
-      a === 10 ||
-      a === 127 ||
-      a === 169 && b === 254 ||
-      a === 172 && b >= 16 && b <= 31 ||
-      a === 192 && b === 168 ||
-      a === 100 && b >= 64 && b <= 127 ||
-      a >= 224
-    );
-  }
-  if (net.isIPv6(normalized)) {
-    const lower = normalized.toLowerCase();
-    return (
-      lower === "::" ||
-      lower === "::1" ||
-      lower.startsWith("fc") ||
-      lower.startsWith("fd") ||
-      lower.startsWith("fe8") ||
-      lower.startsWith("fe9") ||
-      lower.startsWith("fea") ||
-      lower.startsWith("feb") ||
-      lower.startsWith("ff")
-    );
-  }
-  return true;
+  try {
+    const raw = String(address || "").replace(/^\[|\]$/g, "");
+    if (raw.includes("%")) return true;
+    return ipaddr.process(raw).range() !== "unicast";
+  } catch { return true; }
 }
 
 function isPrivateBrowserHostname(hostname) {
@@ -10085,26 +10057,39 @@ function isPrivateBrowserHostname(hostname) {
   return false;
 }
 
-async function assertSafeBrowserTarget(target) {
+async function assertSafeBrowserTarget(target, signal) {
   const parsed = new URL(target);
   if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Only http and https URLs can be opened.");
   if (parsed.username || parsed.password) throw new Error("URLs with embedded credentials are blocked.");
   if (isPrivateBrowserHostname(parsed.hostname)) throw new Error("Local and private network targets are blocked.");
 
-  const addresses = await dns.promises.lookup(parsed.hostname, { all: true, verbatim: true });
+  const addresses = await abortableOperation(dns.promises.lookup(parsed.hostname.replace(/^\[|\]$/g, ""), { all: true, verbatim: true }), signal);
   if (!addresses.length || addresses.some((entry) => isPrivateBrowserAddress(entry.address))) {
     throw new Error("Local and private network targets are blocked.");
   }
 }
 
-async function guardedBrowserFetch(target, redirectsLeft = 5) {
-  await assertSafeBrowserTarget(target);
+function abortableOperation(operation, signal) {
+  if (!signal) return operation;
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new Error("Browser request timed out."));
+    if (signal.aborted) return abort();
+    signal.addEventListener("abort", abort, { once: true });
+    Promise.resolve(operation).then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+
+async function guardedBrowserFetch(target, redirectsLeft = 5, signal = AbortSignal.timeout(10000), validateTarget = () => {}) {
+  signal.throwIfAborted();
+  validateTarget(target);
+  await assertSafeBrowserTarget(target, signal);
   const parsed = new URL(target);
   const transport = parsed.protocol === "https:" ? https : http;
   return new Promise((resolve, reject) => {
     const req = transport.request(parsed, {
       method: "GET",
       timeout: 8000,
+      signal,
       headers: {
         "User-Agent": "Mozilla/5.0 Connectifi Browser",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -10112,11 +10097,14 @@ async function guardedBrowserFetch(target, redirectsLeft = 5) {
       lookup(hostname, options, callback) {
         dns.lookup(hostname, options, (error, address, family) => {
           if (error) return callback(error);
-          if (isPrivateBrowserAddress(address)) return callback(new Error("Local and private network targets are blocked."));
+          const addresses = Array.isArray(address) ? address.map((entry) => entry.address) : [address];
+          if (!addresses.length || addresses.some(isPrivateBrowserAddress)) return callback(new Error("Local and private network targets are blocked."));
           callback(null, address, family);
         });
       },
-    }, async (upstream) => {
+    }, (upstream) => {
+      upstream.on("error", reject);
+      upstream.on("aborted", () => reject(new Error("Browser response was interrupted.")));
       const status = upstream.statusCode || 0;
       const location = upstream.headers.location;
       if ([301, 302, 303, 307, 308].includes(status) && location) {
@@ -10124,8 +10112,7 @@ async function guardedBrowserFetch(target, redirectsLeft = 5) {
         if (redirectsLeft <= 0) return reject(new Error("Too many redirects."));
         try {
           const next = new URL(location, parsed).toString();
-          await assertSafeBrowserTarget(next);
-          resolve(guardedBrowserFetch(next, redirectsLeft - 1));
+          resolve(guardedBrowserFetch(next, redirectsLeft - 1, signal, validateTarget));
         } catch (error) {
           reject(error);
         }
@@ -10167,21 +10154,34 @@ function escapeHtml(value) {
 }
 
 async function serveBrowserFrame(req, res, requestUrl, user) {
+  if (!consumeSecurityRate(`browser:${user.username}`, 30, 60000)) return text(res, 429, "Too many browser requests. Please try again later.");
+  if (activeBrowserFetches >= 8) return text(res, 503, "Browser service is busy. Please try again.");
+  activeBrowserFetches++;
+  try { return await serveBrowserFrameDocument(req, res, requestUrl, user); }
+  finally { activeBrowserFetches--; }
+}
+
+async function serveBrowserFrameDocument(req, res, requestUrl, user) {
   const target = sanitizeExternalUrl(requestUrl.searchParams.get("url"));
   if (!target) return text(res, 400, "Enter a valid http or https URL");
   const settings = await readJson(FILES.settings, {});
   const policyError = browserPolicyError(target, settings.browserPolicy || {}, user);
   if (policyError) return browserFrameMessage(res, 403, "Site blocked by Connectifi", policyError);
   try {
-    await assertSafeBrowserTarget(target);
     await addSystemLog("browser.open", user.username, browserOpenDetails(target), req);
-    const response = await guardedBrowserFetch(target);
+    const response = await guardedBrowserFetch(target, 5, AbortSignal.timeout(10000), (nextTarget) => {
+      const error = browserPolicyError(nextTarget, settings.browserPolicy || {}, user);
+      if (error) throw new Error(error);
+    });
     const contentType = String(response.headers["content-type"] || "text/html; charset=utf-8");
     const body = response.body;
     res.statusCode = response.ok ? 200 : response.status;
     res.setHeader("Content-Type", contentType.includes("text/html") ? "text/html; charset=utf-8" : contentType);
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    // Remote documents have an opaque origin and cannot run scripts, submit forms,
+    // or reach Connectifi APIs. Regex removal alone is not an HTML security boundary.
+    res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; script-src 'none'; connect-src 'none'; object-src 'none'; style-src 'unsafe-inline' http: https:; img-src data: http: https:; media-src http: https:; font-src http: https:; base-uri http: https:; form-action 'none'; frame-ancestors 'self'");
     if (!contentType.includes("text/html")) return res.end(body);
     const escapedTarget = escapeHtml(target);
     const baseTag = `<base href="${escapedTarget}">`;
@@ -10278,6 +10278,23 @@ function hashPassword(password) {
   return `${salt}:${hash}`;
 }
 
+async function passwordScrypt(password, salt) {
+  if (String(password).length > 1024) throw Object.assign(new Error("Password is too long"), { statusCode: 400 });
+  if (activePasswordOperations >= 8) throw Object.assign(new Error("Account service is busy"), { statusCode: 503 });
+  activePasswordOperations++;
+  try {
+    return await new Promise((resolve, reject) => {
+      crypto.scrypt(String(password), salt, 64, (error, result) => error ? reject(error) : resolve(result));
+    });
+  } finally { activePasswordOperations--; }
+}
+
+async function hashPasswordAsync(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = await passwordScrypt(password, salt);
+  return `${salt}:${hash.toString("hex")}`;
+}
+
 function defaultAccountPasswordHash(username) {
   const keyName = String(username || "").toUpperCase().replace(/[^A-Z0-9]/g, "_");
   const hash = firstEnvValue(`INNER_${keyName}_PASSWORD_HASH`, `${keyName}_PASSWORD_HASH`);
@@ -10306,23 +10323,27 @@ function verifyPassword(password, passwordRecord) {
   return expectedBuffer.length === actual.length && crypto.timingSafeEqual(expectedBuffer, actual);
 }
 
-function verifyPasswordAsync(password, passwordRecord) {
+async function verifyPasswordAsync(password, passwordRecord) {
   const [salt, expected] = String(passwordRecord || "").split(":");
   if (!salt || !expected) return Promise.resolve(false);
   const expectedBuffer = Buffer.from(expected, "hex");
-  return new Promise((resolve) => {
-    crypto.scrypt(String(password || ""), salt, 64, (error, actual) => {
-      if (error || expectedBuffer.length !== actual.length) return resolve(false);
-      resolve(crypto.timingSafeEqual(expectedBuffer, actual));
-    });
-  });
+  if (expectedBuffer.length !== 64) return false;
+  const actual = await passwordScrypt(String(password || ""), salt);
+  return crypto.timingSafeEqual(expectedBuffer, actual);
 }
 
 async function readJsonBody(req) {
   const body = await readBody(req, MAX_JSON_BYTES);
   if (!body.trim()) return {};
   try {
-    return JSON.parse(body);
+    const value = JSON.parse(body);
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("JSON object required");
+    for (const field of ["password", "nextPassword", "currentPassword", "recoveryCode", "token"]) {
+      if (value[field] !== undefined && (typeof value[field] !== "string" || value[field].length > 1024)) {
+        throw new Error("Invalid credential field");
+      }
+    }
+    return value;
   } catch (error) {
     const parseError = new Error("Invalid JSON body");
     parseError.statusCode = 400;
@@ -10334,18 +10355,38 @@ function readBody(req, maxBytes) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
-
-    req.on("data", (chunk) => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      req.removeListener("data", onData);
+      req.removeListener("end", onEnd);
+      req.removeListener("error", onError);
+      req.removeListener("aborted", onAborted);
+    };
+    const fail = (message, statusCode) => {
+      cleanup();
+      chunks.length = 0;
+      req.pause();
+      reject(Object.assign(new Error(message), { statusCode }));
+    };
+    const onData = (chunk) => {
       size += chunk.length;
-      if (size > maxBytes) {
-        reject(new Error("Request body too large"));
-        req.destroy();
-        return;
-      }
+      if (size > maxBytes) return fail("Request body too large", 413);
       chunks.push(chunk);
-    });
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
+    };
+    const onEnd = () => {
+      cleanup();
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    };
+    const onError = () => fail("Request body interrupted", 400);
+    const onAborted = () => fail("Request body interrupted", 400);
+    const timer = setTimeout(() => fail("Request body timed out", 408), 30000);
+    timer.unref();
+    if (Number(req.headers["content-length"] || 0) > maxBytes) return fail("Request body too large", 413);
+    if (req.aborted) return onAborted();
+    req.on("data", onData);
+    req.on("end", onEnd);
+    req.on("error", onError);
+    req.on("aborted", onAborted);
   });
 }
 
@@ -10372,7 +10413,7 @@ async function readJson(file, fallback) {
       return fallback;
     } catch (error) {
       persistence.error = error.message || "Cloud read failed";
-      console.log("MongoDB failure bypassed.");
+      throw Object.assign(new Error("Database temporarily unavailable"), { statusCode: 503 });
     }
   }
 
@@ -10397,7 +10438,7 @@ async function writeJson(file, value) {
       return;
     } catch (error) {
       persistence.error = error.message || "Cloud write failed";
-      console.log("MongoDB failure bypassed.");
+      throw Object.assign(new Error("Database temporarily unavailable"), { statusCode: 503 });
     }
   }
 
@@ -10432,7 +10473,7 @@ async function writeLocalJson(file, value) {
   let handle;
 
   try {
-    handle = await fsp.open(tempFile, "w");
+    handle = await fsp.open(tempFile, "wx", 0o600);
     await handle.writeFile(jsonText, "utf8");
     await handle.sync();
     await handle.close();
@@ -10815,6 +10856,8 @@ function sanitizeAiBaseUrl(value) {
 function fetchAi(url, apiKey, body) {
   return fetch(url, {
     method: "POST",
+    redirect: "error",
+    signal: AbortSignal.timeout(20000),
     headers: {
       "Authorization": `Bearer ${apiKey}`,
       "Content-Type": "application/json",

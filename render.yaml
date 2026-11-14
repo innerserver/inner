@@ -10,6 +10,10 @@ services:
         value: "0.0.0.0"
       - key: NODE_ENV
         value: "production"
+      - key: NODE_VERSION
+        value: "24"
+      - key: INNER_TRUST_PROXY
+        value: "true"
       - key: NODE_OPTIONS
         value: "--max-old-space-size=1024"
       - key: INNER_TARGET_CONCURRENT_USERS

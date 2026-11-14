@@ -1,6 +1,8 @@
 # Inner
 
-A no-dependency private workspace app with:
+Current release: v245. See [security changes and deployment notes](SECURITY-v245.md).
+
+A Node.js private workspace app with:
 
 - Login with username and password
 - Live messages in the main room and admin-created side rooms

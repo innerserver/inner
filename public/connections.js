@@ -39,11 +39,11 @@
     const exact = get("friendsSearchScope").value === "exact";
     const known = state.friendCandidatesLoaded ? state.friendCandidates : state.people;
     const candidates = (known || []).filter((person) => person.username !== state.user.username && !person.banned && !pending.has(person.username) && !friends.has(person.username))
-      .filter((person) => exact ? Boolean(query) && person.username.toLowerCase() === query : (isOwner() || Boolean(ownGrade) && gradeOf(person) === ownGrade) && (!query || [person.username, state.profiles[person.username]?.displayName, person.displayName].some((value) => String(value || "").toLowerCase().includes(query))))
+      .filter((person) => exact ? Boolean(query) && person.username.toLowerCase() === query : (isOwner() || window.ConnectifiGrades.sameGrade(ownGrade, gradeOf(person))) && (!query || [person.username, state.profiles[person.username]?.displayName, person.displayName].some((value) => String(value || "").toLowerCase().includes(query))))
       .sort((a, b) => String(a.displayName || a.username).localeCompare(String(b.displayName || b.username)));
     const result = get("friendCandidateList"); result.replaceChildren();
     result.setAttribute("aria-busy", String(Boolean(state.friendCandidatesLoading)));
-    get("friendResultsState").textContent = state.friendCandidatesLoading ? t("Searching…") : exact ? t("Exact username") : ownGrade ? ownGrade.toUpperCase() : "";
+    get("friendResultsState").textContent = state.friendCandidatesLoading ? t("Searching…") : exact ? t("Exact username") : window.ConnectifiGrades.gradeYear(ownGrade);
     if (!featureAvailable("friends")) noResults(result, lockMessage("friends"));
     else if (!candidates.length) noResults(result, state.friendCandidatesLoading ? "Searching…" : exact && !query ? "Enter an exact username to find someone." : "No new matches. Try a different name or exact username.");
     else candidates.forEach((person) => result.append(row(person, [button("Add friend", () => sendFriendRequestTo(person.username))])));

@@ -6454,7 +6454,7 @@ function friendCandidatePeople() {
       if (person.username === state.user.username) return false;
       if (isOwner()) return true;
       if (search || gradeFilter) return true;
-      return currentGrade && gradeOf(person) === currentGrade;
+      return window.ConnectifiGrades.sameGrade(currentGrade, gradeOf(person));
     })
     .sort((a, b) => String(a.displayName || a.username).localeCompare(String(b.displayName || b.username)));
 }
@@ -10395,7 +10395,7 @@ function featureLock(feature) {
   if (!lock) return null;
   const grade = normalizeClientGrade(state.user && state.user.grade || "");
   const hasGlobalExemption = Array.isArray(lock.exemptions) && lock.exemptions.some((exemption) =>
-    exemption && !exemption.roomId && exemption.grade === grade && Date.parse(exemption.until || "") > Date.now()
+    exemption && !exemption.roomId && window.ConnectifiGrades.gradeSelectionMatches(exemption.grade, grade) && Date.parse(exemption.until || "") > Date.now()
   );
   if (hasGlobalExemption) return null;
   const activeSchedule = normalizeFeatureSchedules(lock.schedules || []).find((schedule) => {

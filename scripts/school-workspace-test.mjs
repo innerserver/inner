@@ -206,6 +206,25 @@ test("only the sender can cancel an outgoing friend request", async () => {
   const cancelled = await call("alice", "/api/friends/cancel", { id });
   assert.equal(cancelled.status, 200); assert.equal(cancelled.data.friends.outgoing.length, 0);
 });
+test("grade discovery and friend requests include all A, B and C sections of that year", async () => {
+  const fullUsers = JSON.parse(await readFile(app.FILES.users, "utf8"));
+  fullUsers.push({ username: "charlie", role: "member", grade: "9C" }, { username: "outside", role: "member", grade: "10A" });
+  await writeFile(app.FILES.users, JSON.stringify(fullUsers));
+  const found = await call("alice", "/api/friends/candidates");
+  assert.equal(found.data.people.some((person) => person.username === "bob"), true);
+  assert.equal(found.data.people.some((person) => person.username === "charlie"), true);
+  assert.equal(found.data.people.some((person) => person.username === "outside"), false);
+  const grade = await call("alice", "/api/friends/candidates?q=grade:9");
+  assert.equal(grade.data.people.some((person) => person.username === "charlie"), true);
+  const section = await call("alice", "/api/friends/candidates?q=grade:9B");
+  assert.equal(section.data.people.some((person) => person.username === "bob"), true);
+  assert.equal(section.data.people.some((person) => person.username === "charlie"), false);
+  assert.equal((await call("alice", "/api/friends/request", { to: "outside" })).status, 403);
+  const sameYear = await call("alice", "/api/friends/request", { to: "charlie" });
+  assert.equal(sameYear.status, 201);
+  assert.equal((await call("alice", "/api/friends/cancel", { id: sameYear.data.friends.outgoing.find((request) => request.to === "charlie").id })).status, 200);
+  assert.equal((await call("alice", "/api/friends/request", { to: "outside", search: "outside" })).status, 201);
+});
 test("account custom colours and photo backgrounds survive saving and state refresh", async () => {
   const photo = `data:image/png;base64,${png.toString("base64")}`;
   const customTheme = { bg: "#e7f1ed", surface: "#f7fbf8", ink: "#183c30", accent: "#17694d" };

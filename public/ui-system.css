@@ -1,0 +1,140 @@
+/* v248: shared controls and surfaces. No sidebar geometry, workspace scrolling,
+   account palette, custom CSS or photo-background layer is reset here. */
+:root {
+  --ui-control-radius: 4px;
+  --ui-panel-radius: 6px;
+  --ui-control-height: 38px;
+  --ui-panel-space: 20px;
+}
+body[data-rounded="off"] { --ui-control-radius: 0px; --ui-panel-radius: 0px; }
+body[data-density="compact"] { --ui-control-height: 34px; --ui-panel-space: 14px; }
+#appView.hidden,#appView[hidden],#loginView.hidden,#loginView[hidden] { display: none !important; }
+
+:is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.legal-document,.account-detail-shell,.tutorial-shell) {
+  font-family: "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  line-height: 1.5;
+}
+:is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.legal-document,.account-detail-shell,.tutorial-shell) :is(.primary-button,.secondary-button,.ghost-button,.ghost-light-button,.danger-button,.connections-button,.collapse-toggle) {
+  min-height: var(--ui-control-height) !important;
+  padding: 8px 14px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--ui-control-radius) !important;
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  font-family: inherit !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+  line-height: 1.35 !important;
+  text-transform: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  transform: none !important;
+  transition: background-color 120ms ease, border-color 120ms ease !important;
+}
+:is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.legal-document,.account-detail-shell,.tutorial-shell) :is(.primary-button,.connections-button.primary) {
+  color: var(--bg) !important;
+  border-color: var(--accent) !important;
+  background: var(--accent) !important;
+}
+:is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.legal-document,.account-detail-shell,.tutorial-shell) .danger-button {
+  color: var(--danger, #9e3d35) !important;
+  border-color: color-mix(in srgb, var(--danger, #9e3d35) 50%, var(--line)) !important;
+  background: var(--surface) !important;
+}
+:is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.legal-document,.account-detail-shell,.tutorial-shell) :is(.secondary-button,.ghost-light-button,.ghost-button,.connections-button:not(.primary)):hover:not(:disabled) {
+  background: var(--surface-muted, var(--surface)) !important;
+  border-color: var(--accent) !important;
+}
+:is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.legal-document,.account-detail-shell,.tutorial-shell) :is(button,input,select,textarea):focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 3px !important;
+}
+:is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.legal-document,.account-detail-shell,.tutorial-shell) :is(button,input,select,textarea):disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+:is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.legal-document,.account-detail-shell,.tutorial-shell) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]),select,textarea) {
+  min-height: var(--ui-control-height) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--ui-control-radius) !important;
+  padding: 9px 12px !important;
+  color: var(--ink) !important;
+  background: var(--surface) !important;
+  font: 400 14px/1.5 "Segoe UI", ui-sans-serif, system-ui, sans-serif !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  letter-spacing: 0 !important;
+}
+:is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.legal-document,.account-detail-shell,.tutorial-shell) :is(input,textarea)::placeholder {
+  color: var(--muted) !important;
+  opacity: 1;
+  font-weight: 400;
+}
+:is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.legal-document,.account-detail-shell,.tutorial-shell) :is(input[type="checkbox"],input[type="radio"]) {
+  accent-color: var(--accent);
+}
+:is(#appView .workspace,#loginView,.school-dialog,.strike-modal) input[type="file"]::file-selector-button { border: 1px solid var(--line); border-radius: var(--ui-control-radius); background: var(--surface-muted, var(--surface)); color: var(--ink); padding: 6px 10px; margin-right: 10px; font: inherit; cursor: pointer; }
+:is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.legal-document,.account-detail-shell,.tutorial-shell) label {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+#appView .workspace :is(.status-panel,.panel-form,.file-card,.account-card,.school-card,.questionnaire-card,.service-link-card,.store-card,.profile-preview) {
+  border: 1px solid var(--line) !important;
+  border-radius: var(--ui-panel-radius) !important;
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+#appView .workspace :is(.status-panel,.panel-form) { padding: var(--ui-panel-space) !important; }
+#appView .workspace :is(.account-card,.file-card) { padding: 16px !important; }
+#appView .workspace :is(.account-card.active,.service-link-card.active) { background: var(--accent-soft) !important; border-color: var(--accent) !important; }
+#appView .workspace :is(.section-header h2,.page-heading h2) { font-size: clamp(24px,2.2vw,30px) !important; font-weight: 600 !important; letter-spacing: -.5px !important; line-height: 1.25 !important; }
+#appView .workspace :is(.status-panel h3,.panel-form h3,.school-workspace h3,.file-card h3,.account-card h3) { font-size: 15px !important; font-weight: 600 !important; letter-spacing: -.15px !important; }
+#appView .workspace :is(.panel-note,.connections-help,.file-meta,.message-meta,.muted-label,.peer-details small) { color: var(--muted) !important; font-weight: 400 !important; }
+#appView .workspace :is(.section-header,.panel-title-row) { box-shadow: none !important; text-shadow: none !important; }
+#appView .workspace .section-header { border: 0 !important; border-radius: 0 !important; background: transparent !important; padding: 0 !important; }
+#appView .workspace .section-header::before,#appView .workspace .section-header::after { content: none !important; }
+#appView .workspace .topbar { box-shadow: none !important; border-radius: 0 !important; background: var(--surface) !important; }
+#appView .workspace .topbar-metrics > span { border: 0 !important; border-radius: 0 !important; background: transparent !important; }
+#appView .workspace :is(strong,b) { font-weight: 600 !important; }
+#appView .workspace .message-actions button { width: auto !important; flex: 0 0 auto; }
+#appView .workspace .message-actions { display: flex !important; flex-wrap: wrap; align-items: center; gap: 8px; }
+#appView #roomTasksButton { align-self: flex-end; height: var(--ui-control-height); }
+#appView #dashboardView :is(.hidden,[hidden]),#loginView :is(.hidden,[hidden]) { display: none !important; }
+#appView .workspace :is(.dashboard-alert-list,.announcement-list,#dashboardGrid,#schoolActions):empty { display: none !important; }
+#appView .workspace .message {
+  border: 1px solid var(--line) !important;
+  border-radius: var(--ui-panel-radius) !important;
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  box-shadow: none !important;
+}
+#appView .workspace .message.mine { background: var(--accent-soft) !important; }
+#appView .workspace .message-text { font-size: 14px !important; font-weight: 400 !important; line-height: 1.6 !important; }
+#appView .workspace .message-meta { font-size: 12px !important; }
+#appView .workspace :is(.call-tile,.peer) { border-color: var(--line) !important; border-radius: var(--ui-panel-radius) !important; box-shadow: none !important; }
+:is(.school-dialog,.strike-modal,.questionnaire-dialog) { border: 1px solid var(--line) !important; border-radius: var(--ui-panel-radius) !important; background: var(--surface) !important; color: var(--ink) !important; box-shadow: 0 12px 36px rgb(0 0 0 / .14) !important; }
+#loginView .login-panel { border-radius: var(--ui-panel-radius) !important; border: 1px solid var(--line) !important; box-shadow: none !important; }
+#loginView .login-panel h1 { font-weight: 600 !important; }
+/* Preserve the approved search composites and the announcement two-column shell. */
+#appView .workspace .connections-search-field input { border: 0 !important; box-shadow: none !important; background: transparent !important; padding: 9px 0 !important; }
+#appView .workspace #announcementForm.announcement-layout:not(.hidden) { border: 0 !important; background: transparent !important; padding: 0 !important; }
+#appView .workspace .announcement-selected-person button { min-height: 0 !important; padding: 0 !important; }
+#appView .workspace .announcement-compose :is(.announcement-recipient input,.announcement-ack input) { min-height: 0 !important; }
+@media(max-width:600px) {
+  :root { --ui-panel-space: 15px; }
+  :is(#appView .workspace,#loginView,.school-dialog,.strike-modal) :is(.primary-button,.secondary-button,.ghost-button,.ghost-light-button,.danger-button,.connections-button) { min-height: 40px !important; padding: 8px 11px !important; }
+  #appView .workspace :is(.account-card,.file-card) { padding: 14px !important; }
+}
+@media(prefers-reduced-motion:reduce) {
+  :is(#appView .workspace,#loginView,.school-dialog,.strike-modal) :is(button,input,select,textarea) { transition: none !important; }
+}
+.guide-page { font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif; }
+.guide-page :is(.hero,.card) { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--ui-panel-radius) !important; box-shadow: none !important; }
+.guide-page :is(h1,h2,h3) { font-weight: 600; letter-spacing: -.3px; }
+.guide-page :is(.button,.pill) { border-radius: var(--ui-control-radius) !important; box-shadow: none !important; }
+.guide-page .button { display: inline-flex; align-items: center; min-height: 38px; padding: 8px 14px; background: var(--accent) !important; color: var(--surface) !important; font-size: 13px; font-weight: 600; text-decoration: none; }

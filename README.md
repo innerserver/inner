@@ -1,6 +1,6 @@
 # Inner
 
-Local release: v247, awaiting isolated document scanner setup before pushing. See [v247 Friends and announcements](docs/V247.md), [v246 school features and scanner setup](docs/V246.md), and [v245 security changes](SECURITY-v245.md).
+Current release: v248. See [shared UI and grade fixes](docs/V248.md), [v247 Friends and announcements](docs/V247.md), [v246 school features and scanner setup](docs/V246.md), and [v245 security changes](SECURITY-v245.md).
 
 A Node.js private workspace app with:
 

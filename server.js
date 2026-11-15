@@ -18,6 +18,7 @@ const createResumable = require("./lib/resumable-uploads");
 const { inspectUpload } = require("./lib/upload-scanner");
 const createUploadAlerts = require("./lib/upload-alerts");
 const { announcementAudience } = require("./lib/announcements");
+const { sameGrade, gradeSelectionMatches } = require("./public/grade-utils");
 const { buildFormQuestions, formQuestionVisible } = require("./lib/forms");
 
 const websocketServer = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024, perMessageDeflate: false });
@@ -6658,7 +6659,7 @@ function friendRequestPair(entry, first, second) {
 function friendGradeAllowed(user, recipient, query, userProfile = {}, recipientProfile = {}) {
   const userGrade = normalizeGrade(user.grade || userProfile.grade || "");
   const recipientGrade = normalizeGrade(recipient.grade || recipientProfile.grade || "");
-  if (userGrade && recipientGrade && userGrade === recipientGrade) return true;
+  if (sameGrade(userGrade, recipientGrade)) return true;
   return exactFriendUsernameMatch(recipient, query);
 }
 
@@ -6668,10 +6669,10 @@ function friendCandidateAllowed(user, candidate, query, profile = {}, userProfil
   const gradeSearch = String(query || "").trim().toLowerCase().match(/^grade:([\w-]+)$/);
   if (gradeSearch) {
     const requestedGrade = normalizeGrade(gradeSearch[1]);
-    if (!requestedGrade || candidateGrade !== requestedGrade) return false;
-    return canOwn(user) || (userGrade && userGrade === candidateGrade);
+    if (!requestedGrade || !gradeSelectionMatches(requestedGrade, candidateGrade)) return false;
+    return canOwn(user) || sameGrade(userGrade, candidateGrade);
   }
-  if (userGrade && candidateGrade && userGrade === candidateGrade) {
+  if (sameGrade(userGrade, candidateGrade)) {
     if (!query) return true;
     const haystack = [
       candidate.username,
@@ -6698,7 +6699,7 @@ function canSeeOnlineUser(viewer, target, users = [], friends = { friendships: [
   const targetUser = users.find((entry) => String(entry.username || "").toLowerCase() === String(target.username || "").toLowerCase()) || target;
   const viewerGrade = normalizeGrade(viewer.grade || "");
   const targetGrade = normalizeGrade(targetUser.grade || "");
-  if (viewerGrade && targetGrade && viewerGrade === targetGrade) return true;
+  if (sameGrade(viewerGrade, targetGrade)) return true;
   return areFriends(friends, viewer.username, target.username);
 }
 
@@ -7019,7 +7020,8 @@ function persistentLoginReason(user, settings, rooms = []) {
   if (rules.defaultEnabled) return "default enabled";
   const grade = normalizeGrade(user.grade || "");
   const role = normalizeRole(user.role || "member");
-  if (grade && rules.grades.includes(grade)) return `grade ${grade}`;
+  const matchedGrade = grade && rules.grades.find((selection) => gradeSelectionMatches(selection, grade));
+  if (matchedGrade) return `grade ${matchedGrade}`;
   if (role && rules.roles.includes(role)) return `role ${role}`;
   const roomRules = new Set(rules.rooms);
   const inMatchedRoom = (rooms || []).some((room) => {
@@ -8601,7 +8603,7 @@ function featureBlocked(settings, feature, user, context = {}) {
   const featureLockConfig = (settings.featureLocks || {})[feature];
   const userGrade = normalizeGrade(user && user.grade || "");
   const exempted = sanitizeFeatureLockExemptions(featureLockConfig && featureLockConfig.exemptions || []).some((exemption) =>
-    exemption.grade === userGrade && (!exemption.roomId || String(context.roomId || "") === exemption.roomId)
+    gradeSelectionMatches(exemption.grade, userGrade) && (!exemption.roomId || String(context.roomId || "") === exemption.roomId)
   );
   if (exempted) return "";
   const lock = activeFeatureLockCandidates(featureLockConfig, new Date()).find((candidate) => {

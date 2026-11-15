@@ -8,6 +8,7 @@
   const modalStack = [];
   let modalSequence = 0;
   const kinds = { questionnaire: "Questionnaire", signup: "Signup form", mun: "MUN signup", feedback: "Feedback form" };
+  const senderLabel = (form) => `${form.createdBy || "Unknown sender"}${form.createdByGrade ? ` (${form.createdByGrade})` : ""}`;
   const templates = {
     signup: { title: "Event signup", questions: [
       { label: "Full name", type: "text" }, { label: "Email address", type: "email" },
@@ -151,7 +152,7 @@
     list.replaceChildren();
     entries.forEach((form) => {
         const card = el("article", undefined, "account-card questionnaire-card");
-        card.append(el("strong", form.title), el("span", `${kinds[form.kind] || kinds.questionnaire} | ${form.targetName} | From ${form.createdBy} | ${form.closed ? "Closed" : form.submitted ? "Submitted" : "Open"}`));
+        card.append(el("strong", form.title), el("span", `${kinds[form.kind] || kinds.questionnaire} | ${form.targetName} | From ${senderLabel(form)} | ${form.closed ? "Closed" : form.submitted ? "Submitted" : "Open"}`));
         if (form.description) card.append(el("p", form.description));
         const actions = el("div", undefined, "account-actions");
         if (form.canRespond && !form.submitted) actions.append(button(["signup", "mun"].includes(form.kind) ? "Sign up" : "Complete form", () => answerForm(form), true));
@@ -293,6 +294,7 @@
   function answerForm(questionnaire, readonly = false) {
     const { dialog, close } = modal(questionnaire.title);
     const form = el("form", undefined, "questionnaire-editor");
+    form.append(el("p", `Sent by ${senderLabel(questionnaire)}`, "panel-note"));
     if (questionnaire.description) form.append(el("p", questionnaire.description));
     const controls = new Map();
     const savedAnswers = questionnaire.ownDraft || questionnaire.ownResponse?.answers || {};
@@ -403,10 +405,11 @@
   }
   function results(form) {
     const { dialog } = modal(`Results: ${form.title}`);
+    dialog.append(el("p", `Sent by ${senderLabel(form)}`, "panel-note"));
     const toolbar = el("div", undefined, "questionnaire-results-toolbar");
     toolbar.append(el("strong", `${form.responses.length} responses`));
     toolbar.append(button("Download CSV", () => {
-      const rows = [["Username", "Grade", "Submitted at", ...form.questions.map((question) => question.label)], ...form.responses.map((response) => [response.username, response.grade, response.submittedAt, ...form.questions.map((question) => { const answer = response.answers[question.id]; return Array.isArray(answer) ? answer.join("; ") : answer || ""; })])];
+      const rows = [["Username", "Grade", "Submitted at", ...form.questions.map((question) => question.label), "Form sender", "Sender class"], ...form.responses.map((response) => [response.username, response.grade, response.submittedAt, ...form.questions.map((question) => { const answer = response.answers[question.id]; return Array.isArray(answer) ? answer.join("; ") : answer || ""; }), form.createdBy || "", form.createdByGrade || ""])];
       const csv = rows.map((row) => row.map((value) => { let text = String(value); if (/^[\s]*[=+@-]/.test(text)) text = `'${text}`; return `"${text.replace(/"/g, '""')}"`; }).join(",")).join("\r\n");
       const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
       const link = el("a"); link.href = url; link.download = "questionnaire-results.csv"; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);

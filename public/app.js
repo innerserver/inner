@@ -40,7 +40,6 @@ const state = {
   files: [],
   stickers: [],
   stickerSearch: { message: "", dm: "" },
-  userPins: { messages: [], dms: [] },
   selectedGameUrl: "",
   innerDocs: [],
   selectedInnerDocId: "",
@@ -1458,7 +1457,6 @@ async function loadState() {
   state.dmGroups = data.dmGroups || [];
   state.files = data.files || [];
   state.stickers = data.stickers || [];
-  state.userPins = data.userPins || { messages: [], dms: [] };
   state.innerDocs = data.innerDocs || [];
   if (!state.selectedInnerDocId && state.innerDocs.length) state.selectedInnerDocId = state.innerDocs[0].id;
   state.accountRequests = data.accountRequests || [];
@@ -9624,26 +9622,6 @@ async function reactMessage(id, emoji) {
   }
 }
 
-function isPrivatePinned(kind, id) {
-  const list = state.userPins && Array.isArray(state.userPins[kind]) ? state.userPins[kind] : [];
-  return list.includes(id);
-}
-
-async function setPersonalPin(kind, id, pinned) {
-  try {
-    const routeKind = kind === "dms" ? "dms" : "messages";
-    const data = await api(`/api/user-pins/${routeKind}/${encodeURIComponent(id)}`, {
-      method: "POST",
-      json: { pinned },
-    });
-    state.userPins = data.userPins || state.userPins;
-    renderMessages();
-    renderDms();
-    renderSecretMessages();
-  } catch (error) {
-    notify(error.message);
-  }
-}
 
 async function setMessagePin(id, pinned) {
   try {

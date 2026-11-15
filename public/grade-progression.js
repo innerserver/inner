@@ -22,6 +22,8 @@
       const section=document.createElement('section');section.className='grade-roster-section';section.append(text('h4',year===12?'Grade 12 graduation':`Grade ${year} to Grade ${year+1}`));
       if(year===12){section.append(text('p',plan.deleteAfter?`Export deadline and account deletion: ${new Date(plan.deleteAfter).toLocaleString()}`:'These accounts will have one calendar month from approval to export chats.'));const list=document.createElement('ul');group.forEach(move=>list.append(text('li',`${move.username} (${move.from})`)));section.append(list);}
       else{
+        const totals=(plan.destinationCounts||[]).find(entry=>entry.grade===String(year+1));
+        if(totals){section.append(text('p',`Total students after this update: ${year+1}A: ${totals.after.A}, ${year+1}B: ${totals.after.B}, ${year+1}C: ${totals.after.C}. Students already staying in these classes keep their placement.`));if(Math.max(...Object.values(totals.after))-Math.min(...Object.values(totals.after))>3)section.append(text('p','The existing class imbalance still exceeds 3 students. New arrivals have been placed in the smallest classes. Review the totals before approval.'));}
         const columns=document.createElement('div');columns.className='grade-roster-columns';
         for(const letter of 'ABC'){const members=group.filter(move=>move.to===`${year+1}${letter}`),column=document.createElement('div');column.append(text('h5',`${year+1}${letter} (${members.length} students)`));const list=document.createElement('ul');members.forEach(move=>list.append(text('li',`${move.username} (${move.from})`)));if(!members.length)list.append(text('li','No students'));column.append(list);columns.append(column);}section.append(columns);
       }root.append(section);

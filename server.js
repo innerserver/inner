@@ -1147,7 +1147,7 @@ async function handlePasskeys(req, res, pathname) {
 let gradeProgression;
 function getGradeProgression() {
   gradeProgression ||= require("./lib/grade-progression")({
-    now: () => Date.now(), users: () => readJson(FILES.users, []), writeUsers: (users) => writeJson(FILES.users, users), exclusiveUsers: withAcademicUserWriteLock,
+    now: () => Date.now(), users: () => readJson(FILES.users, []), exclusiveUsers: withAcademicUserWriteLock,
     journal: () => readJson(FILES.gradeProgression, { plans: [], deleted: [] }), writeJournal: (value) => writeJson(FILES.gradeProgression, value),
     admin: canManage, body: readJsonBody, json, backup: createBackup, log: addSystemLog,
     sync: syncPromotedStudents,
@@ -2225,90 +2225,10 @@ async function routeApi(req, res, requestUrl) {
 
   if (req.method === "POST" && pathname === "/api/uploads/direct-cloudinary/sign") {
     return json(res, 410, { error: "Use the app upload endpoint for file type and size validation." });
-    const settings = await readJson(FILES.settings, {});
-    if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
-    const featureError = await featureGateError(settings, "files", user);
-    if (featureError) return json(res, 423, { error: featureError });
-    if (!cloudinaryUploadEnabled()) return json(res, 503, { error: "Direct Cloudinary uploads are not configured" });
-    const body = await readJsonBody(req);
-    const originalName = sanitizeFileName(body.originalName || "upload.bin");
-    const extension = path.extname(originalName).toLowerCase();
-    const size = Number(body.size || 0);
-    const scaledUploadBytes = Math.round(MAX_UPLOAD_BYTES * serviceScaleMultiplier(settings, "uploads"));
-    if (!isAllowedUploadExtension(extension)) return json(res, 400, { error: "Unsupported or unsafe file type" });
-    if (size > scaledUploadBytes) return json(res, 413, { error: `File is larger than ${formatServerBytes(scaledUploadBytes)}` });
-
-    const storedName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${extension}`;
-    const draft = createUploadRecord({
-      req,
-      user,
-      originalName,
-      storedName,
-      category: normalizeCategory(body.category || "document"),
-      extension,
-      providedType: String(body.mimeType || "application/octet-stream").slice(0, 120),
-      privateUpload: Boolean(body.private),
-      size,
-      url: "",
-      persistence: "cloudinary-direct",
-    });
-    const fields = signedCloudinaryParams(storedName, draft);
-    return json(res, 200, {
-      uploadUrl: `https://api.cloudinary.com/v1_1/${encodeURIComponent(CLOUDINARY_CLOUD_NAME)}/auto/upload`,
-      fields,
-      draft: safeDirectUploadDraft(draft),
-      maxBytes: scaledUploadBytes,
-    });
   }
 
   if (req.method === "POST" && pathname === "/api/uploads/direct-cloudinary/complete") {
     return json(res, 410, { error: "Use the app upload endpoint for file type and size validation." });
-    const settings = await readJson(FILES.settings, {});
-    if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
-    const featureError = await featureGateError(settings, "files", user);
-    if (featureError) return json(res, 423, { error: featureError });
-    if (!cloudinaryUploadEnabled()) return json(res, 503, { error: "Direct Cloudinary uploads are not configured" });
-    const body = await readJsonBody(req);
-    const draft = body.draft || {};
-    const cloudinary = body.cloudinary || {};
-    if (!draft.id || !draft.storedName || !cloudinary.public_id) return json(res, 400, { error: "Cloudinary upload result is incomplete" });
-    if (String(draft.user || "") !== user.username) return json(res, 403, { error: "Upload owner mismatch" });
-    const originalName = sanitizeFileName(draft.originalName || "upload.bin");
-    const extension = path.extname(originalName).toLowerCase();
-    if (!isAllowedUploadExtension(extension)) return json(res, 400, { error: "Unsupported or unsafe file type" });
-    const cloudinaryError = validateCloudinaryUploadResult(cloudinary, draft);
-    if (cloudinaryError) return json(res, 400, { error: cloudinaryError });
-    const scaledUploadBytes = Math.round(MAX_UPLOAD_BYTES * serviceScaleMultiplier(settings, "uploads"));
-    const uploadedBytes = Number(cloudinary.bytes || draft.size || 0);
-    if (!Number.isFinite(uploadedBytes) || uploadedBytes <= 0) return json(res, 400, { error: "Uploaded file size is invalid" });
-    if (uploadedBytes > scaledUploadBytes) return json(res, 413, { error: `File is larger than ${formatServerBytes(scaledUploadBytes)}` });
-
-    const fileRecord = {
-      ...draft,
-      originalName,
-      storedName: sanitizeFileName(draft.storedName || `${draft.id}${extension}`),
-      category: normalizeCategory(draft.category || "document"),
-      kind: classifyFile(extension, draft.mimeType),
-      mimeType: uploadContentType(extension, classifyFile(extension, draft.mimeType)),
-      size: uploadedBytes,
-      user: user.username,
-      private: Boolean(draft.private),
-      createdAt: draft.createdAt || new Date().toISOString(),
-      url: `/api/files/${draft.id}/download`,
-      persistence: "cloudinary-direct",
-      cloudStorage: "cloudinary",
-      cloudinaryPublicId: String(cloudinary.public_id || ""),
-      cloudinaryResourceType: String(cloudinary.resource_type || "auto"),
-      cloudinarySecureUrl: String(cloudinary.secure_url || ""),
-      cloudinaryVersion: String(cloudinary.version || ""),
-    };
-    if (!fileRecord.cloudinarySecureUrl) return json(res, 400, { error: "Cloudinary did not return a secure file URL" });
-    const files = await readJson(FILES.uploads, []);
-    files.unshift(fileRecord);
-    await writeJson(FILES.uploads, files);
-    await addSystemLog("file.uploaded", user.username, { id: fileRecord.id, name: originalName, kind: fileRecord.kind, size: fileRecord.size, private: fileRecord.private, provider: "cloudinary-direct-browser" }, req);
-    broadcastFileNew(fileRecord);
-    return json(res, 201, { file: safeFileRecord(fileRecord, user) });
   }
 
   if (req.method === "GET" && pathname === "/api/announcements/recipients") {
@@ -4447,52 +4367,10 @@ async function saveUpload(req, res, user) {
 
   const storedName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${extension}`;
   const preferB2 = shouldUseB2Uploads();
-  const mustAvoidLocalDisk = false; // Validate bytes in the app before storing with the selected provider.
   if (cloudStorageRequired() && !cloudinaryUploadEnabled() && !b2Configured() && !persistence.ready) {
     await addSystemLog("file.upload.fallback", user.username, { name: originalName, reason: "cloud storage missing; using local fallback" }, req);
   }
 
-  if (mustAvoidLocalDisk) {
-    const fileRecord = createUploadRecord({
-      req,
-      user,
-      originalName,
-      storedName,
-      category,
-      extension,
-      providedType,
-      privateUpload,
-      size: contentLength || 0,
-      url: "",
-      persistence: "cloudinary",
-    });
-    try {
-      const cloudUpload = await uploadRequestToCloudinary(req, storedName, fileRecord, extension, providedType, scaledUploadBytes);
-      const cloudFile = cloudUpload.data;
-      fileRecord.size = cloudUpload.bytes;
-      fileRecord.cloudStorage = "cloudinary";
-      fileRecord.cloudinaryPublicId = cloudFile.public_id || cloudFile.publicId || "";
-      fileRecord.cloudinaryResourceType = cloudFile.resource_type || "auto";
-      fileRecord.cloudinarySecureUrl = cloudFile.secure_url || "";
-      fileRecord.cloudinaryVersion = cloudFile.version || "";
-      fileRecord.url = `/api/files/${fileRecord.id}/download`;
-    } catch (error) {
-      const status = error.statusCode || (String(error.message || "").includes("larger than") ? 413 : 503);
-      if (status === 400 || status === 413) {
-        await addSystemLog("file.upload.blocked", user.username, { name: originalName, reason: error.message || "Upload blocked" }, req);
-        return json(res, status, { error: error.message || "Upload blocked" });
-      }
-      await addSystemLog("file.upload.failed", user.username, { name: originalName, provider: "cloudinary", reason: error.message || "Cloudinary upload failed" }, req);
-      return json(res, 503, { error: "Upload could not be saved to Cloudinary. Check CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET." });
-    }
-
-    const files = await readJson(FILES.uploads, []);
-    files.unshift(fileRecord);
-    await writeJson(FILES.uploads, files);
-    await addSystemLog("file.uploaded", user.username, { id: fileRecord.id, name: originalName, kind: fileRecord.kind, size: fileRecord.size, private: privateUpload, provider: "cloudinary-stream" }, req);
-    broadcastFileNew(fileRecord);
-    return json(res, 201, { file: safeFileRecord(fileRecord, user) });
-  }
 
   await fsp.mkdir(UPLOAD_DIR, { recursive: true });
   await fsp.mkdir(QUARANTINE_DIR, { recursive: true, mode: 0o700 });
@@ -6981,7 +6859,7 @@ async function handleQuestionnaires(req, res, sessionUser, pathname) {
       if (body.closesAt && !Number.isFinite(Date.parse(body.closesAt))) return json(res, 400, { error: "Invalid closing date" });
       const closesAt = body.closesAt ? new Date(body.closesAt).toISOString() : "";
       if (closesAt && Date.parse(closesAt) <= Date.now()) return json(res, 400, { error: "Closing date must be in the future" });
-      forms.unshift({ id: crypto.randomUUID(), title, kind, description: String(body.description || "").trim().slice(0, 2000), scope, target, targetName: scope === "room" ? targetRoom.name : `Grade ${target}`, questions, responses: [], createdBy: user.username, createdAt: new Date().toISOString(), closesAt, allowEdit: body.allowEdit === true, closed: false });
+      forms.unshift({ id: crypto.randomUUID(), title, kind, description: String(body.description || "").trim().slice(0, 2000), scope, target, targetName: scope === "room" ? targetRoom.name : `Grade ${target}`, questions, responses: [], createdBy: user.username, createdByGrade: normalizeGrade(user.grade), createdAt: new Date().toISOString(), closesAt, allowEdit: body.allowEdit === true, closed: false });
     } else {
       const match = pathname.match(/^\/api\/questionnaires\/([^/]+)\/(responses|drafts|close)$/);
       const form = forms.find((entry) => entry.id === match[1]);

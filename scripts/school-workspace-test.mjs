@@ -321,3 +321,26 @@ test("startup provisions Grades 6–12 for all sections, without exposing old se
   const moved = await vm.runInContext("syncClassRoom({username:'alice',role:'member',grade:'8A'})", context);
   assert.equal(moved.roomId, grade8.id);
 });
+
+test("form senders and respondents get server-recorded account/class snapshots", async () => {
+  const users = JSON.parse(await readFile(app.FILES.users, "utf8"));
+  users.find(user => user.username === "teacher").grade = "8C";
+  await writeFile(app.FILES.users, JSON.stringify(users));
+  const created = await call("teacher", "/api/questionnaires", { title: "Class identity", scope: "grade", target: "8", createdBy: "fake", createdByGrade: "12A", questions: [{ label: "Answer", type: "text", required: true }] });
+  assert.equal(created.status, 200);
+  let form = (await call("teacher", "/api/questionnaires")).data.questionnaires.find(form => form.title === "Class identity");
+  assert.equal(form.createdBy, "teacher"); assert.equal(form.createdByGrade, "8C");
+  const response = await call("bob", `/api/questionnaires/${form.id}/responses`, { username: "fake", grade: "12A", answers: { [form.questions[0].id]: "Hello" } });
+  assert.equal(response.status, 200);
+  users.find(user => user.username === "teacher").grade = "9A"; await writeFile(app.FILES.users, JSON.stringify(users));
+  form = (await call("teacher", "/api/questionnaires")).data.questionnaires.find(entry => entry.id === form.id);
+  assert.equal(form.createdByGrade, "8C");
+  assert.equal(form.responses[0].username, "bob"); assert.equal(form.responses[0].grade, "8B");
+});
+
+test("disabled direct upload routes still return their original 410 response", async () => {
+  for (const route of ["sign", "complete"]) {
+    const result = await call("alice", `/api/uploads/direct-cloudinary/${route}`, {});
+    assert.equal(result.status, 410); assert.equal(result.data.error, "Use the app upload endpoint for file type and size validation.");
+  }
+});

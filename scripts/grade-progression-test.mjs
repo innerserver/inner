@@ -33,7 +33,7 @@ test('normal admin previews balanced A/B/C rosters without modifying accounts',a
  assert.equal((await call('student0','/api/admin/grade-progression/preview',{cycle:'2026-2027'})).status,403);
  const result=await preview();assert.equal(result.status,201);const moves=result.data.plan.moves;
  assert.equal(moves.length,11);assert.equal(moves.some(move=>move.username==='admin2'||move.username==='teacher'),false);
- const eight=moves.filter(move=>move.from.startsWith('8'));const sizes=Array.from('ABC',letter=>eight.filter(move=>move.to===`9${letter}`).length);assert.equal(Math.max(...sizes)-Math.min(...sizes),1);
+ const eight=moves.filter(move=>move.from.startsWith('8'));const sizes=Array.from('ABC',letter=>eight.filter(move=>move.to===`9${letter}`).length);assert.ok(Math.max(...sizes)-Math.min(...sizes)<=3);
  assert.equal(JSON.parse(await readFile(app.FILES.users)).find(user=>user.username==='student0').grade,'8A');
  assert.equal((await call('admin2','/api/admin/grade-progression/approve',{id:result.data.plan.id},{'X-CSRF-Token':'bad'})).status,403);
 });
@@ -84,4 +84,24 @@ test('an interrupted approval recovers on the next sweep without promoting twice
  assert.equal(JSON.parse(await readFile(app.FILES.gradeProgression)).plans[0].status,'applied');
  assert.equal(JSON.parse(await readFile(app.FILES.users)).find(user=>user.username==='student0').grade.startsWith('9'),true);
  assert.equal((await approve(plan.id)).data.alreadyApplied,true);
+});
+test('late students can join a grade and promote into the smallest existing destination classes',async()=>{
+ const first=(await preview('8')).data.plan;assert.equal((await approve(first.id)).status,200);
+ const saved=JSON.parse(await readFile(app.FILES.users)),placements=new Map(saved.map(user=>[user.username,user.grade]));
+ const newcomers=[{username:'lateone',role:'member',grade:'8A',passwordHash:'new-one'},{username:'latetwo',role:'member',grade:'8C',passwordHash:'new-two'}];
+ await app.writeJson(app.FILES.users,saved.concat(newcomers));
+ context.lateStudent=newcomers[0];await vm.runInContext('syncClassRoom(lateStudent)',context);
+ assert.ok(JSON.parse(await readFile(app.FILES.rooms)).find(room=>room.name==='Grade 8').allowedUsers.includes('lateone'));
+ const next=(await preview('8')).data.plan;
+ assert.deepEqual(next.moves.map(move=>move.username).sort(),['lateone','latetwo']);
+ const counts=Object.values(next.destinationCounts[0].after);assert.equal(counts.reduce((sum,count)=>sum+count,0),11);assert.ok(Math.max(...counts)-Math.min(...counts)<=3);
+ assert.equal((await approve(next.id)).status,200);
+ const final=JSON.parse(await readFile(app.FILES.users));
+ for(const [name,grade]of placements)assert.equal(final.find(user=>user.username===name).grade,grade);
+ for(const name of ['lateone','latetwo'])assert.ok(final.find(user=>user.username===name).grade.startsWith('9'));
+});
+test('a new destination-grade student invalidates an older balancing preview',async()=>{
+ const plan=(await preview('8')).data.plan;
+ const saved=JSON.parse(await readFile(app.FILES.users));saved.push({username:'newdestination',role:'member',grade:'9A',passwordHash:'new-destination'});await app.writeJson(app.FILES.users,saved);
+ assert.equal((await approve(plan.id)).status,409);
 });

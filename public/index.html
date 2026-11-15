@@ -13,6 +13,8 @@
     <link rel="stylesheet" href="/styles.css?v=connectifi-244-forms-ui" />
     <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-244-forms-ui" />
     <link rel="stylesheet" href="/ui-polish.css?v=connectifi-244-forms-ui" />
+    <link rel="stylesheet" href="/school.css?v=246" />
+    <link rel="stylesheet" href="/connections.css?v=247" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -203,6 +205,16 @@
             <div class="panel-title-row"><h3>Forms to complete</h3><button id="refreshQuestionnaires" type="button" class="secondary-button compact-button">Refresh</button></div>
             <div id="questionnaireList" class="account-list"></div>
           </section>
+          <section id="schoolWorkspace" class="school-workspace">
+            <div class="school-toolbar">
+              <h3 data-i18n="School workspace">School workspace</h3>
+              <label class="school-language"><span data-i18n="Language">Language</span><select id="schoolLanguage" data-language-picker><option value="en">English</option><option value="es">Español</option><option value="fr">Français</option><option value="hi">हिन्दी</option></select></label>
+            </div>
+            <div id="schoolActions" class="account-actions"></div>
+            <section class="school-section" hidden><h3 data-i18n="Your tasks">Your tasks</h3><div id="schoolTasks" class="school-list"></div></section>
+            <section class="school-section" hidden><h3 data-i18n="Events and appointments">Events and appointments</h3><div id="schoolEvents" class="school-list"></div></section>
+            <section class="school-section" hidden><h3 data-i18n="Acknowledgements">Acknowledgements</h3><div id="schoolAcknowledgements" class="school-list"></div></section>
+          </section>
           <div id="onboardingPanel" class="onboarding-panel status-panel hidden">
             <div class="panel-title-row">
               <div>
@@ -234,6 +246,7 @@
               <p id="messageState">Live room</p>
             </div>
             <div class="message-header-controls">
+              <button id="roomTasksButton" class="secondary-button compact-button" type="button" data-i18n="Room tasks">Room tasks</button>
               <label class="compact-label">
                 Room
                 <select id="roomSelect"></select>
@@ -403,26 +416,23 @@
           </form>
         </section>
 
-        <section id="friendsView" class="view">
-          <div class="section-header">
-            <div>
-              <h2>Friends</h2>
-              <p id="friendState">Requests and friend list</p>
-            </div>
+        <section id="friendsView" class="view connections-view">
+          <div class="section-header"><div><h2 data-i18n="Friends">Friends</h2><p id="friendState">Find classmates and stay connected.</p></div><span id="friendsClassLabel" class="connections-meta"></span></div>
+          <div class="connections-tabs" role="tablist" aria-label="Friends">
+            <button class="connections-tab" id="friendsDiscoverTab" data-friends-tab="discover" role="tab" aria-controls="friendsDiscoverPane" aria-selected="true" type="button">Find people</button>
+            <button class="connections-tab" id="friendsListTab" data-friends-tab="friends" role="tab" aria-controls="friendsListPane" aria-selected="false" type="button">Your friends</button>
+            <button class="connections-tab" id="friendsRequestsTab" data-friends-tab="requests" role="tab" aria-controls="friendsRequestsPane" aria-selected="false" type="button">Requests</button>
           </div>
-          <form id="friendRequestForm" class="upload-bar">
-            <input id="friendSearchInput" maxlength="120" placeholder="Search exact username, email, or phone" autocomplete="off" />
-            <select id="friendGradeSearch" aria-label="Search by grade"><option value="">Grade</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select>
-            <button id="friendGradeSearchButton" class="secondary-button" type="button">Search grade</button>
-            <select id="friendUserSelect" aria-label="User"></select>
-            <button id="sendFriendRequestButton" class="primary-button" type="submit">Add friend</button>
+          <form id="friendRequestForm" class="connections-search">
+            <label class="connections-search-field"><span class="sr-only">Search people</span><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg><input id="friendSearchInput" maxlength="120" placeholder="Search a name or exact username" autocomplete="off" /></label>
+            <select id="friendsSearchScope" aria-label="Search scope"><option value="grade">My grade</option><option value="exact">Exact username</option></select>
+            <div hidden><select id="friendGradeSearch"><option value="">My grade</option></select><button id="friendGradeSearchButton" type="button">Search grade</button><select id="friendUserSelect"></select><button id="sendFriendRequestButton" type="submit">Add friend</button></div>
           </form>
-          <div id="friendAlphaFilter" class="friend-alpha-filter" aria-label="Filter friends by first letter"></div>
-          <div class="settings-grid">
-            <div class="status-panel"><h3>People you can add</h3><div id="friendCandidateList" class="account-list"></div></div>
-            <div class="status-panel"><h3>Friends</h3><div id="friendList" class="account-list"></div></div>
-            <div class="status-panel"><h3>Requests</h3><div id="friendRequestList" class="account-list"></div></div>
-          </div>
+          <p id="friendsSearchHelp" class="connections-help">Browse your grade, or select Exact username to find someone in another grade.</p>
+          <div id="friendAlphaFilter" hidden></div>
+          <section id="friendsDiscoverPane" role="tabpanel" aria-labelledby="friendsDiscoverTab"><div class="connections-panel"><header><h3>People you can add</h3><span id="friendResultsState" role="status" class="connections-meta"></span></header><div id="friendCandidateList" aria-live="polite"></div></div></section>
+          <section id="friendsListPane" role="tabpanel" aria-labelledby="friendsListTab" hidden><div class="connections-panel"><header><h3>Your friends</h3></header><div id="friendList"></div></div></section>
+          <section id="friendsRequestsPane" role="tabpanel" aria-labelledby="friendsRequestsTab" hidden><div id="friendRequestList" class="connections-request-grid"><section class="connections-panel"><header><h3>Incoming requests</h3></header><div id="friendIncomingList"></div></section><section class="connections-panel"><header><h3>Sent requests</h3></header><div id="friendSentList"></div></section></div></section>
         </section>
 
         <section id="profileView" class="view">
@@ -496,6 +506,9 @@
             </select>
             <label class="switch-row upload-private-toggle"><input id="privateUpload" type="checkbox" /><span>Private</span></label>
             <button id="uploadButton" class="primary-button" type="submit">Upload</button>
+            <button id="pauseUploadButton" class="secondary-button" type="button">Pause upload</button>
+            <button id="takePhotoButton" class="secondary-button" type="button" data-i18n="Take photo">Take photo</button>
+            <input id="photoUploadInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden />
             <div class="upload-release-row">
               <label>Release to<select id="fileReleaseRoom"><option value="">Everyone</option></select></label>
               <label>Release at<input id="fileReleaseAt" type="datetime-local" /></label>
@@ -1040,14 +1053,26 @@
               <button id="saveQuickEditButton" class="primary-button" type="submit">Save quick edit</button>
             </form>
 
-            <form id="announcementForm" class="panel-form owner-only hidden wide-panel">
-              <h3>Announcements</h3>
-              <p class="panel-note">Post a dashboard announcement for everyone or only one room.</p>
-              <label>Title<input id="announcementTitle" maxlength="100" placeholder="Quick update" /></label>
-              <label>Message<textarea id="announcementMessage" rows="4" maxlength="1200" placeholder="What should people see on the dashboard?"></textarea></label>
-              <label>Send to<select id="announcementScope"><option value="all">Whole platform</option><option value="room">Specific room</option></select></label>
-              <label id="announcementRoomLabel">Room<select id="announcementRoom"></select></label>
-              <button id="sendAnnouncementButton" class="primary-button" type="submit">Send announcement</button>
+            <form id="announcementForm" class="panel-form owner-only hidden wide-panel announcement-layout">
+              <div class="announcement-compose">
+                <h3 data-i18n="New announcement">New announcement</h3>
+                <p class="panel-note">Choose who sees the notice and whether they must confirm receipt.</p>
+                <label>Title<input id="announcementTitle" maxlength="100" placeholder="Announcement title" required /></label>
+                <label>Message<textarea id="announcementMessage" rows="5" maxlength="1200" placeholder="Write your announcement" required></textarea></label>
+                <span class="announcement-label" data-i18n="Send to">Send to</span>
+                <select id="announcementScope" hidden><option value="all">Whole school</option><option value="room">One room</option><option value="people">Specific people</option></select>
+                <div class="announcement-audiences" role="radiogroup" aria-label="Announcement audience"><button type="button" role="radio" data-announcement-audience="all" aria-checked="true">Whole school</button><button type="button" role="radio" data-announcement-audience="room" aria-checked="false">One room</button><button type="button" role="radio" data-announcement-audience="people" aria-checked="false">Specific people</button></div>
+                <label id="announcementRoomLabel">Room<select id="announcementRoom"></select></label>
+                <section id="announcementPeoplePicker" hidden aria-label="Selected recipients">
+                  <div id="announcementSelectedPeople" class="announcement-selected"></div>
+                  <label class="connections-search-field"><span class="sr-only">Find recipients</span><input id="announcementRecipientSearch" type="search" maxlength="120" placeholder="Search name, username or class" autocomplete="off" /></label>
+                  <div id="announcementRecipientResults" class="announcement-recipient-results" aria-live="polite"></div>
+                  <p class="connections-help">Only selected people and authorised admins will see this announcement.</p>
+                </section>
+                <label class="announcement-ack"><input id="announcementAcknowledgement" type="checkbox" /><span><strong data-i18n="Ask recipients to acknowledge">Ask recipients to acknowledge</strong><small>See who has confirmed receipt. Opening the announcement does not count.</small></span></label>
+                <div class="announcement-send"><span id="announcementAudienceSummary" role="status" class="connections-meta"></span><button id="sendAnnouncementButton" class="connections-button primary" type="submit">Send announcement</button></div>
+              </div>
+              <aside class="announcement-preview" aria-label="Recipient preview"><header data-i18n="Recipient preview">Recipient preview</header><div><span class="connections-meta" data-i18n="School announcement">School announcement</span><h4 id="announcementPreviewTitle"></h4><p id="announcementPreviewMessage"></p><span class="connections-meta" id="announcementPreviewSender"></span><button type="button" id="announcementPreviewAcknowledgement" class="connections-button" disabled>Acknowledge</button></div><footer id="announcementPreviewAudience"></footer></aside>
             </form>
 
             <form id="storeItemForm" class="panel-form owner-only hidden">
@@ -1204,8 +1229,13 @@
     <script src="/session-guard.js?v=connectifi-210-dm-recovery" defer></script>
     <script src="/status-guard.js?v=connectifi-210-dm-recovery" defer></script>
     <script src="/ui-boot.js?v=connectifi-210-dm-recovery" defer></script>
-    <script src="/app.js?v=connectifi-244-forms-ui" defer></script>
-    <script src="/questionnaires.js?v=connectifi-244-forms-ui" defer></script>
+    <script src="/i18n.js?v=246" defer></script>
+    <script src="/app.js?v=connectifi-247-connections" defer></script>
+    <script src="/connections.js?v=247" defer></script>
+    <script src="/announcement-composer.js?v=247" defer></script>
+    <script src="/resumable-uploads.js?v=246" defer></script>
+    <script src="/questionnaires.js?v=connectifi-246-school" defer></script>
+    <script src="/school.js?v=246" defer></script>
     <script src="/force-logout.js?v=connectifi-210-dm-recovery" defer></script>
   </body>
 </html>

@@ -1,0 +1,33 @@
+# Join the calling app to this internal network. Do not publish port 3310.
+services:
+  scanner:
+    image: clamav/clamav:stable
+    user: clamav
+    entrypoint: ["clamd", "--config-file=/etc/clamav/clamd.conf"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 4g
+    cpus: 1.0
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=536870912,mode=1777
+    volumes:
+      - ./clamd.conf:/etc/clamav/clamd.conf:ro
+      - signatures:/var/lib/clamav:ro
+    networks: [scanning]
+    restart: unless-stopped
+  signature-update:
+    image: clamav/clamav:stable
+    profiles: [maintenance]
+    user: clamav
+    entrypoint: ["freshclam", "--stdout", "--datadir=/var/lib/clamav"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - signatures:/var/lib/clamav
+volumes:
+  signatures:
+networks:
+  scanning:
+    internal: true

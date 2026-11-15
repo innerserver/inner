@@ -289,7 +289,7 @@ test("aborted uploads remove their partial file", async () => {
   } });
   upload.on("error", () => {});
   upload.write(Buffer.from("89504e470d0a1a0a", "hex"));
-  const files = () => readdir(path.join(directory, "uploads"));
+  const files = () => readdir(path.join(directory, "quarantine")).catch(() => []);
   const waitUntil = async (condition) => {
     for (let i = 0; i < 100; i++) {
       if (await condition()) return;

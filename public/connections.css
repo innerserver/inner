@@ -1,0 +1,77 @@
+/* Only the approved Friends/announcement controls. Account theme and photo layers remain owned by the existing personalisation styles. */
+#appView #friendsView.connections-view.active { display: block; overflow-y: auto; }
+#appView #friendsView .section-header { margin-bottom: 24px; }
+#appView #friendsView.connections-view > .section-header { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; }
+#appView .connections-search-field .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+#appView .connections-tabs { display: flex; gap: 28px; border-bottom: 1px solid var(--line); margin: 0 0 25px; }
+#appView .connections-tab { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--muted); box-shadow: none; padding: 0 0 13px; font-size: 14px; font-weight: 500; min-height: 0; }
+#appView .connections-tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+#appView .connections-search { display: flex; align-items: center; gap: 12px; margin: 0; }
+#appView .connections-search-field { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 5px; padding: 0 13px; }
+#appView .connections-search-field input { width: 100%; min-width: 0; border: 0 !important; border-radius: 0; outline: 0; box-shadow: none !important; background: transparent !important; color: var(--ink); font: inherit; padding: 11px 0 !important; margin: 0 !important; min-height: 44px; }
+#appView .connections-search-field:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+#appView #friendsSearchScope { width: auto; min-width: 146px; min-height: 46px; border-radius: 5px; border-color: var(--line); background-color: var(--surface); color: var(--ink); padding: 0 30px 0 13px; font-size: 13px; }
+#appView .connections-help { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 10px 0 23px; }
+#appView .connections-panel { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); overflow: hidden; }
+#appView .connections-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 17px 22px; border-bottom: 1px solid var(--line); }
+#appView .connections-panel h3 { font-size: 14px; margin: 0; }
+#appView .connections-meta { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
+#appView .connection-row { display: flex; align-items: center; gap: 14px; border-bottom: 1px solid var(--line); padding: 19px 22px; min-height: 90px; }
+#appView .connection-row:last-child { border-bottom: 0; }
+#appView .connection-avatar { position: relative; display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; border-radius: 6px; overflow: hidden; color: var(--accent); background: var(--accent-soft); font-size: 13px; font-weight: 600; }
+#appView .connection-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#appView .connection-person { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
+#appView .connection-person strong { font-size: 14px; font-weight: 600; color: var(--ink); }
+#appView .connection-grade { margin-right: 18px; }
+#appView .connection-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+#appView .connections-button { min-height: 36px; border: 1px solid var(--line); border-radius: 4px; padding: 7px 13px; font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; background: var(--surface); color: var(--ink); box-shadow: none; }
+#appView .connections-button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+#appView .connections-button:focus-visible,#appView .connections-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#appView .connections-empty { color: var(--muted); padding: 20px; font-size: 13px; }
+#appView .connections-request-grid { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr); gap: 20px; }
+#appView .connections-request-grid .connection-row { flex-wrap: wrap; }
+#appView .connections-request-grid .connection-grade { display: none; }
+#appView .connections-request-grid .connection-actions { width: 100%; padding-left: 58px; }
+#appView #announcementForm.announcement-layout:not(.hidden) { display: grid; grid-template-columns: minmax(0,1.8fr) minmax(240px,1fr); align-items: start; gap: 22px; border: 0 !important; box-shadow: none !important; background: transparent !important; padding: 0 !important; }
+#appView .announcement-compose { padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; display: grid; gap: 18px; }
+#appView .announcement-compose h3 { margin: 0; font-size: 22px; letter-spacing: -.4px; }
+#appView .announcement-compose > label:not(.announcement-ack) { display: grid; gap: 8px; font-size: 13px; font-weight: 600; color: var(--ink); }
+#appView .announcement-compose input:not([type="checkbox"]),#appView .announcement-compose textarea,#appView .announcement-compose select { width: 100%; min-width: 0; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 4px; font: inherit; padding: 10px 12px; margin: 0; }
+#appView .announcement-compose textarea { line-height: 1.6; resize: vertical; min-height: 115px; }
+#appView .announcement-compose input:not([type="checkbox"]),#appView .announcement-compose textarea { font-weight: 400 !important; }
+#appView .announcement-label { font-size: 13px; font-weight: 600; }
+#appView .announcement-audiences { display: grid; grid-template-columns: 1fr .8fr 1.15fr; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+#appView .announcement-audiences button { border: 0; border-right: 1px solid var(--line); border-radius: 0; background: var(--surface); color: var(--muted); box-shadow: none; min-height: 39px; font-size: 12px; padding: 8px 5px; }
+#appView .announcement-audiences button:last-child { border-right: 0; }
+#appView .announcement-audiences button[aria-checked="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+#appView .announcement-selected { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 12px; }
+#appView .announcement-selected-person { display: inline-flex; align-items: center; gap: 10px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-muted); font-size: 12px; }
+#appView .announcement-selected-person button { border: 0; background: none; color: var(--muted); padding: 0; min-height: 0; font-size: 18px; line-height: 1; border-radius: 0; box-shadow: none; }
+#appView .announcement-recipient-results { max-height: 200px; overflow-y: auto; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 4px 4px; }
+#appView .announcement-recipient { display: flex; gap: 10px; align-items: center; padding: 11px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+#appView .announcement-recipient:last-child { border-bottom: 0; }
+#appView .announcement-recipient input,#appView .announcement-ack input { width: 16px; height: 16px; min-height: 0; flex-shrink: 0; padding: 0; margin: 2px 0 0; accent-color: var(--accent); }
+#appView .announcement-recipient .connection-person strong { font-size: 12px; }
+#appView .announcement-recipient .connections-meta { font-size: 11px; }
+#appView .announcement-ack { display: flex; align-items: flex-start; gap: 10px; border-top: 1px solid var(--line); padding-top: 20px; color: var(--ink); }
+#appView .announcement-ack strong { font-size: 13px; font-weight: 500; }
+#appView .announcement-ack small { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; font-weight: 400; line-height: 1.6; }
+#appView .announcement-send { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+#appView .announcement-preview { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); overflow: hidden; color: var(--ink); }
+#appView .announcement-preview > header { padding: 15px 18px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+#appView .announcement-preview > div { padding: 19px; display: grid; gap: 14px; }
+#appView .announcement-preview h4 { margin: 0; font-size: 16px; line-height: 1.4; overflow-wrap: anywhere; }
+#appView .announcement-preview p { margin: 0; font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+#appView .announcement-preview .connections-button { justify-self: start; }
+#appView .announcement-preview > footer { background: var(--accent-soft); color: var(--accent); padding: 14px 18px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+#appView .connections-view [hidden],#appView .announcement-layout [hidden] { display: none !important; }
+@media(max-width:1100px) { #appView #announcementForm.announcement-layout:not(.hidden) { grid-template-columns: 1fr; } #appView .connections-request-grid { grid-template-columns: 1fr; } }
+@media(max-width:600px) {
+  #appView .connections-tabs { gap: 23px; } #appView .connections-tab { font-size: 13px; } #appView .connections-search { gap: 9px; }
+  #appView #friendsSearchScope { min-width: 108px; width: 108px; font-size: 12px; padding-left: 8px; }
+  #appView .connection-row { gap: 10px; padding: 16px 14px; } #appView .connection-avatar { width: 38px; height: 38px; font-size: 12px; }
+  #appView .connection-grade { display: none; } #appView .connection-person strong { font-size: 13px; } #appView .connection-person .connections-meta { font-size: 11px; }
+  #appView .connections-button { font-size: 12px; padding: 7px 10px; } #appView .connection-actions { gap: 7px; } #appView .connections-panel > header { padding: 14px; }
+  #appView .connections-request-grid .connection-actions { padding-left: 48px; } #appView .announcement-compose { padding: 17px 14px; }
+  #appView .announcement-send { align-items: flex-start; } #appView .announcement-audiences button { font-size: 11px; }
+}

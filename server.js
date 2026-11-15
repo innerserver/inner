@@ -13,6 +13,12 @@ const { Readable } = require("stream");
 const { URL } = require("url");
 const { WebSocketServer } = require("ws");
 const ipaddr = require("ipaddr.js");
+const createSchool = require("./lib/school");
+const createResumable = require("./lib/resumable-uploads");
+const { inspectUpload } = require("./lib/upload-scanner");
+const createUploadAlerts = require("./lib/upload-alerts");
+const { announcementAudience } = require("./lib/announcements");
+const { buildFormQuestions, formQuestionVisible } = require("./lib/forms");
 
 const websocketServer = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024, perMessageDeflate: false });
 const securityRateLimits = new Map();
@@ -20,6 +26,7 @@ let activePasswordOperations = 0;
 let activeUploads = 0;
 let activeBrowserFetches = 0;
 const userUploadCounts = new Map();
+let uploadRecordQueue = Promise.resolve();
 const passwordResetClaims = new Set();
 const AUTH_IP_REQUEST_LIMIT = Math.max(10, Number(process.env.INNER_AUTH_IP_REQUEST_LIMIT || 600));
 const TRUST_PROXY = process.env.INNER_TRUST_PROXY === undefined ? Boolean(process.env.RENDER) : isTruthy(process.env.INNER_TRUST_PROXY);
@@ -33,6 +40,7 @@ const FORCE_HTTPS = isTruthy(process.env.INNER_FORCE_HTTPS);
 const PUBLIC_DIR = path.join(ROOT, "public");
 const DATA_DIR = process.env.INNER_DATA_DIR ? path.resolve(process.env.INNER_DATA_DIR) : path.join(ROOT, "data");
 const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
+const QUARANTINE_DIR = path.join(DATA_DIR, "quarantine");
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const INLINE_UPLOAD_BYTES = Math.max(0, Number(process.env.INNER_UPLOAD_INLINE_LIMIT || 15 * 1024 * 1024));
 const MONGODB_URI = firstEnvValue("MONGODB_URI", "INNER_MONGODB_URI");
@@ -112,7 +120,14 @@ const FILES = {
   automod: path.join(DATA_DIR, "automod.json"),
   announcements: path.join(DATA_DIR, "announcements.json"),
   passwordResets: path.join(DATA_DIR, "password-resets.json"),
+  school: path.join(DATA_DIR, "school.json"),
+  formDrafts: path.join(DATA_DIR, "form-drafts.json"),
+  uploadIncidents: path.join(DATA_DIR, "upload-incidents.json"),
 };
+
+const schoolFeatures = createSchool({ readJson, writeJson, FILES, canManage, canModerate, canAccessRoom, questionnaireAudience, readJsonBody, json, broadcast });
+const uploadAlerts = createUploadAlerts({ readJson, writeJson, FILES, sendDirectEmail: (...args) => sendDirectEmail(...args), adminEmails: REPORT_EMAILS, log: (message) => console.error(message) });
+const resumableUploads = createResumable({ directory: path.join(DATA_DIR, "upload-staging"), readJsonBody, json, upload: saveUploadLimited, validateContext: (context, user) => schoolFeatures.uploadAccess(context, user) });
 
 const MAX_JSON_BYTES = 1024 * 1024;
 const MAX_UPLOAD_BYTES = 250 * 1024 * 1024;
@@ -326,6 +341,7 @@ async function main() {
   });
   startWsHeartbeat();
   startOwnerCheckinScheduler();
+  uploadAlerts.start();
 
   server.listen(PORT, HOST, () => {
     const scheme = server.isInnerHttps ? "https" : "http";
@@ -1850,9 +1866,17 @@ async function routeApi(req, res, requestUrl) {
     });
   }
 
-  if (pathname === "/api/questionnaires" || /^\/api\/questionnaires\/[^/]+\/(responses|close)$/.test(pathname)) {
+  if (pathname === "/api/questionnaires" || /^\/api\/questionnaires\/[^/]+\/(responses|drafts|close)$/.test(pathname)) {
     return handleQuestionnaires(req, res, user, pathname);
   }
+
+  if (pathname === "/api/school" || pathname.startsWith("/api/school/")) return schoolFeatures.handle(req, res, user, requestUrl);
+  if (req.method === "GET" && pathname === "/api/uploads/security-incidents") {
+    if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
+    const records = await readJson(FILES.uploadIncidents, []);
+    return json(res, 200, { incidents: records.slice(-100).reverse() });
+  }
+  if (pathname === "/api/uploads/resumable" || pathname.startsWith("/api/uploads/resumable/")) return resumableUploads.handle(req, res, user, requestUrl);
 
   if (req.method === "GET" && pathname === "/api/moderation/attendance") {
     if (!canModerate(user)) return json(res, 403, { error: "Moderator access required" });
@@ -2091,20 +2115,11 @@ async function routeApi(req, res, requestUrl) {
     if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
     const featureError = await featureGateError(settings, "files", user, { roomId: String(req.headers["x-file-release-room"] || "").trim().slice(0, 80) });
     if (featureError) return json(res, 423, { error: featureError });
-    const count = userUploadCounts.get(user.username) || 0;
-    if (activeUploads >= 16 || count >= 3) return json(res, 429, { error: "Too many uploads in progress. Please wait for an upload to finish." });
-    activeUploads++;
-    userUploadCounts.set(user.username, count + 1);
-    try { return await saveUpload(req, res, user); }
-    finally {
-      activeUploads--;
-      const remaining = userUploadCounts.get(user.username) - 1;
-      if (remaining) userUploadCounts.set(user.username, remaining);
-      else userUploadCounts.delete(user.username);
-    }
+    return saveUploadLimited(req, res, user);
   }
 
   if (req.method === "POST" && pathname === "/api/uploads/direct-cloudinary/sign") {
+    return json(res, 410, { error: "Use the app upload endpoint for file type and size validation." });
     const settings = await readJson(FILES.settings, {});
     if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
     const featureError = await featureGateError(settings, "files", user);
@@ -2142,6 +2157,7 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "POST" && pathname === "/api/uploads/direct-cloudinary/complete") {
+    return json(res, 410, { error: "Use the app upload endpoint for file type and size validation." });
     const settings = await readJson(FILES.settings, {});
     if (!settings.serverEnabled && !canManage(user)) return json(res, 423, { error: "Server room is off" });
     const featureError = await featureGateError(settings, "files", user);
@@ -2190,12 +2206,23 @@ async function routeApi(req, res, requestUrl) {
     return json(res, 201, { file: safeFileRecord(fileRecord, user) });
   }
 
+  if (req.method === "GET" && pathname === "/api/announcements/recipients") {
+    if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
+    const query = String(requestUrl.searchParams.get("q") || "").trim().toLowerCase().slice(0, 120);
+    const [users, profiles] = await Promise.all([readJson(FILES.users, []), readJson(FILES.profiles, {})]);
+    const people = users.filter((entry) => !isUserBanned(entry)).map((entry) => ({ username: entry.username, displayName: profiles[entry.username]?.displayName || entry.username, grade: normalizeGrade(entry.grade), role: effectiveRole(entry) }))
+      .filter((entry) => !query || [entry.username, entry.displayName, entry.grade].some((value) => String(value).toLowerCase().includes(query)))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName)).slice(0, 100);
+    return json(res, 200, { people });
+  }
+
   if (req.method === "POST" && pathname === "/api/announcements") {
     if (!canManage(user)) return json(res, 403, { error: "Admin access required" });
     const body = await readJsonBody(req);
     const title = String(body.title || "").trim().slice(0, 100);
     const message = String(body.message || body.body || "").trim().slice(0, 1200);
-    const scope = String(body.scope || "all").toLowerCase() === "room" ? "room" : "all";
+    const scope = String(body.scope || "all").toLowerCase();
+    if (!["all", "room", "people"].includes(scope)) return json(res, 400, { error: "Choose whole school, one room or specific people" });
     const roomId = scope === "room" ? String(body.roomId || "").trim() : "";
     if (!title) return json(res, 400, { error: "Announcement title is required" });
     if (!message) return json(res, 400, { error: "Announcement message is required" });
@@ -2203,6 +2230,14 @@ async function routeApi(req, res, requestUrl) {
     const rooms = await readJson(FILES.rooms, []);
     const room = scope === "room" ? rooms.find((entry) => entry.id === roomId) : null;
     if (scope === "room" && !room) return json(res, 404, { error: "Room not found" });
+    let recipientUsernames = [];
+    if (scope === "people") {
+      if (!Array.isArray(body.recipientUsernames) || !body.recipientUsernames.length || body.recipientUsernames.length > 400 || body.recipientUsernames.some((entry) => typeof entry !== "string")) return json(res, 400, { error: "Select between 1 and 400 people" });
+      const users = await readJson(FILES.users, []);
+      const names = new Map(users.filter((entry) => !isUserBanned(entry)).map((entry) => [entry.username.toLowerCase(), entry.username]));
+      recipientUsernames = [...new Set(body.recipientUsernames.map((name) => names.get(name.trim().toLowerCase())))];
+      if (recipientUsernames.includes(undefined)) return json(res, 400, { error: "A selected account is unavailable. Refresh the recipient list." });
+    }
 
     const announcements = await readJson(FILES.announcements, []);
     const announcement = {
@@ -2212,7 +2247,9 @@ async function routeApi(req, res, requestUrl) {
       scope,
       roomId: room ? room.id : "",
       roomName: room ? room.name : "",
+      recipientUsernames,
       active: true,
+      requireAcknowledgement: body.requireAcknowledgement === true,
       createdAt: new Date().toISOString(),
       createdBy: user.username,
     };
@@ -2222,7 +2259,7 @@ async function routeApi(req, res, requestUrl) {
     await notifyAdminEmails("Connectifi announcement posted", [
       `${user.username} posted an announcement.`,
       `Title: ${title}`,
-      `Scope: ${scope === "room" ? `Room ${room ? room.name : roomId}` : "Whole platform"}`,
+      `Scope: ${scope === "people" ? `Selected accounts: ${recipientUsernames.join(", ")}` : scope === "room" ? `Room ${room ? room.name : roomId}` : "Whole school"}`,
       "",
       message,
     ].join("\n"), { route: "announcements" });
@@ -2376,6 +2413,17 @@ async function routeApi(req, res, requestUrl) {
       .slice(0, 25)
       .map((entry) => publicUser(entry, profiles[entry.username]));
     return json(res, 200, { people });
+  }
+
+  if (req.method === "POST" && pathname === "/api/friends/cancel") {
+    const body = await readJsonBody(req);
+    const friends = await readJson(FILES.friends, { requests: [], friendships: [] });
+    const request = friends.requests.find((entry) => entry.id === body.id && entry.from === user.username && entry.status === "pending");
+    if (!request) return json(res, 404, { error: "Friend request not found" });
+    request.status = "cancelled"; request.updatedAt = new Date().toISOString();
+    await writeJson(FILES.friends, friends);
+    broadcastFriendUpdate(friends, request.from, request.to);
+    return json(res, 200, { friends: safeFriendState(friends, user) });
   }
 
   if (req.method === "POST" && pathname === "/api/friends/respond") {
@@ -4257,12 +4305,29 @@ async function routeApi(req, res, requestUrl) {
   json(res, 404, { error: "API route not found" });
 }
 
+async function saveUploadLimited(req, res, user) {
+  const settings = await readJson(FILES.settings, {});
+  if (settings.serverEnabled === false && !canManage(user)) return json(res, 423, { error: "Server room is off" });
+  const gate = await featureGateError(settings, "files", user, { roomId: String(req.headers["x-file-release-room"] || "") });
+  if (gate) return json(res, 423, { error: gate });
+  const count = userUploadCounts.get(user.username) || 0;
+  if (activeUploads >= 16 || count >= 3) return json(res, 429, { error: "Too many uploads in progress" });
+  activeUploads++; userUploadCounts.set(user.username, count + 1);
+  try { return await saveUpload(req, res, user); }
+  finally {
+    activeUploads--;
+    const remaining = userUploadCounts.get(user.username) - 1;
+    if (remaining) userUploadCounts.set(user.username, remaining); else userUploadCounts.delete(user.username);
+  }
+}
+
 async function saveUpload(req, res, user) {
   const settings = await readJson(FILES.settings, {});
+  req.schoolUploadAccess = await schoolFeatures.uploadAccess(String(req.headers["x-school-context"] || ""), user);
   const originalName = sanitizeFileName(req.headers["x-file-name"] || "upload.bin");
   const providedType = String(req.headers["x-file-type"] || "application/octet-stream").slice(0, 120);
   const category = normalizeCategory(req.headers["x-file-category"] || "document");
-  const privateUpload = parseBooleanHeader(req.headers["x-file-private"]);
+  const privateUpload = req.schoolUploadAccess ? req.schoolUploadAccess.private : parseBooleanHeader(req.headers["x-file-private"]);
   const extension = path.extname(originalName).toLowerCase();
 
   if (!isAllowedUploadExtension(extension)) {
@@ -4279,7 +4344,7 @@ async function saveUpload(req, res, user) {
 
   const storedName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${extension}`;
   const preferB2 = shouldUseB2Uploads();
-  const mustAvoidLocalDisk = cloudStorageRequired() && cloudinaryUploadEnabled() && !preferB2 && UPLOAD_PROVIDER !== "mongodb";
+  const mustAvoidLocalDisk = false; // Validate bytes in the app before storing with the selected provider.
   if (cloudStorageRequired() && !cloudinaryUploadEnabled() && !b2Configured() && !persistence.ready) {
     await addSystemLog("file.upload.fallback", user.username, { name: originalName, reason: "cloud storage missing; using local fallback" }, req);
   }
@@ -4326,7 +4391,10 @@ async function saveUpload(req, res, user) {
     return json(res, 201, { file: safeFileRecord(fileRecord, user) });
   }
 
-  const target = path.join(UPLOAD_DIR, storedName);
+  await fsp.mkdir(UPLOAD_DIR, { recursive: true });
+  await fsp.mkdir(QUARANTINE_DIR, { recursive: true, mode: 0o700 });
+  await fsp.mkdir(UPLOAD_DIR, { recursive: true });
+  let target = path.join(QUARANTINE_DIR, storedName);
   let written = 0;
   let inlineEnabled = !persistence.ready && INLINE_UPLOAD_BYTES > 0 && (!contentLength || contentLength <= INLINE_UPLOAD_BYTES);
   let inlineChunks = [];
@@ -4374,6 +4442,28 @@ async function saveUpload(req, res, user) {
     return json(res, 400, { error: validationError });
   }
   await markUploadNonExecutable(target);
+  try {
+    req.uploadScan = await inspectUpload(target, extension, { maxBytes: Math.min(scaledUploadBytes, 250 * 1024 * 1024) });
+  } catch (error) {
+    await fsp.rm(target, { force: true }).catch(() => {});
+    let alert = null;
+    if (error.code === "UPLOAD_MALWARE_DETECTED") {
+      if (req.onUploadRejected) await req.onUploadRejected().catch(() => console.error("Blocked upload staging cleanup failed."));
+      try {
+        alert = await uploadAlerts.notify({ user, fileName: originalName, size: written, detection: error.detection,
+          context: req.schoolUploadAccess?.schoolContext || "",
+          releaseRoom: req.schoolUploadAccess?.releaseRoom || (canManage(user) ? String(req.headers["x-file-release-room"] || "").slice(0, 80) : ""), privateUpload });
+      } catch {
+        console.error("Malware upload blocked; administrator email could not be queued.");
+      }
+      await addSystemLog("file.malware.blocked", user.username, { name: originalName, incidentId: alert?.incidentId || "", adminEmailStatus: alert?.emailStatus || "failed" }, req).catch(() => {});
+    }
+    return json(res, error.statusCode || 503, { error: error.message, ...(alert ? { incidentId: alert.incidentId, adminEmailStatus: alert.emailStatus } : {}) });
+  }
+  const publishedTarget = path.join(UPLOAD_DIR, storedName);
+  await fsp.rename(target, publishedTarget);
+  target = publishedTarget;
+  req.uploadValidated = true;
 
   const fileRecord = createUploadRecord({
     req,
@@ -4402,6 +4492,10 @@ async function saveUpload(req, res, user) {
       inlineChunks = [];
     } catch (error) {
       await addSystemLog("file.upload.failed", user.username, { name: originalName, provider: "backblaze-b2", reason: error.message || "Backblaze B2 upload failed" }, req);
+      if (cloudStorageRequired()) {
+        await fsp.rm(target, { force: true }).catch(() => {});
+        return json(res, 503, { error: "B2 storage is unavailable. Your resumable upload can be retried." });
+      }
       fileRecord.cloudStorage = "";
       fileRecord.cloudStorageError = error.message || "Backblaze B2 upload failed";
       fileRecord.persistence = inlineEnabled ? "disk+inline" : "disk";
@@ -4447,12 +4541,17 @@ async function saveUpload(req, res, user) {
     fileRecord.inlineData = Buffer.concat(inlineChunks, written).toString("base64");
   }
 
-  const files = await readJson(FILES.uploads, []);
-  files.unshift(fileRecord);
-  await writeJson(FILES.uploads, files);
+  const recordWrite = uploadRecordQueue.then(async () => {
+    const files = await readJson(FILES.uploads, []);
+    files.unshift(fileRecord);
+    await writeJson(FILES.uploads, files);
+  });
+  uploadRecordQueue = recordWrite.catch(() => {});
+  await recordWrite;
   await addSystemLog("file.uploaded", user.username, { id: fileRecord.id, name: originalName, kind: fileRecord.kind, size: written, private: privateUpload }, req);
   broadcastFileNew(fileRecord);
   const safeRecord = safeFileRecord(fileRecord, user);
+  if (req.onUploadCommitted) await req.onUploadCommitted(safeRecord);
   return json(res, 201, { file: safeRecord });
 }
 
@@ -4489,6 +4588,10 @@ function createUploadRecord({ req, user, originalName, storedName, category, ext
     sourceDevice: deviceSignature(req),
     approximateLocation: approximateLocationFromIp(getClientIp(req)),
     private: privateUpload,
+    ...(req.schoolUploadAccess || {}),
+    validatedUpload: req.uploadValidated === true,
+    scanStatus: req.uploadScan?.status || "pending",
+    scannedAt: req.uploadScan?.scannedAt || "",
     releaseAt,
     releaseRoom,
     createdAt: new Date().toISOString(),
@@ -6730,11 +6833,13 @@ async function handleQuestionnaires(req, res, sessionUser, pathname) {
   let rooms = await readJson(FILES.rooms, []);
   if (req.method === "GET" && pathname === "/api/questionnaires") {
     const forms = await readJson(FILES.questionnaires, []);
+    const drafts = await readJson(FILES.formDrafts, []);
     return json(res, 200, { questionnaires: forms.filter((form) => form.createdBy === user.username || canManage(user) || questionnaireAudience(form, user, rooms)).map((form) => {
       const own = form.responses.find((entry) => entry.username === user.username);
       const manager = canManage(user) || (canModerate(user) && form.createdBy === user.username);
       const eligible = users.filter((entry) => effectiveRole(entry) === "member" && questionnaireAudience(form, entry, rooms));
-      return { ...form, canManage: manager, canRespond: !form.closed && questionnaireAudience(form, user, rooms), submitted: Boolean(own), ownResponse: own || null, responses: manager ? form.responses : [], recipientCount: manager ? eligible.length : undefined, pending: manager ? eligible.filter((entry) => !form.responses.some((response) => response.username === entry.username)).map((entry) => entry.username) : undefined };
+      const open = !form.closed && (!form.closesAt || Date.parse(form.closesAt) > Date.now());
+      return { ...form, canManage: manager, canRespond: open && questionnaireAudience(form, user, rooms), canEdit: open && form.allowEdit === true && Boolean(own), submitted: Boolean(own), ownResponse: own || null, ownDraft: drafts.find((entry) => entry.formId === form.id && entry.username === user.username)?.answers || null, responses: manager ? form.responses : [], recipientCount: manager ? eligible.length : undefined, pending: manager ? eligible.filter((entry) => !form.responses.some((response) => response.username === entry.username)).map((entry) => entry.username) : undefined };
     }) });
   }
   if (!["POST"].includes(req.method)) return json(res, 405, { error: "Method not allowed" });
@@ -6755,28 +6860,43 @@ async function handleQuestionnaires(req, res, sessionUser, pathname) {
       const targetRoom = rooms.find((entry) => entry.id === target);
       if (!title || !target || (scope === "room" && (!targetRoom || !canAccessRoom(targetRoom, user)))) return json(res, 400, { error: "Enter a title and valid room or grade" });
       if (!Array.isArray(body.questions) || body.questions.length > 50 || body.questions.some((entry) => !entry || typeof entry !== "object" || Array.isArray(entry) || (Array.isArray(entry.options) && entry.options.length > 20))) return json(res, 400, { error: "Use up to 50 questions with up to 20 options each" });
-      const questions = body.questions.map((entry) => ({ id: crypto.randomUUID(), label: String(entry.label || "").trim().slice(0, 500), type: ["text", "paragraph", "choice", "checkbox", "dropdown", "email", "tel", "number", "date", "time", "url"].includes(entry.type) ? entry.type : "text", required: Boolean(entry.required), options: [...new Set((Array.isArray(entry.options) ? entry.options : []).map((value) => String(value).trim().slice(0, 200)).filter(Boolean))].slice(0, 20) }));
+      const questions = buildFormQuestions(body.questions);
       if (!questions.length || questions.some((entry) => !entry.label || (["choice", "dropdown"].includes(entry.type) && entry.options.length < 2) || (entry.type === "checkbox" && !entry.options.length))) return json(res, 400, { error: "Add questions; choices and dropdowns need two options, checkboxes need at least one" });
       const kind = ["questionnaire", "signup", "mun", "feedback"].includes(body.kind) ? body.kind : "questionnaire";
-      forms.unshift({ id: crypto.randomUUID(), title, kind, description: String(body.description || "").trim().slice(0, 2000), scope, target, targetName: scope === "room" ? targetRoom.name : `Grade ${target}`, questions, responses: [], createdBy: user.username, createdAt: new Date().toISOString(), closed: false });
+      if (body.closesAt && !Number.isFinite(Date.parse(body.closesAt))) return json(res, 400, { error: "Invalid closing date" });
+      const closesAt = body.closesAt ? new Date(body.closesAt).toISOString() : "";
+      if (closesAt && Date.parse(closesAt) <= Date.now()) return json(res, 400, { error: "Closing date must be in the future" });
+      forms.unshift({ id: crypto.randomUUID(), title, kind, description: String(body.description || "").trim().slice(0, 2000), scope, target, targetName: scope === "room" ? targetRoom.name : `Grade ${target}`, questions, responses: [], createdBy: user.username, createdAt: new Date().toISOString(), closesAt, allowEdit: body.allowEdit === true, closed: false });
     } else {
-      const match = pathname.match(/^\/api\/questionnaires\/([^/]+)\/(responses|close)$/);
+      const match = pathname.match(/^\/api\/questionnaires\/([^/]+)\/(responses|drafts|close)$/);
       const form = forms.find((entry) => entry.id === match[1]);
       if (!form) return json(res, 404, { error: "Questionnaire not found" });
       if (match[2] === "close") {
         if (!canManage(user) && !(canModerate(user) && form.createdBy === user.username)) return json(res, 403, { error: "Only the sender can close this questionnaire" });
         form.closed = true;
       } else {
-        if (form.closed) return json(res, 409, { error: "This questionnaire is closed" });
+        if (form.closed || (form.closesAt && Date.parse(form.closesAt) <= Date.now())) return json(res, 409, { error: "This questionnaire is closed" });
         if (!questionnaireAudience(form, user, rooms)) return json(res, 403, { error: "This questionnaire is for another room or grade" });
-        if (form.responses.some((entry) => entry.username === user.username)) return json(res, 409, { error: "You have already submitted this questionnaire" });
+        if (match[2] === "drafts") {
+          if (!body.answers || typeof body.answers !== "object" || Array.isArray(body.answers) || JSON.stringify(body.answers).length > 64000) return json(res, 400, { error: "Invalid draft" });
+          const drafts = (await readJson(FILES.formDrafts, [])).filter((entry) => entry.formId !== form.id || entry.username !== user.username);
+          const answers = Object.fromEntries(form.questions.filter((question) => Object.hasOwn(body.answers, question.id)).map((question) => [question.id, body.answers[question.id]]));
+          drafts.push({ formId: form.id, username: user.username, answers, updatedAt: new Date().toISOString() });
+          await writeJson(FILES.formDrafts, drafts.slice(-20000));
+          return json(res, 200, { ok: true });
+        }
+        const previousIndex = form.responses.findIndex((entry) => entry.username === user.username);
+        if (previousIndex !== -1 && !form.allowEdit) return json(res, 409, { error: "You have already submitted this questionnaire" });
         const answers = {};
+        const uploadedFiles = form.questions.some((question) => question.type === "file") ? await readJson(FILES.uploads, []) : [];
         for (const question of form.questions) {
+          if (!formQuestionVisible(question, answers)) continue;
           const raw = body.answers && body.answers[question.id];
-          if (question.type === "checkbox" ? raw !== undefined && !Array.isArray(raw) : raw !== undefined && typeof raw !== "string" && typeof raw !== "number") return json(res, 400, { error: `Check your answer to: ${question.label}` });
-          const answer = question.type === "checkbox" ? [...new Set((Array.isArray(raw) ? raw : []).map(String))] : String(raw ?? "").trim();
+          if (["checkbox", "file"].includes(question.type) ? raw !== undefined && !Array.isArray(raw) : raw !== undefined && typeof raw !== "string" && typeof raw !== "number") return json(res, 400, { error: `Check your answer to: ${question.label}` });
+          const answer = ["checkbox", "file"].includes(question.type) ? [...new Set((Array.isArray(raw) ? raw : []).map(String))] : String(raw ?? "").trim();
           let invalid = question.required && !answer.length;
-          if (Array.isArray(answer)) invalid ||= answer.some((value) => !question.options.includes(value));
+          if (question.type === "file") invalid ||= answer.length > question.maxFiles || answer.some((id) => !uploadedFiles.some((file) => file.id === id && file.user === user.username && file.schoolContext === `form:${form.id}` && file.validatedUpload === true && file.size <= question.maxFileBytes && question.accept.includes(path.extname(file.originalName).toLowerCase())));
+          else if (Array.isArray(answer)) invalid ||= answer.some((value) => !question.options.includes(value));
           else {
             invalid ||= answer.length > 5000 || (["choice", "dropdown"].includes(question.type) && answer && !question.options.includes(answer));
             if (answer) {
@@ -6793,7 +6913,10 @@ async function handleQuestionnaires(req, res, sessionUser, pathname) {
           if (invalid) return json(res, 400, { error: `Check your answer to: ${question.label}` });
           answers[question.id] = answer;
         }
-        form.responses.push({ username: user.username, grade: normalizeGrade(user.grade), answers, submittedAt: new Date().toISOString() });
+        const response = { username: user.username, grade: normalizeGrade(user.grade), answers, submittedAt: previousIndex === -1 ? new Date().toISOString() : form.responses[previousIndex].submittedAt, updatedAt: new Date().toISOString() };
+        if (previousIndex === -1) form.responses.push(response); else form.responses[previousIndex] = response;
+        const drafts = await readJson(FILES.formDrafts, []);
+        await writeJson(FILES.formDrafts, drafts.filter((entry) => entry.formId !== form.id || entry.username !== user.username));
       }
     }
     await writeJson(FILES.questionnaires, forms);
@@ -6920,23 +7043,21 @@ function canAccessRoom(room, user) {
 }
 
 function safeAnnouncements(announcements, user, rooms) {
-  const roomMap = new Map((rooms || []).map((room) => [room.id, room]));
   return (announcements || [])
     .filter((announcement) => announcement && announcement.active !== false)
-    .filter((announcement) => {
-      if (announcement.scope !== "room") return true;
-      return canAccessRoom(roomMap.get(announcement.roomId), user);
-    })
+    .filter((announcement) => canManage(user) || announcementAudience(announcement, user, rooms, canAccessRoom))
     .slice(0, 50)
     .map((announcement) => ({
       id: String(announcement.id || ""),
       title: String(announcement.title || "Announcement").slice(0, 100),
       message: String(announcement.message || announcement.body || "").slice(0, 1200),
-      scope: announcement.scope === "room" ? "room" : "all",
+      scope: announcement.scope || "all",
+      ...(canManage(user) ? { recipientUsernames: announcement.recipientUsernames || [] } : {}),
       roomId: String(announcement.roomId || ""),
       roomName: String(announcement.roomName || ""),
       createdAt: announcement.createdAt || "",
       createdBy: String(announcement.createdBy || ""),
+      requireAcknowledgement: announcement.requireAcknowledgement === true,
     }));
 }
 
@@ -6965,8 +7086,10 @@ function safeDmGroups(groups, user) {
 }
 
 function canAccessFileRecord(file, user, rooms = []) {
+  if (file?.scanStatus && !["clean", "not-required-photo"].includes(file.scanStatus)) return false;
   if (!file || !user) return !file || !file.private;
   if (canManage(user) || file.user === user.username) return true;
+  if (file.schoolContext?.startsWith("form:") && canModerate(user) && (file.schoolReaders || []).includes(user.username)) return true;
   const releaseAt = Date.parse(file.releaseAt || "");
   if (Number.isFinite(releaseAt) && releaseAt > Date.now()) return false;
   if (file.private) return false;
@@ -7268,6 +7391,8 @@ function safeFileRecord(file, viewer) {
     releaseAt: file.releaseAt || "",
     releaseRoom: file.releaseRoom || "",
     createdAt: file.createdAt,
+    validatedUpload: file.validatedUpload === true,
+    scanStatus: file.scanStatus || "legacy",
     url: `/api/files/${encodeURIComponent(file.id)}/download`,
   };
   if (showAdminMeta) {
@@ -7960,7 +8085,11 @@ function safeUploadConfig(settings) {
   return {
     maxBytes,
     maxLabel: formatServerBytes(maxBytes),
-    directCloudinary: cloudinaryUploadEnabled() && !b2Configured(),
+    directCloudinary: false,
+    resumable: true,
+    documentScanRequired: true,
+    photoScanRequired: false,
+    scannerConfigured: Boolean(process.env.INNER_CLAMD_HOST),
     cloudRequired: cloudStorageRequired(),
     provider: storageModeLabel(),
   };
@@ -10609,6 +10738,10 @@ async function createBackup(username) {
       plugins,
       automod,
       questionnaires: await readJson(FILES.questionnaires, []),
+      school: await readJson(FILES.school, {}),
+      formDrafts: await readJson(FILES.formDrafts, []),
+      uploadIncidents: await readJson(FILES.uploadIncidents, []),
+      announcements: await readJson(FILES.announcements, []),
     },
   };
   await writeJson(path.join(BACKUP_DIR, fileName), backup);
@@ -10671,6 +10804,10 @@ async function restoreBackup(fileName, username) {
     ["plugins", FILES.plugins, []],
     ["automod", FILES.automod, {}],
     ["questionnaires", FILES.questionnaires, []],
+    ["school", FILES.school, {}],
+    ["formDrafts", FILES.formDrafts, []],
+    ["uploadIncidents", FILES.uploadIncidents, []],
+    ["announcements", FILES.announcements, []],
   ];
   for (const [key, file, fallback] of map) {
     await writeJson(file, data[key] === undefined ? fallback : data[key]);
@@ -11251,11 +11388,13 @@ function validateUploadBuffer(buffer, extension, mimeType) {
   const hex = head.toString("hex");
   const ascii = head.toString("latin1");
   const expected = {
-    ".png": () => hex.startsWith("89504e47"),
+    ".png": () => hex.startsWith("89504e470d0a1a0a"),
     ".jpg": () => hex.startsWith("ffd8ff"),
     ".jpeg": () => hex.startsWith("ffd8ff"),
     ".gif": () => ascii.startsWith("GIF87a") || ascii.startsWith("GIF89a"),
     ".webp": () => ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WEBP",
+    ".heic": () => ascii.slice(4, 8) === "ftyp" && /^(heic|heix|hevc|hevx|mif1|msf1)$/.test(ascii.slice(8, 12)),
+    ".heif": () => ascii.slice(4, 8) === "ftyp" && /^(heic|heix|hevc|hevx|mif1|msf1)$/.test(ascii.slice(8, 12)),
     ".pdf": () => ascii.startsWith("%PDF"),
     ".zip": () => hex.startsWith("504b0304") || hex.startsWith("504b0506") || hex.startsWith("504b0708"),
     ".mp4": () => ascii.slice(4, 8) === "ftyp",

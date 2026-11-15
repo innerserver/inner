@@ -1,4 +1,5 @@
 (() => {
+  const t = (key) => window.ConnectifiI18n?.t(key) || key;
   let forms = [];
   let loadedFor = "";
   let loading = false;
@@ -38,13 +39,13 @@
     return node;
   };
   const button = (text, action, primary = false) => {
-    const node = el("button", text, primary ? "primary-button compact-button" : "secondary-button compact-button");
+    const node = el("button", t(text), primary ? "primary-button compact-button" : "secondary-button compact-button");
     node.type = "button";
     node.addEventListener("click", action);
     return node;
   };
-  const field = (label, input) => {
-    const node = el("label", label);
+  const field = (label, input, translate = true) => {
+    const node = el("label", translate ? t(label) : label);
     node.append(input);
     return node;
   };
@@ -75,7 +76,7 @@
     const dialog = el("section", undefined, "strike-modal questionnaire-dialog");
     dialog.setAttribute("role", "dialog");
     dialog.setAttribute("aria-modal", "true");
-    const heading = el("h3", title);
+    const heading = el("h3", t(title));
     heading.id = `questionnaireDialogTitle-${++modalSequence}`;
     dialog.setAttribute("aria-labelledby", heading.id);
     const previousFocus = document.activeElement;
@@ -129,8 +130,14 @@
       forms = data.questionnaires || [];
       loadedFor = key;
       const available = forms.filter((form) => form.canRespond && !form.submitted);
+      const revisable = forms.filter((form) => form.canEdit);
       panel.classList.toggle("hidden", !available.length);
       renderForms(list, available);
+      if (revisable.length) {
+        panel.classList.remove("hidden");
+        const history = el("details"); history.append(el("summary", t("Edit response")));
+        const entries = el("div", undefined, "account-list"); renderForms(entries, revisable); history.append(entries); list.append(history);
+      }
       if (managementList) renderForms(managementList, forms.filter((form) => form.canManage));
     } catch (error) {
       panel.classList.add("hidden");
@@ -149,6 +156,8 @@
         const actions = el("div", undefined, "account-actions");
         if (form.canRespond && !form.submitted) actions.append(button(["signup", "mun"].includes(form.kind) ? "Sign up" : "Complete form", () => answerForm(form), true));
         if (form.submitted) actions.append(button("Your response", () => answerForm(form, true)));
+        if (form.canEdit) actions.append(button("Edit response", () => answerForm(form)));
+        if (form.closesAt) card.append(el("span", `${t("Closes at")}: ${new Date(form.closesAt).toLocaleString()}`, "panel-note"));
         if (form.canManage) {
           card.append(el("span", `${form.responses.length} responses | ${form.pending.length} awaiting response`));
           actions.append(button("Results", () => results(form)));
@@ -179,6 +188,8 @@
     const kind = select(Object.entries(kinds));
     const scope = select([["room", "Room"], ["grade", "Grade"]]);
     const target = select([]);
+    const closesAt = input("datetime-local");
+    const allowEdit = input("checkbox");
     const grades = ["6", "7", "8", "9", "10", "11", "12"].flatMap((grade) => [grade, `${grade}A`, `${grade}B`, `${grade}C`]).concat(["college", "staff", "other"]);
     const updateTarget = () => {
       target.replaceChildren();
@@ -191,10 +202,21 @@
     const details = el("div", undefined, "questionnaire-details");
     const audience = el("div", undefined, "questionnaire-audience");
     audience.append(field("Send to", scope), field("Room or grade", target));
-    details.append(field("Form type", kind), field("Title", title), field("Description", description), audience);
+    details.append(field("Form type", kind), field("Title", title), field("Description", description), audience, field("Closes at", closesAt), field("Allow response editing", allowEdit));
     form.append(details);
     const questions = el("div", undefined, "questionnaire-questions");
     const rows = [];
+    const updateConditions = () => {
+      rows.forEach((entry, index) => {
+        const previous = entry.condition.value;
+        entry.condition.replaceChildren();
+        const always = el("option", t("Show for every response")); always.value = ""; entry.condition.append(always);
+        rows.slice(0, index).filter((item) => ["choice", "checkbox", "dropdown"].includes(item.type.value)).forEach((item) => {
+          const option = el("option", `${rows.indexOf(item) + 1}. ${item.label.value || "Question"}`); option.value = item.key; entry.condition.append(option);
+        });
+        entry.condition.value = previous;
+      });
+    };
     const refreshOrder = () => {
       questions.replaceChildren(...rows.map((entry, index) => {
         entry.heading.textContent = `Question ${index + 1}`;
@@ -202,21 +224,29 @@
         entry.down.disabled = index === rows.length - 1;
         return entry.row;
       }));
+      updateConditions();
     };
     function addQuestion(seed = {}) {
       if (rows.length >= 50) return notify("Maximum 50 questions");
       const row = el("fieldset", undefined, "questionnaire-question");
       const heading = el("legend");
       const label = input(); label.required = true; label.value = seed.label || "";
-      const type = select([["text", "Short answer"], ["paragraph", "Paragraph"], ["choice", "Multiple choice"], ["checkbox", "Checkboxes"], ["dropdown", "Dropdown"], ["email", "Email address"], ["tel", "Phone number"], ["number", "Number"], ["date", "Date"], ["time", "Time"], ["url", "Website URL"]]);
+      const type = select([["text", "Short answer"], ["paragraph", "Paragraph"], ["choice", "Multiple choice"], ["checkbox", "Checkboxes"], ["dropdown", "Dropdown"], ["email", "Email address"], ["tel", "Phone number"], ["number", "Number"], ["date", "Date"], ["time", "Time"], ["url", "Website URL"], ["file", t("File attachment")]]);
       type.value = seed.type || "text";
       const options = el("textarea"); options.rows = 3; options.maxLength = 4200;
       options.value = (seed.options || []).join("\n");
       const optionsField = field("Options (one per line)", options); optionsField.hidden = true;
-      type.onchange = () => { optionsField.hidden = !["choice", "checkbox", "dropdown"].includes(type.value); };
+      const maxFiles = input("number"), maxSize = input("number");
+      maxFiles.min = "1"; maxFiles.max = "5"; maxFiles.value = seed.maxFiles || "3";
+      maxSize.min = "1"; maxSize.max = "50"; maxSize.value = seed.maxSize || "20";
+      const fileSettings = el("div", undefined, "form-condition"); fileSettings.append(field("Maximum files", maxFiles), field("Maximum size per file (MiB)", maxSize));
+      type.onchange = () => { optionsField.hidden = !["choice", "checkbox", "dropdown"].includes(type.value); fileSettings.hidden = type.value !== "file"; updateConditions(); };
       type.onchange();
       const required = input("checkbox"); required.checked = seed.required !== false;
-      const data = { row, label, type, options, required, heading }; rows.push(data);
+      const condition = select([]), equals = input("text", 200);
+      const conditionFields = el("div", undefined, "form-condition"); conditionFields.append(field("Show when question number", condition), field("Equals this option", equals));
+      const data = { row, label, type, options, required, heading, condition, equals, maxFiles, maxSize, key: `question-${++modalSequence}` }; rows.push(data);
+      label.addEventListener("input", updateConditions);
       const move = (offset) => {
         const index = rows.indexOf(data), next = index + offset;
         if (next < 0 || next >= rows.length) return;
@@ -231,7 +261,7 @@
         toolButton("\u00d7", "Remove question", () => { rows.splice(rows.indexOf(data), 1); refreshOrder(); }));
       const questionHeading = el("div", undefined, "questionnaire-question-heading");
       questionHeading.append(field("Question", label), field("Answer type", type));
-      row.append(heading, questionHeading, optionsField, tools);
+      row.append(heading, questionHeading, optionsField, fileSettings, conditionFields, tools);
       refreshOrder();
     }
     addQuestion();
@@ -254,7 +284,7 @@
     form.onsubmit = async (event) => {
       event.preventDefault(); send.disabled = true;
       try {
-        await api("/api/questionnaires", { method: "POST", json: { kind: kind.value, title: title.value, description: description.value, scope: scope.value, target: target.value, questions: rows.map((row) => ({ label: row.label.value, type: row.type.value, required: row.required.checked, options: ["choice", "checkbox", "dropdown"].includes(row.type.value) ? row.options.value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean) : [] })) } });
+        await api("/api/questionnaires", { method: "POST", json: { kind: kind.value, title: title.value, description: description.value, scope: scope.value, target: target.value, closesAt: closesAt.value ? new Date(closesAt.value).toISOString() : "", allowEdit: allowEdit.checked, questions: rows.map((row) => ({ label: row.label.value, type: row.type.value, required: row.required.checked, maxFiles: Number(row.maxFiles.value), maxFileBytes: Number(row.maxSize.value) * 1024 * 1024, showWhen: row.condition.value ? { questionIndex: rows.findIndex((entry) => entry.key === row.condition.value), equals: row.equals.value } : undefined, options: ["choice", "checkbox", "dropdown"].includes(row.type.value) ? row.options.value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean) : [] })) } });
         close(); notify("Form sent"); await window.refreshQuestionnaires(true);
       } catch (error) { notify(error.message); } finally { send.disabled = false; }
     };
@@ -265,45 +295,108 @@
     const form = el("form", undefined, "questionnaire-editor");
     if (questionnaire.description) form.append(el("p", questionnaire.description));
     const controls = new Map();
-    questionnaire.questions.forEach((question, index) => {
+    const savedAnswers = questionnaire.ownDraft || questionnaire.ownResponse?.answers || {};
+    const visible = (question, answers) => !question.showWhen || (Array.isArray(answers[question.showWhen.questionId]) ? answers[question.showWhen.questionId].includes(question.showWhen.equals) : answers[question.showWhen.questionId] === question.showWhen.equals);
+    const collect = () => {
+      const answers = {};
+      for (const question of questionnaire.questions) {
+        if (!visible(question, answers)) continue;
+        const entry = controls.get(question.id), nodes = entry.nodes;
+        answers[question.id] = question.type === "file" ? entry.fileIds : question.type === "checkbox" ? nodes.filter((item) => item.checked).map((item) => item.value) : question.type === "choice" ? nodes.find((item) => item.checked)?.value || "" : nodes[0].value;
+      }
+      return answers;
+    };
+    const refreshVisibility = () => {
+      const answers = collect();
+      for (const question of questionnaire.questions) {
+        const entry = controls.get(question.id), shown = visible(question, answers);
+        entry.group.hidden = !shown;
+        entry.group.disabled = readonly || !shown;
+      }
+    };
+    for (const [index, question] of questionnaire.questions.entries()) {
       const group = el("fieldset", undefined, "questionnaire-question");
       group.append(el("legend", `${index + 1}. ${question.label}${question.required ? " *" : ""}`));
-      const saved = questionnaire.ownResponse?.answers[question.id];
-      const nodes = [];
-      if (["choice", "checkbox"].includes(question.type)) {
+      const saved = savedAnswers[question.id], nodes = [];
+      const entry = { group, nodes, fileIds: question.type === "file" && Array.isArray(saved) ? saved.slice() : [] };
+      if (question.type === "file") {
+        const picker = input("file"); picker.multiple = true; picker.accept = (question.accept || []).join(",");
+        picker.disabled = readonly;
+        const list = el("div", undefined, "school-file-list"), status = el("p", "", "panel-note");
+        const renderFiles = () => {
+          list.replaceChildren();
+          entry.fileIds.forEach((id, fileIndex) => {
+            const row = el("div"), link = el("a", `${t("File attachment")} ${fileIndex + 1}`);
+            link.href = `/api/files/${encodeURIComponent(id)}/download`; link.target = "_blank"; link.rel = "noopener";
+            row.append(link);
+            if (!readonly) row.append(button("Remove", () => { entry.fileIds = entry.fileIds.filter((value) => value !== id); renderFiles(); }));
+            list.append(row);
+          });
+        };
+        const uploadSelected = async (selected) => {
+          if (entry.fileIds.length + selected.length > question.maxFiles) return notify(`Maximum ${question.maxFiles} files`);
+          if (selected.some((file) => file.size > question.maxFileBytes || !(question.accept || []).includes("." + file.name.split(".").pop().toLowerCase()))) return notify("Check the accepted file types and size limit");
+          upload.disabled = true;
+          try {
+            for (const file of selected) {
+              const uploaded = await window.uploadResumableFile(file, "document", { private: true, schoolContext: `form:${questionnaire.id}`, onProgress: (loaded, total, saving) => { status.textContent = `${file.name}: ${saving ? t("Saving file") : Math.round(loaded / total * 100) + "%"}`; } });
+              entry.fileIds.push(uploaded.id); renderFiles();
+            }
+            picker.value = ""; status.textContent = t("Upload complete");
+          } catch (error) { status.textContent = error.message; }
+          finally { upload.disabled = false; }
+        };
+        const upload = button("Upload", () => uploadSelected([...picker.files]));
+        const camera = input("file"); camera.accept = "image/jpeg,image/png,image/webp"; camera.setAttribute("capture", "environment"); camera.hidden = true;
+        camera.addEventListener("change", () => { if (camera.files.length) void uploadSelected([...camera.files]); });
+        const takePhoto = button("Take photo", () => camera.click());
+        renderFiles();
+        group.append(el("p", `${question.maxFiles || 3} files · ${Math.round((question.maxFileBytes || 20971520) / 1048576)} MiB/file`, "panel-note"), list);
+        if (!readonly) {
+          group.append(picker, upload, status);
+          if ((question.accept || []).some((ext) => [".jpg", ".jpeg", ".png", ".webp"].includes(ext))) group.append(takePhoto, camera);
+        }
+        nodes.push(picker);
+      } else if (["choice", "checkbox"].includes(question.type)) {
         question.options.forEach((option) => {
           const control = input(question.type === "choice" ? "radio" : "checkbox");
           control.name = question.id; control.value = option;
           control.checked = Array.isArray(saved) ? saved.includes(option) : saved === option;
           control.disabled = readonly;
           if (question.type === "choice") control.required = question.required;
-          nodes.push(control); group.append(field(option, control));
+          control.addEventListener("change", refreshVisibility);
+          nodes.push(control); group.append(field(option, control, false));
         });
       } else {
-        const control = question.type === "dropdown" ? select([["", "Select an option"], ...question.options.map((option) => [option, option])]) : question.type === "paragraph" ? el("textarea") : input(["email", "tel", "number", "date", "time", "url"].includes(question.type) ? question.type : "text", 5000);
+        const control = question.type === "dropdown" ? select([["", t("Select an option")], ...question.options.map((option) => [option, option])]) : question.type === "paragraph" ? el("textarea") : input(["email", "tel", "number", "date", "time", "url"].includes(question.type) ? question.type : "text", 5000);
         if (question.type === "number") control.step = "any";
         if (question.type === "tel") control.pattern = "\\+?[0-9\\s.\\(\\)\\-]{5,40}";
         control.maxLength = 5000; control.required = question.required; control.disabled = readonly;
-        control.value = saved || "";
+        control.value = saved ?? "";
         control.setAttribute("aria-label", question.label);
+        control.addEventListener("change", refreshVisibility);
         nodes.push(control); group.append(control);
       }
-      controls.set(question.id, nodes); form.append(group);
-    });
+      controls.set(question.id, entry); form.append(group);
+    }
+    refreshVisibility();
     if (!readonly) {
-      const send = el("button", "Submit response", "primary-button"); send.type = "submit";
+      const send = el("button", t("Submit response"), "primary-button"); send.type = "submit";
       const footer = el("div", undefined, "questionnaire-footer");
-      footer.append(el("span", "* Required", "panel-note"), send);
+      footer.append(button("Save draft", async () => {
+        try { await api(`/api/questionnaires/${questionnaire.id}/drafts`, { method: "POST", json: { answers: collect() } }); notify(t("Draft saved")); }
+        catch (error) { notify(error.message); }
+      }), send);
       form.append(footer);
       form.onsubmit = async (event) => {
-        event.preventDefault(); const answers = {};
+        event.preventDefault(); const answers = collect();
         for (const question of questionnaire.questions) {
-          const nodes = controls.get(question.id);
-          answers[question.id] = question.type === "checkbox" ? nodes.filter((node) => node.checked).map((node) => node.value) : question.type === "choice" ? nodes.find((node) => node.checked)?.value || "" : nodes[0].value;
-          if (question.required && !answers[question.id].length) return notify(`Answer: ${question.label}`);
+          if (!visible(question, answers)) continue;
+          if (question.required && !answers[question.id]?.length) return notify(`Answer: ${question.label}`);
         }
         send.disabled = true;
-        try { await api(`/api/questionnaires/${questionnaire.id}/responses`, { method: "POST", json: { answers } }); close(); notify("Response submitted"); await window.refreshQuestionnaires(true); } catch (error) { notify(error.message); } finally { send.disabled = false; }
+        try { await api(`/api/questionnaires/${questionnaire.id}/responses`, { method: "POST", json: { answers } }); close(); notify("Response submitted"); await window.refreshQuestionnaires(true); }
+        catch (error) { notify(error.message); } finally { send.disabled = false; }
       };
     }
     dialog.append(form);
@@ -327,6 +420,12 @@
     content.setAttribute("role", "tabpanel");
     const tabButtons = [];
     const answerText = (value) => Array.isArray(value) ? value.join(", ") || "No answer" : String(value ?? "") || "No answer";
+    const answerNode = (question, value) => {
+      if (question.type !== "file" || !Array.isArray(value)) return el("p", answerText(value));
+      const files = el("div", undefined, "school-file-list");
+      value.forEach((id, index) => { const link = el("a", `${t("File attachment")} ${index + 1}`); link.href = `/api/files/${encodeURIComponent(id)}/download`; link.target = "_blank"; link.rel = "noopener"; files.append(link); });
+      return files;
+    };
     const renderSummary = () => {
       content.replaceChildren();
       const pending = el("details", undefined, "questionnaire-pending");
@@ -347,7 +446,7 @@
         } else {
           form.responses.forEach((response) => {
             const answer = el("div", undefined, "questionnaire-result-answer");
-            answer.append(el("strong", response.username), el("p", answerText(response.answers[question.id])));
+            answer.append(el("strong", response.username), answerNode(question, response.answers[question.id]));
             section.append(answer);
           });
         }
@@ -365,7 +464,7 @@
         answers.replaceChildren(el("p", `Submitted ${new Date(response.submittedAt).toLocaleString()}`, "panel-note"));
         form.questions.forEach((question, index) => {
           const section = el("section", undefined, "questionnaire-result-question");
-          section.append(el("h4", `${index + 1}. ${question.label}`), el("p", answerText(response.answers[question.id])));
+          section.append(el("h4", `${index + 1}. ${question.label}`), answerNode(question, response.answers[question.id]));
           answers.append(section);
         });
       };

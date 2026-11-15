@@ -1,0 +1,26 @@
+.school-workspace { margin: 18px 0; padding: 20px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
+.school-toolbar,.school-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.school-toolbar h3,.school-dialog h2 { margin: 0; font-size: 1.05rem; }
+.school-language { display: flex; align-items: center; gap: 8px; font-size: .85rem; }
+.school-language select { min-width: 120px; width: auto; }
+.school-section { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 14px; }
+.school-section[hidden] { display: none; }
+.school-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,280px),1fr)); gap: 12px; margin-top: 12px; }
+.school-card { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface, transparent); overflow-wrap: anywhere; }
+.school-card h4 { margin: 0 0 8px; font-size: 1rem; }
+.school-card p { margin: 8px 0; }
+.school-text { white-space: pre-wrap; }
+.school-date-past { display: block; font-size: .8rem; color: var(--danger); margin: 8px 0; }
+.school-file-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.school-file-list a { color: var(--accent, #186846); text-decoration: underline; }
+.school-dialog { width: min(680px,calc(100% - 28px)); max-height: 90dvh; padding: 24px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
+.school-dialog::backdrop { background: rgb(0 0 0 / .5); }
+.school-editor { display: grid; gap: 16px; margin-top: 20px; }
+.school-editor label { display: grid; gap: 6px; font-size: .9rem; }
+.school-editor input,.school-editor select,.school-editor textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+.school-editor button { justify-self: start; }
+.school-dialog .school-list { grid-template-columns: 1fr; }
+.form-condition { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.questionnaire-question[hidden] { display: none; }
+@media(max-width:600px) { .school-workspace,.school-dialog { padding: 14px; } .school-toolbar { align-items: flex-start; } .form-condition { grid-template-columns: 1fr; } }
+.form-condition[hidden] { display: none; }

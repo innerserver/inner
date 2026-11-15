@@ -871,6 +871,8 @@ function bindEvents() {
   if (els.friendSearchInput) {
     els.friendSearchInput.addEventListener("input", () => {
       state.friendSearch = els.friendSearchInput.value;
+      state.friendSearchGeneration = (state.friendSearchGeneration || 0) + 1;
+      state.friendSearchController?.abort();
       state.friendAlphaFilter = "";
       window.clearTimeout(state.friendSearchTimer);
       state.friendSearchTimer = window.setTimeout(loadFriendCandidates, 220);
@@ -2260,26 +2262,11 @@ async function uploadChatAttachment(file) {
 }
 
 async function uploadOneFile(file, category, options = {}) {
-  if (state.uploadConfig && state.uploadConfig.directCloudinary) {
-    return uploadOneFileDirectCloudinary(file, category, options);
-  }
-  const response = await fetch("/api/upload", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: {
-      "x-file-name": encodeURIComponent(file.name),
-      "x-file-type": file.type || "application/octet-stream",
-      "x-file-category": category || "document",
-      "x-file-private": options.private ? "1" : "0",
-      "x-file-release-room": els.fileReleaseRoom ? els.fileReleaseRoom.value : "",
-      "x-file-release-at": releaseAtHeaderValue(),
-      "X-CSRF-Token": state.csrfToken || "",
-    },
-    body: file,
+  return window.uploadResumableFile(file, category, {
+    releaseRoom: els.fileReleaseRoom ? els.fileReleaseRoom.value : "",
+    releaseAt: releaseAtHeaderValue(),
+    ...options,
   });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "Attachment upload failed");
-  return data.file;
 }
 
 async function uploadOneFileDirectCloudinary(file, category, options = {}) {
@@ -2713,13 +2700,18 @@ async function sendAnnouncement(event) {
       json: {
         title: els.announcementTitle.value,
         message: els.announcementMessage.value,
+        requireAcknowledgement: document.getElementById("announcementAcknowledgement").checked,
         scope: els.announcementScope.value,
         roomId: els.announcementRoom.value,
+        recipientUsernames: window.selectedAnnouncementRecipients?.() || [],
       },
     });
     state.announcements = [data.announcement, ...state.announcements.filter((entry) => entry.id !== data.announcement.id)].slice(0, 50);
     els.announcementTitle.value = "";
     els.announcementMessage.value = "";
+    document.getElementById("announcementAcknowledgement").checked = false;
+    window.clearAnnouncementRecipients?.();
+    window.refreshSchool?.(true);
     renderDashboard();
     renderAnnouncements();
     notify("Announcement sent");
@@ -3901,6 +3893,8 @@ function handleSocketMessage(message) {
     return;
   }
 
+  if (message.type === "school:update") { window.refreshSchool?.(true); return; }
+
   if (message.type === "dm:new") {
     const incoming = state.user && message.dm && !message.dm.secret && message.dm.from !== state.user.username;
     addDm(message.dm);
@@ -4079,6 +4073,7 @@ function handleSocketMessage(message) {
     state.announcements = message.announcements || [];
     renderDashboard();
     renderAnnouncements();
+    window.refreshSchool?.(true);
     if (state.announcements[0] && state.announcements[0].id !== previousTop) {
       showSystemAlert("Inner announcement", state.announcements[0].title || "New announcement", "inner-announcement", () => showView("dashboard"));
     }
@@ -5435,6 +5430,7 @@ function renderDashboard() {
   renderDashboardReportAlerts();
   renderDashboardProfileAlerts();
   window.refreshQuestionnaires?.();
+  window.refreshSchool?.();
   renderOnboarding();
   els.dashboardGrid.replaceChildren(
     metricCard("Messages", state.messages.length, "Persistent room history"),
@@ -5791,6 +5787,7 @@ function renderAnnouncements() {
 
   const roomMode = els.announcementScope.value === "room";
   els.announcementRoomLabel.classList.toggle("hidden", !roomMode);
+  const selectedAnnouncementRoom = els.announcementRoom.value;
   els.announcementRoom.replaceChildren(
     ...state.rooms.map((room) => {
       const option = document.createElement("option");
@@ -5799,7 +5796,9 @@ function renderAnnouncements() {
       return option;
     })
   );
-  if (!els.announcementRoom.value && state.rooms[0]) els.announcementRoom.value = state.rooms[0].id;
+  if (state.rooms.some((room) => room.id === selectedAnnouncementRoom)) els.announcementRoom.value = selectedAnnouncementRoom;
+  else if (state.rooms[0]) els.announcementRoom.value = state.rooms[0].id;
+  window.refreshAnnouncementComposer?.();
 
   if (!els.announcementList) return;
   els.announcementList.replaceChildren();
@@ -5818,7 +5817,7 @@ function renderAnnouncements() {
 }
 
 function announcementCard(announcement) {
-  return adminCard(announcement.title || "Announcement", announcement.scope === "room" ? `Room: ${announcement.roomName || announcement.roomId}` : "Whole platform", [
+  return adminCard(announcement.title || "Announcement", announcement.scope === "people" ? "Specific people" : announcement.scope === "room" ? `Room: ${announcement.roomName || announcement.roomId}` : "Whole school", [
     announcement.message || "",
     `By ${announcement.createdBy || "admin"} at ${formatDate(announcement.createdAt)}`,
   ]);
@@ -6370,91 +6369,7 @@ function updateJumpButton(container, button) {
 }
 
 function renderFriends() {
-  if (!els.friendList) return;
-  const friendNames = new Set((state.friends.friends || []).map((entry) => entry.username));
-  const pendingNames = new Set([
-    ...(state.friends.incoming || []).map((entry) => entry.from),
-    ...(state.friends.outgoing || []).map((entry) => entry.to),
-  ].filter(Boolean));
-  const candidates = friendCandidatePeople().filter((person) => !friendNames.has(person.username) && !pendingNames.has(person.username));
-  const search = String(state.friendSearch || "").trim();
-  const grade = String(state.friendGradeFilter || "").trim();
-  const emptyCandidateLabel = search || grade ? "No new matches found" : "No addable people yet";
-  els.friendUserSelect.replaceChildren(
-    optionElement("", candidates.length ? "Choose a person" : emptyCandidateLabel),
-    ...candidates
-      .map((person) => {
-        const option = document.createElement("option");
-        option.value = person.username;
-        option.textContent = `${person.displayName || person.username} (${friendGradeLabel(person)})`;
-        return option;
-      })
-  );
-  if (els.sendFriendRequestButton) {
-    els.sendFriendRequestButton.disabled = !featureAvailable("friends") || !candidates.length;
-  }
-  if (els.friendState) {
-    const letter = String(state.friendAlphaFilter || "").trim();
-    els.friendState.textContent = search
-      ? "Exact username search can find people outside your grade."
-      : grade
-        ? `Showing grade ${grade} candidates you are allowed to add.`
-        : letter
-          ? `Showing friends starting with ${letter}.`
-          : "Choose a letter to browse friends, or search exact username for anyone else.";
-  }
-
-  renderFriendAlphabet();
-  renderFriendCandidates(candidates, search, grade);
-  els.friendList.replaceChildren();
-  const visibleFriends = filteredFriendsForList();
-  if (!(state.friends.friends || []).length) {
-    els.friendList.append(emptyBlock("No friends yet"));
-  } else if (!visibleFriends.length) {
-    els.friendList.append(emptyBlock(state.friendAlphaFilter || state.friendSearch ? "No friends match this filter" : "Choose a letter above to show friends"));
-  } else {
-    visibleFriends.forEach((friend) => {
-      const profile = state.profiles[friend.username] || {};
-      const card = adminCard(profile.displayName || friend.username, profile.status || "offline", [
-        profile.customStatus || "",
-        `Friends since ${formatDate(friend.createdAt)}`,
-      ].filter(Boolean));
-      const actions = document.createElement("div");
-      actions.className = "account-actions";
-      actions.append(accountButton("DM", () => {
-        state.selectedDmUser = friend.username;
-        showView("dms");
-        renderDms();
-      }));
-      actions.append(accountButton("Remove", () => removeFriend(friend.username)));
-      card.append(actions);
-      els.friendList.append(card);
-    });
-  }
-
-  els.friendRequestList.replaceChildren();
-  const incoming = state.friends.incoming || [];
-  const outgoing = state.friends.outgoing || [];
-  const pending = [
-    ...incoming.map((request) => ({ ...request, direction: "incoming", name: request.from })),
-    ...outgoing.map((request) => ({ ...request, direction: "outgoing", name: request.to })),
-  ].sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), undefined, { sensitivity: "base" }));
-  if (!pending.length) {
-    els.friendRequestList.append(emptyBlock("No pending requests"));
-  }
-  pending.forEach((request) => {
-    if (request.direction === "outgoing") {
-      els.friendRequestList.append(adminCard(request.name, "Outgoing", [formatDate(request.createdAt)]));
-      return;
-    }
-    const card = adminCard(request.name, "Incoming", [formatDate(request.createdAt)]);
-    const actions = document.createElement("div");
-    actions.className = "account-actions";
-    actions.append(accountButton("Accept", () => respondFriendRequest(request.id, "accept")));
-    actions.append(accountButton("Decline", () => respondFriendRequest(request.id, "decline")));
-    card.append(actions);
-    els.friendRequestList.append(card);
-  });
+  window.renderConnections?.();
 }
 
 function renderFriendCandidates(candidates, search, grade) {
@@ -6545,18 +6460,23 @@ function friendCandidatePeople() {
 }
 
 async function loadFriendCandidates(options = {}) {
-  if (state.friendCandidatesLoading) return;
-  const query = String(state.friendSearch || "").trim() || (state.friendGradeFilter ? `grade:${state.friendGradeFilter}` : "");
+  state.friendSearchController?.abort();
+  const controller = new AbortController();
+  state.friendSearchController = controller;
+  const generation = state.friendSearchGeneration = (state.friendSearchGeneration || 0) + 1;
+  const identity = `${state.user?.username}:${state.csrfToken}`;
+  const query = String(state.friendSearch || "").trim().replace(/^@/, "") || (state.friendGradeFilter ? `grade:${state.friendGradeFilter}` : "");
   state.friendCandidatesLoading = true;
   try {
-    const data = await api(`/api/friends/candidates?q=${encodeURIComponent(query)}`);
+    const data = await api(`/api/friends/candidates?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+    if (generation !== state.friendSearchGeneration || identity !== `${state.user?.username}:${state.csrfToken}`) return;
     state.friendCandidates = data.people || [];
     state.friendCandidatesLoaded = true;
     renderFriends();
   } catch (error) {
-    if (!options.silent) notify(error.message || "Could not search friends");
+    if (error.name !== "AbortError" && generation === state.friendSearchGeneration && !options.silent) notify(error.message || "Could not search friends");
   } finally {
-    state.friendCandidatesLoading = false;
+    if (generation === state.friendSearchGeneration) { state.friendCandidatesLoading = false; renderFriends(); }
   }
 }
 
@@ -10933,13 +10853,10 @@ async function sendFriendRequest(event) {
 async function sendFriendRequestTo(to) {
   if (!to) return;
   try {
-    const data = await api("/api/friends/request", { method: "POST", json: { to, search: els.friendSearchInput ? els.friendSearchInput.value : "" } });
+    const data = await api("/api/friends/request", { method: "POST", json: { to, search: String(els.friendSearchInput?.value || "").trim().replace(/^@/, "") } });
     state.friends = data.friends;
-    state.friendSearch = "";
-    state.friendCandidates = state.people || [];
-    state.friendAlphaFilter = "";
-    if (els.friendSearchInput) els.friendSearchInput.value = "";
     renderFriends();
+    void loadFriendCandidates({ silent: true });
     notify("Friend request sent");
   } catch (error) {
     notify(error.message);
@@ -11124,6 +11041,7 @@ async function api(path, options = {}) {
   const init = {
     method,
     credentials: "same-origin",
+    signal: options.signal,
     headers: options.headers || {},
   };
   if (!["GET", "HEAD", "OPTIONS"].includes(method) && state.csrfToken) {
@@ -11139,6 +11057,7 @@ async function api(path, options = {}) {
   try {
     response = await fetch(path, init);
   } catch (error) {
+    if (error.name === "AbortError") throw error;
     const startupError = new Error(
       "Inner server is still starting or is stopped. Keep this window open for a moment, then try again."
     );

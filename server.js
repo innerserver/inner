@@ -90,6 +90,8 @@ const DUPLICATE_SIGNUP_IP_ALLOWLIST = new Set(
 
 const FILES = {
   users: path.join(DATA_DIR, "users.json"),
+  passkeys: path.join(DATA_DIR, "passkeys.json"),
+  passkeyPreferences: path.join(DATA_DIR, "passkey-preferences.json"),
   rooms: path.join(DATA_DIR, "rooms.json"),
   messages: path.join(DATA_DIR, "messages.json"),
   secretMessages: path.join(DATA_DIR, "secret-messages.json"),
@@ -492,6 +494,8 @@ async function ensureStorage() {
       createdBy: "system",
     },
   ]);
+  await ensureJson(FILES.passkeys, []);
+  await ensureJson(FILES.passkeyPreferences, {});
   await ensureJson(FILES.messages, []);
   await ensureJson(FILES.secretMessages, []);
   await ensureJson(FILES.dms, []);
@@ -982,65 +986,7 @@ async function route(req, res) {
   text(res, 404, "Not found");
 }
 
-async function routeApi(req, res, requestUrl) {
-  const pathname = requestUrl.pathname;
-
-  if (requiresCsrfProtection(req) && (
-    req.headers["sec-fetch-site"] === "cross-site" ||
-    (req.headers.origin && !isSameOriginRequest(req))
-  )) return json(res, 403, { error: "Cross-site request blocked" });
-
-  // Count requests before body parsing or password hashing, including unknown accounts.
-  if (req.method === "POST" && ["/api/login", "/api/signup", "/api/account-requests", "/api/password-reset/request", "/api/password-reset/complete", "/api/owner-failsafe/unlock"].includes(pathname)) {
-    if (!consumeSecurityRate(`auth:${getClientIp(req)}`, AUTH_IP_REQUEST_LIMIT, 60000)) {
-      res.setHeader("Retry-After", "60");
-      return json(res, 429, { error: "Too many account requests. Please try again later." });
-    }
-  }
-
-  const csrfSessionUser = requiresCsrfProtection(req) ? getSessionUser(req) : null;
-  if (csrfSessionUser && !isSameOriginRequest(req)) {
-    return json(res, 403, { error: "Cross-site request blocked" });
-  }
-  if (csrfSessionUser && !isValidCsrfRequest(req)) {
-    return json(res, 403, { error: "Invalid security token" });
-  }
-
-  if (req.method === "POST" && pathname === "/api/login") {
-    const body = await readJsonBody(req);
-    const loginLimit = checkLoginRate(req, body.username);
-    if (loginLimit.retryAfterSeconds > 0) {
-      res.setHeader("Retry-After", String(loginLimit.retryAfterSeconds));
-      return json(res, 429, { error: "Too many sign-in attempts. Please try again later." });
-    }
-    const users = await readJson(FILES.users, []);
-    if (clearExpiredUserRestrictions(users)) await writeJson(FILES.users, users);
-    const user = users.find((entry) => entry.username.toLowerCase() === String(body.username || "").toLowerCase());
-
-    if (!user || !(await verifyPasswordAsync(String(body.password || ""), user.passwordHash))) {
-      registerLoginFailure(req, body.username);
-      const requestLogin = await requestLoginStatus(String(body.username || ""), String(body.password || ""));
-      if (requestLogin) {
-        return json(res, 403, { error: requestLogin.message, requestStatus: requestLogin.status });
-      }
-      await addSystemLog("login.failed", String(body.username || "unknown").slice(0, 80), { reason: "Invalid username or password" }, req);
-      if (user && String(user.email || "").includes("@")) {
-        await sendDirectEmail([user.email], "Connectifi failed login attempt", [
-          `Hi ${user.username},`,
-          "",
-          "Someone tried to sign in to your Connectifi account and the password was incorrect.",
-          `IP: ${getClientIp(req) || "unknown"}`,
-          `Device: ${deviceSignature(req)}`,
-          `Time: ${new Date().toISOString()}`,
-          "",
-          "If this was you, you can ignore this. If it was not you, reset your password or contact an admin.",
-        ].join("\n"), { route: "loginFailures", contactType: "support", fromContact: true });
-      }
-      return json(res, 401, { error: "Invalid username or password" });
-    }
-
-    clearLoginFailures(req, body.username);
-
+async function completeLogin(users, user, req, res, authenticationMethod = "password") {
     const requestBlock = await requestLoginBlockForExistingUser(user);
     if (requestBlock) {
       await addSystemLog("login.blocked", user.username, { reason: "Account request not approved", requestStatus: requestBlock.status }, req);
@@ -1072,6 +1018,7 @@ async function routeApi(req, res, requestUrl) {
     const accountSessions = [...sessions.entries()].filter(([, entry]) => entry.username === user.username);
     while (accountSessions.length >= 10) revokeSession(accountSessions.shift()[0]);
     if (sessions.size >= WS_MAX_CLIENTS * 20) return json(res, 503, { error: "Session capacity reached. Please try again later." });
+    const passkeyPrompt = authenticationMethod === "password" ? await getPasskeyHandler().recordPasswordLogin(user) : false;
     const token = crypto.randomBytes(32).toString("hex");
     sessions.set(token, {
       username: user.username,
@@ -1084,6 +1031,7 @@ async function routeApi(req, res, requestUrl) {
       grade: normalizeGrade(user.grade || ""),
       contact: user.contact || "",
       createdAt: Date.now(),
+      passwordAuthenticatedAt: authenticationMethod === "password" ? Date.now() : 0,
       persistent,
       expiresAt: Date.now() + (persistent ? SESSION_PERSISTENT_MS : SESSION_IDLE_MS),
     });
@@ -1154,11 +1102,97 @@ async function routeApi(req, res, requestUrl) {
     }
 
     res.setHeader("Set-Cookie", sessionCookie(token, req, persistent ? Math.floor(SESSION_PERSISTENT_MS / 1000) : null));
-    json(res, 200, { user: safeUser(user), csrfToken: sessionCsrfToken(token) });
+    json(res, 200, { user: safeUser(user), csrfToken: sessionCsrfToken(token), passkeyPrompt });
     void addSystemLog("login.success", user.username, { role: normalizeRole(user.role), persistent, persistentReason: persistentLoginReason(user, settings, rooms) }, req).catch((error) => {
       console.error("Login audit log failed:", error.message || error);
     });
     return;
+
+}
+
+let passkeyHandler;
+function getPasskeyHandler() {
+  passkeyHandler ||= require("./lib/passkeys")({
+    origin: () => firstEnvValue("INNER_PASSKEY_ORIGIN", "INNER_PUBLIC_URL", "PUBLIC_URL") || (isProductionRuntime() ? PUBLIC_HOST_FALLBACK : ""),
+    secure: isHttpsRequest, sameOrigin: isSameOriginRequest, cookie: getCookie,
+    sessionToken: (req) => getCookie(req, SESSION_COOKIE), user: getSessionUser,
+    recentPassword: (req) => (sessions.get(getCookie(req, SESSION_COOKIE))?.passwordAuthenticatedAt || 0) > Date.now() - 5 * 60 * 1000,
+    users: () => readJson(FILES.users, []), read: () => readJson(FILES.passkeys, []),
+    write: (keys) => writeJson(FILES.passkeys, keys),
+    readPreferences: () => readJson(FILES.passkeyPreferences, {}),
+    writePreferences: (preferences) => writeJson(FILES.passkeyPreferences, preferences),
+    rate: consumeSecurityRate, ip: getClientIp, password: verifyPasswordAsync,
+    banned: isUserBanned, body: readJsonBody, json, log: addSystemLog, login: completeLogin,
+  });
+  return passkeyHandler;
+}
+async function handlePasskeys(req, res, pathname) {
+  if (!pathname.startsWith("/api/passkeys")) return false;
+  return getPasskeyHandler()(req, res, pathname);
+}
+
+async function routeApi(req, res, requestUrl) {
+  const pathname = requestUrl.pathname;
+
+  if (requiresCsrfProtection(req) && (
+    req.headers["sec-fetch-site"] === "cross-site" ||
+    (req.headers.origin && !isSameOriginRequest(req))
+  )) return json(res, 403, { error: "Cross-site request blocked" });
+
+  // Count requests before body parsing or password hashing, including unknown accounts.
+  if (req.method === "POST" && ["/api/login", "/api/signup", "/api/account-requests", "/api/password-reset/request", "/api/password-reset/complete", "/api/owner-failsafe/unlock"].includes(pathname)) {
+    if (!consumeSecurityRate(`auth:${getClientIp(req)}`, AUTH_IP_REQUEST_LIMIT, 60000)) {
+      res.setHeader("Retry-After", "60");
+      return json(res, 429, { error: "Too many account requests. Please try again later." });
+    }
+  }
+
+  const csrfSessionUser = requiresCsrfProtection(req) ? getSessionUser(req) : null;
+  if (csrfSessionUser && !isSameOriginRequest(req)) {
+    return json(res, 403, { error: "Cross-site request blocked" });
+  }
+  if (csrfSessionUser && !isValidCsrfRequest(req)) {
+    return json(res, 403, { error: "Invalid security token" });
+  }
+
+  if (await handlePasskeys(req, res, pathname)) return;
+
+  if (req.method === "POST" && pathname === "/api/login") {
+    const body = await readJsonBody(req);
+    const loginLimit = checkLoginRate(req, body.username);
+    if (loginLimit.retryAfterSeconds > 0) {
+      res.setHeader("Retry-After", String(loginLimit.retryAfterSeconds));
+      return json(res, 429, { error: "Too many sign-in attempts. Please try again later." });
+    }
+    const users = await readJson(FILES.users, []);
+    if (clearExpiredUserRestrictions(users)) await writeJson(FILES.users, users);
+    const user = users.find((entry) => entry.username.toLowerCase() === String(body.username || "").toLowerCase());
+
+    if (!user || !(await verifyPasswordAsync(String(body.password || ""), user.passwordHash))) {
+      registerLoginFailure(req, body.username);
+      const requestLogin = await requestLoginStatus(String(body.username || ""), String(body.password || ""));
+      if (requestLogin) {
+        return json(res, 403, { error: requestLogin.message, requestStatus: requestLogin.status });
+      }
+      await addSystemLog("login.failed", String(body.username || "unknown").slice(0, 80), { reason: "Invalid username or password" }, req);
+      if (user && String(user.email || "").includes("@")) {
+        await sendDirectEmail([user.email], "Connectifi failed login attempt", [
+          `Hi ${user.username},`,
+          "",
+          "Someone tried to sign in to your Connectifi account and the password was incorrect.",
+          `IP: ${getClientIp(req) || "unknown"}`,
+          `Device: ${deviceSignature(req)}`,
+          `Time: ${new Date().toISOString()}`,
+          "",
+          "If this was you, you can ignore this. If it was not you, reset your password or contact an admin.",
+        ].join("\n"), { route: "loginFailures", contactType: "support", fromContact: true });
+      }
+      return json(res, 401, { error: "Invalid username or password" });
+    }
+
+    clearLoginFailures(req, body.username);
+
+    return completeLogin(users, user, req, res);
   }
 
   if (req.method === "POST" && pathname === "/api/logout") {
@@ -10748,6 +10782,8 @@ async function createBackup(username) {
       plugins,
       automod,
       questionnaires: await readJson(FILES.questionnaires, []),
+      passkeys: await readJson(FILES.passkeys, []),
+      passkeyPreferences: await readJson(FILES.passkeyPreferences, {}),
       school: await readJson(FILES.school, {}),
       formDrafts: await readJson(FILES.formDrafts, []),
       uploadIncidents: await readJson(FILES.uploadIncidents, []),
@@ -10800,6 +10836,8 @@ async function restoreBackup(fileName, username) {
     ["aiRequests", FILES.aiRequests, []],
     ["innerDocs", FILES.innerDocs, []],
     ["users", FILES.users, []],
+    ["passkeys", FILES.passkeys, []],
+    ["passkeyPreferences", FILES.passkeyPreferences, {}],
     ["vpn", FILES.vpn, {}],
     ["profiles", FILES.profiles, {}],
     ["friends", FILES.friends, { requests: [], friendships: [] }],

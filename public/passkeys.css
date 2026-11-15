@@ -1,0 +1,8 @@
+.passkey-setup-dialog { width: min(520px, calc(100% - 28px)); }
+.passkey-setup-dialog h2 { font-size: 1.35rem; }
+.passkey-setup-dialog p { line-height: 1.55; }
+.passkey-setup-dialog input { width: 100%; min-width: 0; }
+.passkey-reminder-footer { display: flex; justify-content: flex-end; padding-top: 12px; }
+.passkey-reminder-dismiss { min-height: 32px; padding: 5px 0; border: 0; background: transparent; color: var(--muted, var(--ink)); font: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.passkey-reminder-dismiss:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+@media (max-width: 600px) { .passkey-reminder-dismiss { min-height: 44px; } }

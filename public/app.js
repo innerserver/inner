@@ -1175,7 +1175,7 @@ async function handleLogin(event) {
 
   try {
     if (submitButton) submitButton.disabled = true;
-    await api("/api/login", {
+    const loginResult = await api("/api/login", {
       method: "POST",
       json: {
         username: els.loginUsername.value.trim(),
@@ -1187,7 +1187,9 @@ async function handleLogin(event) {
     // existing state request hydrates the workspace immediately afterwards.
     showApp();
     if (els.connectionStatus) els.connectionStatus.textContent = "Loading workspace";
-    void loadState().catch((error) => showLogin(error.message || "Could not load workspace"));
+    void loadState().then(() => {
+      if (loginResult.passkeyPrompt) window.ConnectifiPasskeys?.showSetupPrompt();
+    }).catch((error) => showLogin(error.message || "Could not load workspace"));
   } catch (error) {
     els.loginError.textContent = error.message;
   } finally {

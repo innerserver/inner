@@ -20,6 +20,7 @@ const createUploadAlerts = require("./lib/upload-alerts");
 const { announcementAudience } = require("./lib/announcements");
 const { gradeYear, sameGrade, gradeSelectionMatches } = require("./public/grade-utils");
 const { synchronizeGradeRooms } = require("./lib/grade-rooms");
+const { buildChatExport } = require("./lib/chat-export");
 const { buildFormQuestions, formQuestionVisible } = require("./lib/forms");
 
 const websocketServer = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024, perMessageDeflate: false });
@@ -1167,9 +1168,8 @@ function getGradeProgression() {
       await writeJson(FILES.rooms, rooms); broadcastRoomsUpdate(rooms);
     },
     chats: async (user) => {
-      const [rooms, messages, dms] = await Promise.all([readJson(FILES.rooms, []), readJson(FILES.messages, []), readJson(FILES.dms, [])]);
-      const visible = new Set(rooms.filter((room) => canAccessRoom(room, user)).map((room) => room.id));
-      return { rooms: rooms.filter((room) => visible.has(room.id)).map((room) => ({id:room.id,name:room.name})), messages: messages.filter((message) => visible.has(message.roomId || "main")).map((message) => safeRoomMessage(message,user)), dms: dms.filter((dm) => (dm.participants || []).includes(user.username)).map((dm) => safeDm(dm,user)), note: "Includes accessible stored room messages and your DMs. Attachment links are references, not file bytes. Deleted or expired history is unavailable." };
+      const [rooms, messages, dms, groups] = await Promise.all([readJson(FILES.rooms, []), readJson(FILES.messages, []), readJson(FILES.dms, []), readJson(FILES.dmGroups, [])]);
+      return buildChatExport({ user, rooms, messages, dms, groups }, { canAccessRoom, safeRoomMessage, safeDm, sanitizeDmGroup });
     },
   });
   return gradeProgression;
@@ -1179,7 +1179,6 @@ function syncPromotedStudents(students) {
     const [users, rooms, profiles] = await Promise.all([readJson(FILES.users, []), readJson(FILES.rooms, []), readJson(FILES.profiles, {})]);
     const moved = new Map(students.map((student) => [student.username, student]));
     synchronizeGradeRooms(rooms, users, { classRoomGrade, canModerate, sanitizeRoom });
-    for (const room of rooms) if (classRoomGrade(room)) room.allowedUsers = users.filter((user) => !canModerate(user) && gradeSelectionMatches(classRoomGrade(room), user.grade)).map((user) => user.username).sort();
     for (const student of students) if (profiles[student.username]) profiles[student.username].grade = student.grade;
     await writeJson(FILES.rooms, rooms); await writeJson(FILES.profiles, profiles);
     for (const session of sessions.values()) {
@@ -6778,27 +6777,17 @@ async function syncClassRoomNow(user) {
   const grade = normalizeGrade(user.grade);
   const users = await readJson(FILES.users, []);
   const currentUsers = users.filter((entry) => entry.username !== user.username).concat(user);
-  const shared = synchronizeGradeRooms(rooms, currentUsers, { classRoomGrade, canModerate, sanitizeRoom });
   const destination = /^(6|7|8|9|10|11|12)$/.test(gradeYear(grade)) ? gradeYear(grade) : grade;
   let room = destination && rooms.find((entry) => classRoomGrade(entry) === destination);
-  let changed = shared.changed;
-  if (grade && !room && !canModerate(user)) {
+  let changed = false;
+  if (grade && !room && !canModerate(user) && !/^(6|7|8|9|10|11|12)$/.test(destination)) {
     room = sanitizeRoom({ id: crypto.randomUUID(), name: `Class ${grade}`, classGrade: grade, private: true, category: "Classes", createdBy: "system", createdAt: new Date().toISOString() });
     rooms.push(room);
     changed = true;
   }
-  for (const entry of rooms) {
-    const entryGrade = classRoomGrade(entry);
-    if (!entryGrade) continue;
-    const allowed = normalizeUsernameList(entry.allowedUsers);
-    const next = allowed.filter((name) => name !== user.username);
-    if (gradeSelectionMatches(entryGrade, grade) && !canModerate(user)) next.push(user.username);
-    next.sort();
-    if (JSON.stringify(allowed) !== JSON.stringify(next)) {
-      entry.allowedUsers = next;
-      changed = true;
-    }
-  }
+  const synchronized = synchronizeGradeRooms(rooms, currentUsers, { classRoomGrade, canModerate, sanitizeRoom });
+  changed = changed || synchronized.changed;
+  room = destination && rooms.find((entry) => classRoomGrade(entry) === destination);
   for (const session of sessions.values()) if (session.username === user.username) session.grade = grade;
   for (const client of wsClients.values()) if (client.username === user.username) client.grade = grade;
   for (const client of httpRealtimeClients.values()) if (client.username === user.username) client.grade = grade;

@@ -1,4 +1,5 @@
 const state = {
+  connectionStatus: "not-live",
   user: null,
   csrfToken: "",
   settings: { serverEnabled: true, roomName: "Connectifi" },
@@ -1185,7 +1186,7 @@ async function handleLogin(event) {
     // Let the user enter the app as soon as authentication succeeds; the
     // existing state request hydrates the workspace immediately afterwards.
     showApp();
-    if (els.connectionStatus) els.connectionStatus.textContent = "Loading workspace";
+    setConnection("Not live");
     void loadState().then(() => {
       if (loginResult.passkeyPrompt) window.ConnectifiPasskeys?.showSetupPrompt();
     }).catch((error) => showLogin(error.message || "Could not load workspace"));
@@ -5392,16 +5393,8 @@ function renderCornerAd() {
 }
 
 function renderShell() {
-  const enabled = Boolean(state.settings.serverEnabled);
-  const custom = state.settings.customizations || {};
   els.roomName.textContent = (state.settings.customizations && state.settings.customizations.appName) || state.settings.roomName || "Connectifi";
-  els.serverPill.textContent = enabled ? (custom.serverOnLabel || "Server on") : (custom.serverOffLabel || "Server off");
-  els.serverPill.classList.toggle("on", enabled);
-  els.serverPill.classList.toggle("off", !enabled);
-  if (els.buildBadge) {
-    els.buildBadge.textContent = custom.versionLabel || "";
-    els.buildBadge.classList.toggle("hidden", !custom.versionLabel);
-  }
+  renderConnectionStatus();
   els.currentUser.textContent = state.user ? `${state.user.username} (${state.user.role})` : "-";
   els.messageCount.textContent = String(state.messages.length);
   els.fileCount.textContent = String(state.files.length);
@@ -6709,10 +6702,7 @@ function applyCustomizations() {
   const appName = custom.appName || state.settings.roomName || "Connectifi";
   if (els.roomName) els.roomName.textContent = appName;
   document.title = appName;
-  if (els.buildBadge) {
-    els.buildBadge.textContent = custom.versionLabel || "";
-    els.buildBadge.classList.toggle("hidden", !custom.versionLabel);
-  }
+  renderConnectionStatus();
   if (els.siteNotice) {
     els.siteNotice.textContent = custom.notice || "";
     els.siteNotice.classList.toggle("hidden", !custom.notice);
@@ -11087,18 +11077,20 @@ function canUseModeratorCapability(capability) {
 }
 
 function setConnection(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  state.connectionStatus = normalized === "signed out" ? "signed-out" : normalized === "live" ? "live" : "not-live";
+  renderConnectionStatus();
+}
+
+function renderConnectionStatus() {
   if (!els.connectionStatus) return;
   const custom = state.settings && state.settings.customizations ? state.settings.customizations : {};
-  const normalized = String(value || "").toLowerCase();
-  if (normalized.includes("signed out")) {
-    els.connectionStatus.textContent = custom.disconnectedLabel || "Signed out";
-    return;
-  }
-  if ((normalized.includes("live") || normalized.includes("connected") || normalized.includes("online")) && !normalized.includes("offline") && !normalized.includes("not")) {
-    els.connectionStatus.textContent = custom.connectedLabel || "Live";
-    return;
-  }
-  els.connectionStatus.textContent = custom.disconnectedLabel || "Not live";
+  els.connectionStatus.textContent = state.connectionStatus === "live"
+    ? custom.connectedLabel || "Live"
+    : custom.disconnectedLabel || (state.connectionStatus === "signed-out" ? "Signed out" : "Not live");
+  // Preserve the existing hidden server/build indicators without a page-wide observer.
+  els.serverPill?.classList.add("hidden");
+  els.buildBadge?.classList.add("hidden");
 }
 
 function notify(message) {

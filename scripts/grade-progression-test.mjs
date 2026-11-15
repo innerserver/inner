@@ -59,6 +59,49 @@ test('chat export includes only accessible messages and participating DMs',async
  assert.deepEqual(result.data.messages.map(message=>message.id),['public']);assert.deepEqual(result.data.dms.map(dm=>dm.id),['mine']);
  assert.equal(result.data.messages[0].sourceIp,undefined);
 });
+
+test('graduate export includes current groups and personal DMs across grades, excluding other or former groups',async()=>{
+ const groups=[{id:'joined',name:'My group',participants:['graduate','student0']},{id:'other-group',name:'Another grade group',participants:['student0','older']}];
+ await writeFile(app.FILES.dmGroups,JSON.stringify(groups));
+ await writeFile(app.FILES.rooms,JSON.stringify([{id:'my-room',name:'Joined room',private:true,allowedUsers:['graduate']},{id:'grade-8',name:'Grade 8',classGrade:'8',private:true,allowedUsers:['student0']} ]));
+ await writeFile(app.FILES.messages,JSON.stringify([{id:'shared',roomId:'my-room',user:'student0',text:'Room history'}, {id:'wrong-grade',roomId:'grade-8',user:'student0',text:'Grade 8 private history'}]));
+ await writeFile(app.FILES.dms,JSON.stringify([
+  {id:'personal',participants:['graduate','student0'],text:'Across grades'},
+  {id:'joined-message',groupId:'joined',participants:['graduate','student0'],text:'My group message'},
+  {id:'former-message',groupId:'other-group',participants:['graduate','student0'],text:'Old membership'},
+  {id:'missing-group-message',groupId:'removed-group',participants:['graduate','student0'],text:'Removed group'},
+  {id:'malformed-group-message',kind:'group',participants:['graduate','student0'],text:'Missing group ID'},
+  {id:'not-my-message',groupId:'joined',participants:['student0','older'],text:'Not my history'},
+ ]));
+ const plan=(await preview('12')).data.plan;assert.equal((await approve(plan.id)).status,200);
+ const result=await call('graduate','/api/chats/export');assert.equal(result.status,200);
+ assert.deepEqual(result.data.dmGroups.map(group=>group.id),['joined']);
+ assert.deepEqual(result.data.messages.map(message=>message.id),['shared']);
+ assert.deepEqual(result.data.dms.map(dm=>dm.id),['personal','joined-message']);
+});
+
+test('grade promotion preserves personal and group conversations while updating class membership',async()=>{
+ const groups=[{id:'friends',name:'Friends',participants:['student0','older']}];
+ const dms=[{id:'personal',participants:['student0','older'],text:'Personal history'},{id:'group-message',groupId:'friends',participants:['student0','older'],text:'Group history'}];
+ await writeFile(app.FILES.dmGroups,JSON.stringify(groups));await writeFile(app.FILES.dms,JSON.stringify(dms));
+ const plan=(await preview('8')).data.plan;assert.equal((await approve(plan.id)).status,200);
+ assert.deepEqual(JSON.parse(await readFile(app.FILES.dmGroups)),groups);assert.deepEqual(JSON.parse(await readFile(app.FILES.dms)),dms);
+ const exported=(await call('student0','/api/chats/export')).data;
+ assert.deepEqual(exported.dms.map(dm=>dm.id),['personal','group-message']);
+});
+
+test('shared room synchronization retains section privacy across startup, login and promotion',async()=>{
+ const rooms=[{id:'main',name:'Main'},{id:'section-a',name:'Class 8A',classGrade:'8A',private:true,allowedUsers:['student1']},{id:'section-b',name:'Class 8B',classGrade:'8B',private:true,allowedUsers:['student0']}];
+ await writeFile(app.FILES.rooms,JSON.stringify(rooms));await vm.runInContext('ensureRooms()',context);
+ let saved=JSON.parse(await readFile(app.FILES.rooms));
+ assert.deepEqual(saved.find(room=>room.id==='section-a').allowedUsers,['student0','student3','student6']);
+ assert.deepEqual(saved.find(room=>room.id==='section-b').allowedUsers,['student1','student4','student7']);
+ context.classStudent=users.find(user=>user.username==='student0');await vm.runInContext('syncClassRoom(classStudent)',context);
+ assert.deepEqual(JSON.parse(await readFile(app.FILES.rooms)),saved);
+ const plan=(await preview('8')).data.plan;assert.equal((await approve(plan.id)).status,200);
+ saved=JSON.parse(await readFile(app.FILES.rooms));assert.deepEqual(saved.find(room=>room.id==='section-a').allowedUsers,[]);
+ assert.equal(saved.find(room=>room.id==='grade-9').allowedUsers.includes('student0'),true);
+});
 test('one-month deadline blocks access and deletes credentials, including stale-write resurrection',async()=>{
  const original=structuredClone(users),plan=(await preview('12')).data.plan;await approve(plan.id);
  clock=Date.parse('2026-12-16T10:00:01Z');assert.equal((await call('graduate','/api/chats/export')).status,401);

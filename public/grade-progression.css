@@ -1,0 +1,14 @@
+.grade-admin-tabs{display:flex;gap:20px;border-bottom:1px solid var(--line);margin:18px 0 24px}
+.grade-admin-tabs button{background:transparent;color:var(--muted);border:0;border-bottom:2px solid transparent;border-radius:0;padding:12px 0;box-shadow:none}
+.grade-admin-tabs button[aria-selected=true]{border-bottom-color:var(--accent);color:var(--accent);font-weight:600}
+#gradeAdminControls[hidden],#gradeProgressionPanel[hidden],#gradeProgressionApproval[hidden]{display:none!important}
+.grade-progression-panel{padding:24px;background:var(--surface);border:1px solid var(--line);border-radius:6px;color:var(--ink)}
+.grade-progression-toolbar{display:flex;align-items:end;gap:16px;flex-wrap:wrap;margin:24px 0 12px}
+.grade-progression-toolbar label{display:grid;gap:6px;min-width:180px;max-width:100%}
+.grade-roster-section{border-top:1px solid var(--line);padding:18px 0;margin-top:18px}
+.grade-roster-columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.grade-roster-columns h5{font-size:1rem;margin:8px 0}
+.grade-roster-section ul{padding-left:20px;line-height:1.8;overflow-wrap:anywhere}
+#gradeProgressionApproval{border-top:1px solid var(--line);padding:20px 0;margin-top:12px}
+#gradeProgressionApproval .switch-row{margin-bottom:16px}
+@media(max-width:650px){.grade-progression-panel{padding:16px}.grade-roster-columns{grid-template-columns:1fr}.grade-progression-toolbar{align-items:stretch;flex-direction:column}}

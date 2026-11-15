@@ -1489,6 +1489,7 @@ async function loadState() {
   state.aiRequests = data.aiRequests || [];
   state.aiConfigured = Boolean(data.aiConfigured);
   state.loggedIn = true;
+  window.ConnectifiGradesAdmin?.updateBanner();
   window.refreshQuestionnaires?.(true);
   state.lastReportAlertCount = activeReports().length;
   state.activeView = viewFromPath() || "dashboard";
@@ -5110,6 +5111,8 @@ async function recoverRealtimeState(wasReconnect) {
 
 async function refreshStateFromServer() {
   const data = await api("/api/state");
+  state.user = data.user || state.user;
+  window.ConnectifiGradesAdmin?.updateBanner();
   state.settings = data.settings || state.settings;
   state.rooms = data.rooms || state.rooms;
   state.messages = data.messages || state.messages;

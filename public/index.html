@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="/connections.css?v=247" />
     <link rel="stylesheet" href="/ui-system.css?v=248" />
     <link rel="stylesheet" href="/passkeys.css?v=250" />
+    <link rel="stylesheet" href="/grade-progression.css?v=251" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -204,6 +205,7 @@
           <div id="dashboardAnnouncementList" class="announcement-list"></div>
           <div id="dashboardReportList" class="dashboard-alert-list"></div>
           <div id="dashboardProfileUpdateList" class="dashboard-alert-list"></div>
+          <section id="graduationExportPanel" class="status-panel hidden" aria-live="polite"><h3>Your graduation export period</h3><p id="graduationExportDeadline"></p><p class="panel-note">Export your stored chats before your account closes. The download contains chat text and attachment references, not attachment files.</p><button id="exportGraduationChats" class="primary-button" type="button">Export my chats</button><p id="graduationExportStatus" role="status"></p></section>
           <section id="questionnairePanel" class="questionnaire-panel hidden">
             <div class="panel-title-row"><h3>Forms to complete</h3><button id="refreshQuestionnaires" type="button" class="secondary-button compact-button">Refresh</button></div>
             <div id="questionnaireList" class="account-list"></div>
@@ -797,7 +799,16 @@
             </nav>
           </div>
 
-          <div class="settings-grid admin-grid">
+          <nav class="grade-admin-tabs" role="tablist" aria-label="Admin workspace"><button id="adminControlsTab" type="button" role="tab" aria-selected="true" aria-controls="gradeAdminControls">Admin controls</button><button id="gradeProgressionTab" type="button" role="tab" aria-selected="false" aria-controls="gradeProgressionPanel">Update grades</button></nav>
+          <section id="gradeProgressionPanel" class="grade-progression-panel" role="tabpanel" aria-labelledby="gradeProgressionTab" hidden>
+            <h3>Update grades</h3><p>Shuffle each grade into balanced A, B and C classes for the next grade. Review the roster, then approve it.</p>
+            <form id="gradeProgressionForm" class="grade-progression-toolbar"><label>Academic year<input id="gradeProgressionCycle" inputmode="numeric" pattern="20[0-9]{2}-20[0-9]{2}" placeholder="2026-2027" required /></label><label>Students<select id="gradeProgressionScope"><option value="all">All grades, 6–12</option><option value="6">Grade 6 to 7</option><option value="7">Grade 7 to 8</option><option value="8">Grade 8 to 9</option><option value="9">Grade 9 to 10</option><option value="10">Grade 10 to 11</option><option value="11">Grade 11 to 12</option><option value="12">Grade 12 graduation</option></select></label><button class="secondary-button" type="submit">Preview shuffle</button></form>
+            <p class="panel-note">A preview changes no accounts. Approval moves each student once per academic year. Grade 12 receives one calendar month to export chats before account deletion.</p>
+            <p id="gradeProgressionStatus" role="status" aria-live="polite"></p><div id="gradeProgressionPreview"></div>
+            <div id="gradeProgressionApproval" hidden><label class="switch-row"><input id="gradeProgressionConfirm" type="checkbox" /><span>I have reviewed these class rosters and approve the moves and Grade 12 deletion schedule.</span></label><button id="approveGradeProgression" type="button" class="primary-button" disabled>Approve and update grades</button></div>
+            <h4>Graduation export deadlines</h4><div id="gradeGraduates"></div>
+          </section>
+          <div id="gradeAdminControls" class="settings-grid admin-grid" role="tabpanel" aria-labelledby="adminControlsTab">
             <form id="serverForm" class="panel-form">
               <h3>Server</h3>
               <label>Room name<input id="roomNameInput" maxlength="80" placeholder="Connectifi" /></label>
@@ -1244,8 +1255,9 @@
     <script src="/ui-boot.js?v=connectifi-210-dm-recovery" defer></script>
     <script src="/i18n.js?v=246" defer></script>
     <script src="/grade-utils.js?v=248" defer></script>
-    <script src="/app.js?v=connectifi-250-passkeys" defer></script>
+    <script src="/app.js?v=connectifi-251-grade-progression" defer></script>
     <script src="/passkeys.js?v=250" defer></script>
+    <script src="/grade-progression.js?v=251" defer></script>
     <script src="/connections.js?v=248" defer></script>
     <script src="/announcement-composer.js?v=247" defer></script>
     <script src="/resumable-uploads.js?v=246" defer></script>

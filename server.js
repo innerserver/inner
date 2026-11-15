@@ -92,6 +92,7 @@ const FILES = {
   users: path.join(DATA_DIR, "users.json"),
   passkeys: path.join(DATA_DIR, "passkeys.json"),
   passkeyPreferences: path.join(DATA_DIR, "passkey-preferences.json"),
+  gradeProgression: path.join(DATA_DIR, "grade-progression.json"),
   rooms: path.join(DATA_DIR, "rooms.json"),
   messages: path.join(DATA_DIR, "messages.json"),
   secretMessages: path.join(DATA_DIR, "secret-messages.json"),
@@ -320,6 +321,9 @@ const vpnLocations = [
 async function main() {
   await initPersistence();
   await ensureStorage();
+  await getGradeProgression().sweep();
+  const graduationTimer = setInterval(() => getGradeProgression().sweep().catch((error) => console.error("Graduation cleanup:", safeErrorMessage(error))), 60000);
+  graduationTimer.unref();
 
   const server = createInnerServer((req, res) => {
     route(req, res).catch((error) => {
@@ -496,6 +500,7 @@ async function ensureStorage() {
   ]);
   await ensureJson(FILES.passkeys, []);
   await ensureJson(FILES.passkeyPreferences, {});
+  await ensureJson(FILES.gradeProgression, { plans: [], deleted: [] });
   await ensureJson(FILES.messages, []);
   await ensureJson(FILES.secretMessages, []);
   await ensureJson(FILES.dms, []);
@@ -987,6 +992,12 @@ async function route(req, res) {
 }
 
 async function completeLogin(users, user, req, res, authenticationMethod = "password") {
+    await academicUserWriteQueue;
+    const latestUsers = await readJson(FILES.users, []);
+    const currentAccount = latestUsers.find((entry) => entry.username === user.username && entry.passwordHash === user.passwordHash);
+    if (!currentAccount) return json(res, 401, { error: "Account changed. Please sign in again." });
+    users = latestUsers; user = currentAccount;
+    if (user.graduation?.deleteAfter && Date.parse(user.graduation.deleteAfter) <= Date.now()) return json(res, 403, { error: "Your graduation export period has ended." });
     const requestBlock = await requestLoginBlockForExistingUser(user);
     if (requestBlock) {
       await addSystemLog("login.blocked", user.username, { reason: "Account request not approved", requestStatus: requestBlock.status }, req);
@@ -1032,6 +1043,8 @@ async function completeLogin(users, user, req, res, authenticationMethod = "pass
       contact: user.contact || "",
       createdAt: Date.now(),
       passwordAuthenticatedAt: authenticationMethod === "password" ? Date.now() : 0,
+      graduationDeleteAfter: user.graduation?.deleteAfter || "",
+      graduationStartedAt: user.graduation?.startedAt || "",
       persistent,
       expiresAt: Date.now() + (persistent ? SESSION_PERSISTENT_MS : SESSION_IDLE_MS),
     });
@@ -1129,6 +1142,58 @@ function getPasskeyHandler() {
 async function handlePasskeys(req, res, pathname) {
   if (!pathname.startsWith("/api/passkeys")) return false;
   return getPasskeyHandler()(req, res, pathname);
+}
+
+let gradeProgression;
+function getGradeProgression() {
+  gradeProgression ||= require("./lib/grade-progression")({
+    now: () => Date.now(), users: () => readJson(FILES.users, []), writeUsers: (users) => writeJson(FILES.users, users), exclusiveUsers: withAcademicUserWriteLock,
+    journal: () => readJson(FILES.gradeProgression, { plans: [], deleted: [] }), writeJournal: (value) => writeJson(FILES.gradeProgression, value),
+    admin: canManage, body: readJsonBody, json, backup: createBackup, log: addSystemLog,
+    sync: syncPromotedStudents,
+    expire: expireUserSessions,
+    cleanup: async (username) => {
+      for (const key of ["profiles", "passkeyPreferences", "userPins"]) {
+        const entries = await readJson(FILES[key], {}); delete entries[username]; await writeJson(FILES[key], entries);
+      }
+      await writeJson(FILES.passkeys, (await readJson(FILES.passkeys, [])).filter((entry) => entry.username !== username));
+      await writeJson(FILES.accountRequests, (await readJson(FILES.accountRequests, [])).filter((entry) => entry.username !== username));
+      const friends = await readJson(FILES.friends, { requests: [], friendships: [] });
+      friends.requests = (friends.requests || []).filter((entry) => entry.from !== username && entry.to !== username);
+      friends.friendships = (friends.friendships || []).filter((entry) => !(entry.users || []).includes(username));
+      await writeJson(FILES.friends, friends);
+      const rooms = await readJson(FILES.rooms, []);
+      for (const room of rooms) { room.allowedUsers = (room.allowedUsers || []).filter((name) => name !== username); room.moderators = (room.moderators || []).filter((name) => name !== username); }
+      await writeJson(FILES.rooms, rooms); broadcastRoomsUpdate(rooms);
+    },
+    chats: async (user) => {
+      const [rooms, messages, dms] = await Promise.all([readJson(FILES.rooms, []), readJson(FILES.messages, []), readJson(FILES.dms, [])]);
+      const visible = new Set(rooms.filter((room) => canAccessRoom(room, user)).map((room) => room.id));
+      return { rooms: rooms.filter((room) => visible.has(room.id)).map((room) => ({id:room.id,name:room.name})), messages: messages.filter((message) => visible.has(message.roomId || "main")).map((message) => safeRoomMessage(message,user)), dms: dms.filter((dm) => (dm.participants || []).includes(user.username)).map((dm) => safeDm(dm,user)), note: "Includes accessible stored room messages and your DMs. Attachment links are references, not file bytes. Deleted or expired history is unavailable." };
+    },
+  });
+  return gradeProgression;
+}
+function syncPromotedStudents(students) {
+  const operation = classRoomWriteQueue.then(async () => {
+    const [users, rooms, profiles] = await Promise.all([readJson(FILES.users, []), readJson(FILES.rooms, []), readJson(FILES.profiles, {})]);
+    const moved = new Map(students.map((student) => [student.username, student]));
+    synchronizeGradeRooms(rooms, users, { classRoomGrade, canModerate, sanitizeRoom });
+    for (const room of rooms) if (classRoomGrade(room)) room.allowedUsers = users.filter((user) => !canModerate(user) && gradeSelectionMatches(classRoomGrade(room), user.grade)).map((user) => user.username).sort();
+    for (const student of students) if (profiles[student.username]) profiles[student.username].grade = student.grade;
+    await writeJson(FILES.rooms, rooms); await writeJson(FILES.profiles, profiles);
+    for (const session of sessions.values()) {
+      const student = moved.get(session.username); if (student) { session.grade = student.grade; session.graduationDeleteAfter = student.graduation?.deleteAfter || ""; session.graduationStartedAt = student.graduation?.startedAt || ""; }
+    }
+    for (const client of realtimeClients()) { const student = moved.get(client.username); if (student) client.grade = student.grade; }
+    broadcastRoomsUpdate(rooms);
+    for (const client of realtimeClients()) {
+      const student = moved.get(client.username); if (!student) continue;
+      const room = rooms.find((entry) => classRoomGrade(entry) === gradeYear(student.grade));
+      deliverRealtime(client, { type: "class:update", grade: student.grade, roomId: room?.id || "main" });
+    }
+  });
+  classRoomWriteQueue = operation.catch(() => {}); return operation;
 }
 
 async function routeApi(req, res, requestUrl) {
@@ -1587,6 +1652,8 @@ async function routeApi(req, res, requestUrl) {
 
   const user = requireUser(req, res);
   if (!user) return;
+
+  if (await getGradeProgression().route(req, res, requestUrl, user)) return;
 
   const shutdownSettings = await readJson(FILES.settings, {});
   if (shutdownSettings.serverEnabled === false && !canAccessWhileServerLocked(user, shutdownSettings)) {
@@ -5711,7 +5778,7 @@ function startWsHeartbeat() {
   wsHeartbeatTimer = setInterval(() => {
     const now = Date.now();
     for (const [token, session] of sessions) {
-      if (session.expiresAt <= now) revokeSession(token);
+      if (session.expiresAt <= now || (session.graduationDeleteAfter && Date.parse(session.graduationDeleteAfter) <= now)) revokeSession(token);
     }
     for (const [key, entry] of securityRateLimits) {
       if (entry.expiresAt <= now) securityRateLimits.delete(key);
@@ -6187,7 +6254,7 @@ function sendFrame(socket, payload, opcode, client) {
 
 function realtimeSessionActive(client) {
   const session = sessions.get(client.sessionToken);
-  return Boolean(session && session.username === client.username && session.expiresAt > Date.now());
+  return Boolean(session && session.username === client.username && session.expiresAt > Date.now() && (!session.graduationDeleteAfter || Date.parse(session.graduationDeleteAfter) > Date.now()));
 }
 
 function revokeSession(token) {
@@ -6283,6 +6350,7 @@ function getSessionUser(req) {
     revokeSession(token);
     return null;
   }
+  if (session.graduationDeleteAfter && Date.parse(session.graduationDeleteAfter) <= Date.now()) { revokeSession(token); return null; }
   if (!session.persistent) session.expiresAt = Date.now() + SESSION_IDLE_MS;
   return {
     username: session.username,
@@ -6293,6 +6361,7 @@ function getSessionUser(req) {
     phone: session.phone || "",
     grade: normalizeGrade(session.grade || ""),
     contact: session.contact || "",
+    graduation: session.graduationDeleteAfter ? { startedAt: session.graduationStartedAt || "", deleteAfter: session.graduationDeleteAfter } : null,
   };
 }
 
@@ -6459,6 +6528,7 @@ function safeUser(user, viewer = null) {
     phone: ownerView || selfView ? user.phone || "" : "",
     grade: normalizeGrade(user.grade || ""),
     gradeUpdatedAt: user.gradeUpdatedAt || "",
+    graduation: selfView || canManage(viewer) ? user.graduation || null : null,
     contactUpdatedAt: user.contactUpdatedAt || "",
     mutedUntil: user.mutedUntil || "",
     muted: isUserMuted(user),
@@ -6825,6 +6895,8 @@ function syncClassRoom(user) {
 
 async function syncClassRoomNow(user) {
   const rooms = await readJson(FILES.rooms, []);
+  user = require("./lib/grade-progression").protectUserWrite([user], await readJson(FILES.gradeProgression, { plans: [], deleted: [] }))[0];
+  if (!user) return { rooms, roomId: "main" };
   const grade = normalizeGrade(user.grade);
   const users = await readJson(FILES.users, []);
   const currentUsers = users.filter((entry) => entry.username !== user.username).concat(user);
@@ -6854,8 +6926,8 @@ async function syncClassRoomNow(user) {
   for (const client of httpRealtimeClients.values()) if (client.username === user.username) client.grade = grade;
   if (changed) await writeJson(FILES.rooms, rooms);
   broadcastRoomsUpdate(rooms);
-  for (const client of wsClients.values()) {
-    if (client.username === user.username) sendWs(client, { type: "class:update", grade, roomId: room ? room.id : "main" });
+  for (const client of realtimeClients()) {
+    if (client.username === user.username) deliverRealtime(client, { type: "class:update", grade, roomId: room ? room.id : "main" });
   }
   return { rooms, roomId: room ? room.id : "main" };
 }
@@ -10602,7 +10674,21 @@ async function readLocalJson(file, fallback) {
   }
 }
 
+let academicUserWriteQueue = Promise.resolve();
+function withAcademicUserWriteLock(operation) {
+  const result = academicUserWriteQueue.then(async () => operation(await readJson(FILES.users, []), async (value) => {
+    const protectedUsers = require("./lib/grade-progression").protectUserWrite(value, await readJson(FILES.gradeProgression, { plans: [], deleted: [] }));
+    value.splice(0, value.length, ...protectedUsers);
+    await writeJsonNow(FILES.users, value);
+  }));
+  academicUserWriteQueue = result.catch(() => {});
+  return result;
+}
 async function writeJson(file, value) {
+  if (file === FILES.users && Array.isArray(value)) return withAcademicUserWriteLock((users, commit) => commit(value));
+  return writeJsonNow(file, value);
+}
+async function writeJsonNow(file, value) {
   const key = jsonStorageKey(file);
   if (persistence.ready && key) {
     try {
@@ -10784,6 +10870,7 @@ async function createBackup(username) {
       questionnaires: await readJson(FILES.questionnaires, []),
       passkeys: await readJson(FILES.passkeys, []),
       passkeyPreferences: await readJson(FILES.passkeyPreferences, {}),
+      gradeProgression: await readJson(FILES.gradeProgression, { plans: [], deleted: [] }),
       school: await readJson(FILES.school, {}),
       formDrafts: await readJson(FILES.formDrafts, []),
       uploadIncidents: await readJson(FILES.uploadIncidents, []),
@@ -10835,6 +10922,7 @@ async function restoreBackup(fileName, username) {
     ["store", FILES.store, { items: [], orders: [] }],
     ["aiRequests", FILES.aiRequests, []],
     ["innerDocs", FILES.innerDocs, []],
+    ["gradeProgression", FILES.gradeProgression, { plans: [], deleted: [] }],
     ["users", FILES.users, []],
     ["passkeys", FILES.passkeys, []],
     ["passkeyPreferences", FILES.passkeyPreferences, {}],

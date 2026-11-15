@@ -19,6 +19,7 @@ const alice = data.users[1];
 const session = { username: "alice", grade: "8A" };
 const peer = { username: "alice", grade: "8A" };
 const context = vm.createContext({
+  require: createRequire(new URL("../server.js", import.meta.url)),
   buildFormQuestions, formQuestionVisible, gradeYear, sameGrade, gradeSelectionMatches, synchronizeGradeRooms,
   URL,
   crypto: { randomUUID }, FILES: { users: "users", rooms: "rooms", questionnaires: "questionnaires", formDrafts: "formDrafts" },
@@ -26,10 +27,11 @@ const context = vm.createContext({
   normalizeUsername: (name) => String(name || "").toLowerCase(), normalizeUsernameList: (names) => Array.isArray(names) ? names : [],
   normalizeOptionalUrl: () => "", normalizeRoomTheme: () => "", effectiveRole: (user) => user.role,
   canModerate: (user) => ["moderator", "admin"].includes(user.role), canManage: (user) => user.role === "admin",
-  readJson: async (file) => structuredClone(data[file]),
+  readJson: async (file, fallback) => structuredClone(data[file] ?? fallback),
   writeJson: async (file, value) => { await new Promise((resolve) => setTimeout(resolve, 1)); data[file] = structuredClone(value); },
   readJsonBody: async (req) => req.body || {}, json: (_res, status, body) => ({ status, body }),
   broadcastRoomsUpdate: () => {}, sendWs: () => {},
+  realtimeClients: () => [peer], deliverRealtime: () => {},
 });
 vm.runInContext([
   block("function normalizeGrade(", "function normalizeInnerDocType("),

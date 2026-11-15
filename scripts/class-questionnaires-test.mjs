@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import vm from "node:vm";
 import { createRequire } from "node:module";
 const { buildFormQuestions, formQuestionVisible } = createRequire(import.meta.url)("../lib/forms.js");
+const { gradeYear, sameGrade, gradeSelectionMatches } = createRequire(import.meta.url)("../public/grade-utils.js");
+const { synchronizeGradeRooms } = createRequire(import.meta.url)("../lib/grade-rooms.js");
 
 const source = await readFile(new URL("../server.js", import.meta.url), "utf8");
 const block = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
@@ -17,10 +19,10 @@ const alice = data.users[1];
 const session = { username: "alice", grade: "8A" };
 const peer = { username: "alice", grade: "8A" };
 const context = vm.createContext({
-  buildFormQuestions, formQuestionVisible,
+  buildFormQuestions, formQuestionVisible, gradeYear, sameGrade, gradeSelectionMatches, synchronizeGradeRooms,
   URL,
   crypto: { randomUUID }, FILES: { users: "users", rooms: "rooms", questionnaires: "questionnaires", formDrafts: "formDrafts" },
-  sessions: new Map([["session", session]]), wsClients: new Map([["peer", peer]]), builtInManagerUsernames: new Set(),
+  sessions: new Map([["session", session]]), wsClients: new Map([["peer", peer]]), httpRealtimeClients: new Map(), builtInManagerUsernames: new Set(),
   normalizeUsername: (name) => String(name || "").toLowerCase(), normalizeUsernameList: (names) => Array.isArray(names) ? names : [],
   normalizeOptionalUrl: () => "", normalizeRoomTheme: () => "", effectiveRole: (user) => user.role,
   canModerate: (user) => ["moderator", "admin"].includes(user.role), canManage: (user) => user.role === "admin",
@@ -44,9 +46,11 @@ assert.equal(peer.grade, "9A");
 assert.equal(context.canAccessRoom(data.rooms.find((room) => room.id === "old"), alice), false);
 assert.equal(context.canAccessRoom(data.rooms.find((room) => room.id === moved.roomId), alice), true);
 assert.equal(data.rooms.find((room) => room.id === "old").allowedUsers.includes("alice"), false);
-assert.equal(context.canAccessRoom(data.rooms.find((room) => room.id === moved.roomId), data.users[2]), false);
+assert.equal(context.canAccessRoom(data.rooms.find((room) => room.id === moved.roomId), data.users[2]), true);
+assert.equal(data.rooms.find((room) => room.id === moved.roomId).name, "Grade 9");
 await Promise.all([context.syncClassRoom(data.users[2]), context.syncClassRoom(data.users[2])]);
-assert.equal(data.rooms.filter((room) => context.classRoomGrade(room) === "9B").length, 1);
+assert.equal(data.rooms.filter((room) => context.classRoomGrade(room) === "9").length, 1);
+assert.equal(data.rooms.filter((room) => /^Grade (6|7|8|9|10|11|12)$/.test(room.name)).length, 7);
 assert.equal(context.classRoomGrade({ id: "other", name: "Staff" }), "");
 console.log("PASS class transfer, old access revoked, sessions updated, concurrent room creation");
 
@@ -81,7 +85,7 @@ assert.equal((await call("alice", path, { answers })).status, 409);
 console.log("PASS questionnaire permissions, validation, grade targeting, simultaneous submissions, duplicate prevention, response privacy, closing");
 
 assert.equal((await call("teacher", undefined, { ...draft, scope: "room", target: moved.roomId })).status, 200);
-assert.equal((await call("bob", undefined, undefined, "GET")).body.questionnaires.some((form) => form.scope === "room"), false);
+assert.equal((await call("bob", undefined, undefined, "GET")).body.questionnaires.some((form) => form.scope === "room"), true);
 assert.equal((await call("alice", undefined, undefined, "GET")).body.questionnaires.some((form) => form.scope === "room"), true);
 alice.grade = "10A";
 await context.syncClassRoom(alice);

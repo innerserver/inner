@@ -18,7 +18,8 @@ const createResumable = require("./lib/resumable-uploads");
 const { inspectUpload } = require("./lib/upload-scanner");
 const createUploadAlerts = require("./lib/upload-alerts");
 const { announcementAudience } = require("./lib/announcements");
-const { sameGrade, gradeSelectionMatches } = require("./public/grade-utils");
+const { gradeYear, sameGrade, gradeSelectionMatches } = require("./public/grade-utils");
+const { synchronizeGradeRooms } = require("./lib/grade-rooms");
 const { buildFormQuestions, formQuestionVisible } = require("./lib/forms");
 
 const websocketServer = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024, perMessageDeflate: false });
@@ -772,7 +773,9 @@ async function ensureRooms() {
     Object.assign(room, sanitized);
   }
 
-  if (changed) await writeJson(FILES.rooms, rooms);
+  const users = await readJson(FILES.users, []);
+  const gradeRooms = synchronizeGradeRooms(rooms, users, { classRoomGrade, canModerate, sanitizeRoom });
+  if (changed || gradeRooms.changed) await writeJson(FILES.rooms, rooms);
 }
 
 async function ensureProfiles() {
@@ -3923,11 +3926,10 @@ async function routeApi(req, res, requestUrl) {
     const messages = await readJson(FILES.messages, []);
     const index = messages.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "Message not found" });
-    const [rooms, settings] = await Promise.all([readJson(FILES.rooms, []), readJson(FILES.settings, {})]);
+    const rooms = await readJson(FILES.rooms, []);
     const room = rooms.find((entry) => entry.id === (messages[index].roomId || "main"));
     if (!room || !canAccessRoom(room, user)) return json(res, 403, { error: "You do not have access to this message" });
     const unpin = body.pinned === false;
-    if (unpin && !canUseModerationCapability(user, settings, "content-moderation")) return json(res, 403, { error: "Owner admin has not granted content-moderation access" });
     messages[index] = {
       ...messages[index],
       pinned: !unpin,
@@ -3943,13 +3945,12 @@ async function routeApi(req, res, requestUrl) {
   if (req.method === "POST" && pathname.startsWith("/api/dms/") && pathname.endsWith("/pin")) {
     const id = decodeURIComponent(pathname.split("/")[3] || "");
     const body = await readJsonBody(req);
-    const [dms, settings] = await Promise.all([readJson(FILES.dms, []), readJson(FILES.settings, {})]);
+    const dms = await readJson(FILES.dms, []);
     const index = dms.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "DM not found" });
     const dm = dms[index];
     if (!canManage(user) && !(dm.participants || []).includes(user.username)) return json(res, 403, { error: "You do not have access to this DM" });
     const unpin = body.pinned === false;
-    if (unpin && !canUseModerationCapability(user, settings, "content-moderation")) return json(res, 403, { error: "Owner admin has not granted content-moderation access" });
     dms[index] = {
       ...dm,
       pinned: !unpin,
@@ -5132,7 +5133,7 @@ async function handleUpgrade(req, socket, head = Buffer.alloc(0)) {
     socket.setKeepAlive(true, 30000);
     const id = crypto.randomUUID();
     const client = {
-      id, username: user.username, role: user.role, socket, webSocket,
+      id, username: user.username, role: user.role, grade: user.grade, socket, webSocket,
       sessionToken: getCookie(req, SESSION_COOKIE), ip: getClientIp(req),
       device: deviceSignature(req), network: {}, connectedAt: new Date().toISOString(),
       sharing: false, screenRoomId: "", status: "online", invisible: false,
@@ -5808,6 +5809,7 @@ function upsertHttpRealtimeClient(user, body = {}, req) {
     httpFallback: true,
   };
   client.role = user.role;
+  client.grade = user.grade;
   client.sessionToken = sessionToken;
   client.ip = getClientIp(req);
   client.device = deviceSignature(req);
@@ -6790,8 +6792,12 @@ function syncClassRoom(user) {
 async function syncClassRoomNow(user) {
   const rooms = await readJson(FILES.rooms, []);
   const grade = normalizeGrade(user.grade);
-  let room = grade && rooms.find((entry) => classRoomGrade(entry) === grade);
-  let changed = false;
+  const users = await readJson(FILES.users, []);
+  const currentUsers = users.filter((entry) => entry.username !== user.username).concat(user);
+  const shared = synchronizeGradeRooms(rooms, currentUsers, { classRoomGrade, canModerate, sanitizeRoom });
+  const destination = /^(6|7|8|9|10|11|12)$/.test(gradeYear(grade)) ? gradeYear(grade) : grade;
+  let room = destination && rooms.find((entry) => classRoomGrade(entry) === destination);
+  let changed = shared.changed;
   if (grade && !room && !canModerate(user)) {
     room = sanitizeRoom({ id: crypto.randomUUID(), name: `Class ${grade}`, classGrade: grade, private: true, category: "Classes", createdBy: "system", createdAt: new Date().toISOString() });
     rooms.push(room);
@@ -6802,7 +6808,8 @@ async function syncClassRoomNow(user) {
     if (!entryGrade) continue;
     const allowed = normalizeUsernameList(entry.allowedUsers);
     const next = allowed.filter((name) => name !== user.username);
-    if (entryGrade === grade && !canModerate(user)) next.push(user.username);
+    if (gradeSelectionMatches(entryGrade, grade) && !canModerate(user)) next.push(user.username);
+    next.sort();
     if (JSON.stringify(allowed) !== JSON.stringify(next)) {
       entry.allowedUsers = next;
       changed = true;
@@ -6810,6 +6817,7 @@ async function syncClassRoomNow(user) {
   }
   for (const session of sessions.values()) if (session.username === user.username) session.grade = grade;
   for (const client of wsClients.values()) if (client.username === user.username) client.grade = grade;
+  for (const client of httpRealtimeClients.values()) if (client.username === user.username) client.grade = grade;
   if (changed) await writeJson(FILES.rooms, rooms);
   broadcastRoomsUpdate(rooms);
   for (const client of wsClients.values()) {
@@ -6971,7 +6979,7 @@ function attendanceUserBelongsToRoom(room, user) {
   if (!username) return false;
   if (builtInManagerUsernames.has(username.toLowerCase())) return false;
   if (!room || room.id === "main") return true;
-  if (classRoomGrade(room)) return classRoomGrade(room) === normalizeGrade(user.grade);
+  if (classRoomGrade(room)) return gradeSelectionMatches(classRoomGrade(room), normalizeGrade(user.grade));
   if (!room.private && !room.inviteOnly && !room.passwordHash) return true;
   const allowed = new Set([
     ...(room.allowedUsers || []),
@@ -7037,7 +7045,7 @@ function persistentLoginReason(user, settings, rooms = []) {
 function canAccessRoom(room, user) {
   if (!room || !user) return false;
   if (room.id === "main" || canManage(user) || canModerate(user)) return true;
-  if (classRoomGrade(room)) return classRoomGrade(room) === normalizeGrade(user.grade);
+  if (classRoomGrade(room)) return gradeSelectionMatches(classRoomGrade(room), normalizeGrade(user.grade));
   if (room.passwordHash && !normalizeUsernameList(room.allowedUsers).includes(user.username)) return false;
   if (!room.private && !room.inviteOnly) return true;
   const allowed = new Set([...(room.allowedUsers || []), ...(room.moderators || []), room.createdBy].filter(Boolean));

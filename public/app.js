@@ -1443,6 +1443,12 @@ async function loadState() {
   }
   state.rtcStatus = data.rtcStatus || state.rtcStatus;
   state.rooms = data.rooms || [];
+  if (!isModerator()) {
+    const year = window.ConnectifiGrades.gradeYear(state.user.grade);
+    const gradeRoom = state.rooms.find((room) => room.classGrade === year);
+    const previousRoom = state.rooms.find((room) => room.id === state.selectedRoomId);
+    if (gradeRoom && (!previousRoom || previousRoom.id === "main" || /^(6|7|8|9|10|11|12)[ABC]$/.test(previousRoom.classGrade || ""))) state.selectedRoomId = gradeRoom.id;
+  }
   state.messages = data.messages || [];
   state.secretMessages = data.secretMessages || [];
   state.secretDms = data.secretDms || [];
@@ -5855,7 +5861,7 @@ function renderRooms() {
 function canAccessVisibleRoom(room) {
   if (!room || !state.user) return false;
   if (room.id === "main" || isModerator()) return true;
-  if (room.classGrade) return room.classGrade === state.user.grade;
+  if (room.classGrade) return window.ConnectifiGrades.gradeSelectionMatches(room.classGrade, state.user.grade);
   if (!room.private && !room.inviteOnly && !room.requiresPassword) return true;
   return Array.isArray(room.allowedUsers) && room.allowedUsers.includes(state.user.username);
 }
@@ -5931,7 +5937,6 @@ function renderMessagesInner() {
       if (message.editedAt) meta.append(textNode("edited"));
       if (message.status) meta.append(textNode(message.status));
       if (message.pinned) meta.append(textNode("Pinned"));
-      if (isPrivatePinned("messages", message.id)) meta.append(textNode("Pinned for me"));
       if (isOwner()) {
         meta.append(textNode(`From ${message.sourceIp || "unknown"}`));
       }
@@ -5966,21 +5971,13 @@ function renderMessagesInner() {
         actions.append(reactionButton);
       });
       if (!message.local) {
-        const privatePinned = isPrivatePinned("messages", message.id);
         const pinButton = document.createElement("button");
         pinButton.className = "ghost-light-button compact-button";
         pinButton.type = "button";
-        pinButton.textContent = privatePinned ? "Unpin for me" : "Pin for me";
-        pinButton.addEventListener("click", () => setPersonalPin("messages", message.id, !privatePinned));
+        pinButton.textContent = message.pinned ? "Unpin" : "Pin";
+        pinButton.title = "Pin or unpin for everyone in this room";
+        pinButton.addEventListener("click", () => setMessagePin(message.id, !message.pinned));
         actions.append(pinButton);
-        if (canUseModeratorCapability("content-moderation")) {
-          const globalPinButton = document.createElement("button");
-          globalPinButton.className = "ghost-light-button compact-button";
-          globalPinButton.type = "button";
-          globalPinButton.textContent = message.pinned ? "Unpin global" : "Pin global";
-          globalPinButton.addEventListener("click", () => setMessagePin(message.id, !message.pinned));
-          actions.append(globalPinButton);
-        }
       }
       const replyButton = document.createElement("button");
       replyButton.className = "ghost-light-button compact-button";
@@ -6171,12 +6168,6 @@ function renderDmsInner() {
       pinned.textContent = "Pinned";
       bubble.append(pinned);
     }
-    if (isPrivatePinned("dms", dm.id)) {
-      const pinnedForMe = document.createElement("small");
-      pinnedForMe.className = "read-receipt";
-      pinnedForMe.textContent = "Pinned for me";
-      bubble.append(pinnedForMe);
-    }
     if (dm.from === state.user.username || dm.status === "failed" || !dm.local) {
       // renderMessageBubble may already have added the owner Delete action.
       // Keep every DM action in that same row so a second row cannot escape
@@ -6189,12 +6180,9 @@ function renderDmsInner() {
       if (dm.from === state.user.username && !dm.local) extraActions.append(accountButton("Edit", () => editDm(dm.id, dm.text)));
       if (dm.status === "failed" && dm.localId) extraActions.append(accountButton("Retry", () => retryPending(dm.localId)));
       if (!dm.local) {
-        const privatePinned = isPrivatePinned("dms", dm.id);
-        const pinButton = accountButton(privatePinned ? "Unpin for me" : "Pin for me", () => setPersonalPin("dms", dm.id, !privatePinned));
+        const pinButton = accountButton(dm.pinned ? "Unpin" : "Pin", () => setDmPin(dm.id, !dm.pinned));
+        pinButton.title = "Pin or unpin for everyone in this conversation";
         extraActions.append(pinButton);
-        if (canUseModeratorCapability("content-moderation")) {
-          extraActions.append(accountButton(dm.pinned ? "Unpin global" : "Pin global", () => setDmPin(dm.id, !dm.pinned)));
-        }
       }
     }
     els.dmList.append(bubble);

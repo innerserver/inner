@@ -272,3 +272,52 @@ test("resumable uploads enforce ownership and offsets, then complete idempotentl
   const completed = await call("alice", route + "/complete", {}); assert.equal(completed.status, 201); assert.equal(completed.data.file.scanStatus, "not-required-photo");
   assert.equal((await call("alice", route + "/complete", {})).data.file.id, completed.data.file.id);
 });
+test("one shared Pin action is available to conversation members, including Unpin", async () => {
+  await writeFile(app.FILES.messages, JSON.stringify([{ id: "shared-pin-message", roomId: "room-a", user: "teacher", text: "Class reference", createdAt: new Date().toISOString() }]));
+  assert.equal((await call("alice", "/api/messages/shared-pin-message/pin", { pinned: true })).data.message.pinned, true);
+  assert.equal((await call("bob", "/api/messages/shared-pin-message/pin", { pinned: false })).status, 403);
+  assert.equal((await call("alice", "/api/messages/shared-pin-message/pin", { pinned: false })).data.message.pinned, false);
+  await writeFile(app.FILES.dms, JSON.stringify([{ id: "shared-pin-dm", participants: ["alice", "bob"], from: "alice", to: "bob", text: "Shared note", createdAt: new Date().toISOString() }]));
+  assert.equal((await call("alice", "/api/dms/shared-pin-dm/pin", { pinned: true })).data.dm.pinned, true);
+  assert.equal((await call("teacher", "/api/dms/shared-pin-dm/pin", { pinned: false })).status, 403);
+  assert.equal((await call("bob", "/api/dms/shared-pin-dm/pin", { pinned: false })).data.dm.pinned, false);
+});
+test("startup provisions Grades 6–12 for all sections, without exposing old section history", async () => {
+  const storedUsers = JSON.parse(await readFile(app.FILES.users, "utf8"));
+  for (const user of storedUsers) {
+    if (user.username === "alice") user.grade = "8A";
+    if (user.username === "bob") user.grade = "8B";
+    if (user.username === "charlie") user.grade = "8C";
+    if (user.username === "outside") user.grade = "9A";
+  }
+  for (let year = 6; year <= 12; year++) for (const section of ["A", "B", "C"]) storedUsers.push({ username: `sample${year}${section.toLowerCase()}`, role: "member", grade: `${year}${section}` });
+  await writeFile(app.FILES.users, JSON.stringify(storedUsers));
+  const oldRooms = JSON.parse(await readFile(app.FILES.rooms, "utf8"));
+  oldRooms.push({ id: "legacy-8a", name: "Class 8A", classGrade: "8A", private: true, allowedUsers: ["alice"], createdBy: "system" });
+  await writeFile(app.FILES.rooms, JSON.stringify(oldRooms));
+  await writeFile(app.FILES.messages, JSON.stringify([{ id: "old-private-message", roomId: "legacy-8a", user: "alice", text: "Private section history", createdAt: new Date().toISOString() }]));
+  await vm.runInContext("ensureRooms()", context);
+  await vm.runInContext("ensureRooms()", context);
+  const rooms = JSON.parse(await readFile(app.FILES.rooms, "utf8"));
+  for (let year = 6; year <= 12; year++) {
+    const matching = rooms.filter((room) => room.name === `Grade ${year}`);
+    assert.equal(matching.length, 1);
+    for (const section of ["a", "b", "c"]) assert.equal(matching[0].allowedUsers.includes(`sample${year}${section}`), true);
+  }
+  for (const name of ["alice", "bob", "charlie", "outside"]) {
+    const user = storedUsers.find((entry) => entry.username === name);
+    tokens[name] = `${name}-grade-token`; app.sessions.set(tokens[name], { ...user, csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
+  }
+  const grade8 = rooms.find((room) => room.name === "Grade 8");
+  assert.equal((await call("bob", "/api/state?fast=1")).data.rooms.some((room) => room.id === grade8.id), true);
+  assert.equal((await call("bob", "/api/state?fast=1")).data.messages.some((message) => message.id === "old-private-message"), false);
+  assert.equal((await call("alice", "/api/state?fast=1")).data.messages.some((message) => message.id === "old-private-message"), true);
+  const notice = await call("admin", "/api/announcements", { title: "All Grade 8", message: "All sections", scope: "room", roomId: grade8.id, requireAcknowledgement: true });
+  assert.equal(notice.status, 201);
+  for (const name of ["alice", "bob", "charlie"]) assert.equal((await call(name, "/api/school")).data.notices.some((entry) => entry.id === notice.data.announcement.id), true);
+  assert.equal((await call("outside", "/api/school")).data.notices.some((entry) => entry.id === notice.data.announcement.id), false);
+  const profile = await call("alice", "/api/profile", { grade: "8A", displayName: "Alice" });
+  assert.equal(profile.status, 200);
+  const moved = await vm.runInContext("syncClassRoom({username:'alice',role:'member',grade:'8A'})", context);
+  assert.equal(moved.roomId, grade8.id);
+});

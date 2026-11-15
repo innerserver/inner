@@ -1,6 +1,6 @@
 # Inner
 
-Current release: v248. See [shared UI and grade fixes](docs/V248.md), [v247 Friends and announcements](docs/V247.md), [v246 school features and scanner setup](docs/V246.md), and [v245 security changes](SECURITY-v245.md).
+Current release: v249. See [shared grade rooms and pins](docs/V249.md), [v248 shared UI and grade fixes](docs/V248.md), [v247 Friends and announcements](docs/V247.md), [v246 school features and scanner setup](docs/V246.md), and [v245 security changes](SECURITY-v245.md).
 
 A Node.js private workspace app with:
 

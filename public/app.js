@@ -333,6 +333,8 @@ function cacheElements() {
     "messageStickerPublic",
     "messageStickerSearch",
     "messageStickerList",
+    "messageStickerScope",
+    "messageStickerPanel",
     "sendMessageButton",
     "dmState",
     "dmPeerSelect",
@@ -372,6 +374,8 @@ function cacheElements() {
     "dmStickerPublic",
     "dmStickerSearch",
     "dmStickerList",
+    "dmStickerScope",
+    "dmStickerPanel",
     "dmSecret",
     "sendDmButton",
     "secretNavButton",
@@ -816,6 +820,12 @@ function bindEvents() {
     state.stickerSearch.dm = els.dmStickerSearch.value;
     renderStickerPickers();
   });
+  for (const target of ["message", "dm"]) {
+    els[`${target}StickerScope`]?.addEventListener("change", renderStickerPickers);
+    els[`${target}StickerPanel`]?.addEventListener("toggle", () => {
+      if (els[`${target}StickerPanel`].open) void refreshStickerLibrary();
+    });
+  }
   if (els.secretMessageForm) els.secretMessageForm.addEventListener("submit", sendSecretMessage);
   els.dmGroupForm.addEventListener("submit", createDmGroup);
   els.deleteDmGroupButton.addEventListener("click", deleteCurrentDmGroup);
@@ -1535,6 +1545,13 @@ async function hydrateAdminState() {
 
 function showLogin(message = "", options = {}) {
   state.loggedIn = false;
+  ++stickerLibraryRequest;
+  state.stickers = [];
+  for (const target of ["message", "dm"]) {
+    if (els[`${target}StickerPublic`]) els[`${target}StickerPublic`].value = "private";
+    if (els[`${target}StickerPanel`]) els[`${target}StickerPanel`].open = false;
+    els[`${target}StickerList`]?.replaceChildren();
+  }
   stopSessionKeepAlive();
   stopScreenWatchLoop();
   applyProfileTheme("system");
@@ -1745,6 +1762,8 @@ async function sendSelfie(target) {
 async function importStickersFromInput(input, target = "message") {
   const files = Array.from(input.files || []);
   if (!files.length) return;
+  const publicImport = stickerImportPublic(target);
+  const identity = `${state.user?.username}:${state.csrfToken}`;
   try {
     const imageFiles = await collectStickerImportFiles(files);
     if (!imageFiles.length) {
@@ -1754,15 +1773,19 @@ async function importStickersFromInput(input, target = "message") {
     notify(`Importing ${imageFiles.length} sticker${imageFiles.length === 1 ? "" : "s"}`);
     const uploaded = [];
     for (const file of imageFiles.slice(0, 80)) {
-      uploaded.push(await uploadOneFile(file, "image", { private: false }));
+      if (identity !== `${state.user?.username}:${state.csrfToken}`) throw new Error("The signed-in account changed");
+      uploaded.push(await uploadOneFile(file, "image", { private: true, releaseRoom: "", releaseAt: "" }));
     }
+    if (identity !== `${state.user?.username}:${state.csrfToken}`) return;
     const data = await api("/api/stickers", {
       method: "POST",
       json: {
         fileIds: uploaded.map((file) => file.id),
-        visibility: stickerImportPublic(target) ? "public" : "private",
+        visibility: publicImport ? "public" : "private",
       },
     });
+    if (identity !== `${state.user?.username}:${state.csrfToken}`) return;
+    ++stickerLibraryRequest;
     state.stickers = data.stickers || state.stickers;
     renderStickerPickers();
     notify(`Imported ${data.imported || uploaded.length} sticker${(data.imported || uploaded.length) === 1 ? "" : "s"}`);
@@ -1903,16 +1926,40 @@ function renderStickerPickers() {
 }
 
 function stickerImportPublic(target) {
-  return target === "dm"
-    ? Boolean(els.dmStickerPublic && els.dmStickerPublic.checked)
-    : Boolean(els.messageStickerPublic && els.messageStickerPublic.checked);
+  return els[`${target}StickerPublic`]?.value === "public";
+}
+
+let stickerLibraryRequest = 0;
+async function refreshStickerLibrary() {
+  const request = ++stickerLibraryRequest, identity = `${state.user?.username}:${state.csrfToken}`;
+  try {
+    const data = await api("/api/stickers");
+    if (request !== stickerLibraryRequest || identity !== `${state.user?.username}:${state.csrfToken}`) return;
+    state.stickers = data.stickers || [];
+    renderStickerPickers();
+  } catch (error) { if (identity === `${state.user?.username}:${state.csrfToken}`) notify(error.message); }
+}
+
+async function updateLibrarySticker(sticker, visibility) {
+  const identity = `${state.user?.username}:${state.csrfToken}`;
+  ++stickerLibraryRequest;
+  try {
+    const data = await api(`/api/stickers/${encodeURIComponent(sticker.id)}`, visibility ? { method: "PATCH", json: { visibility } } : { method: "DELETE" });
+    if (identity !== `${state.user?.username}:${state.csrfToken}`) return;
+    state.stickers = data.stickers || [];
+    renderStickerPickers();
+    notify(visibility ? `Sticker is now ${visibility}` : "Removed from your library. Sent messages stay visible.");
+  } catch (error) { if (identity === `${state.user?.username}:${state.csrfToken}`) { notify(error.message); renderStickerPickers(); } }
 }
 
 function renderStickerPicker(container, target) {
   if (!container) return;
   container.replaceChildren();
   const query = String(state.stickerSearch[target] || "").trim().toLowerCase();
+  const scope = els[`${target}StickerScope`]?.value || "all";
   const stickers = state.stickers.filter((sticker) => {
+    if (scope === "mine" && sticker.owner !== state.user?.username) return false;
+    if (scope === "public" && !sticker.public) return false;
     if (!query) return true;
     return [
       sticker.name,
@@ -1929,21 +1976,40 @@ function renderStickerPicker(container, target) {
     container.append(emptyBlock("No stickers match that search"));
     return;
   }
-  stickers.forEach((sticker) => {
+  stickers.slice(0, 120).forEach((sticker) => {
+    const card = document.createElement("div");
+    card.className = "sticker-library-card";
     const button = document.createElement("button");
     button.className = "sticker-button";
     button.type = "button";
     button.title = `${sticker.name || "Sticker"} - ${sticker.public ? "public" : "private"}`;
     const img = document.createElement("img");
     img.alt = sticker.name || "Sticker";
+    img.loading = "lazy";
     img.src = sticker.attachment && sticker.attachment.url ? sticker.attachment.url : "";
     const label = document.createElement("small");
-    label.textContent = sticker.public ? "Public" : "Mine";
+    label.textContent = sticker.name || (sticker.public ? "Public sticker" : "Private sticker");
     button.append(img);
     button.append(label);
     button.addEventListener("click", () => sendSticker(sticker, target));
-    container.append(button);
+    card.append(button);
+    if (sticker.owner === state.user?.username) {
+      const visibility = document.createElement("select");
+      visibility.setAttribute("aria-label", `Visibility of ${sticker.name || "sticker"}`);
+      visibility.append(optionElement("private", "Private"), optionElement("public", "Public"));
+      visibility.value = sticker.public ? "public" : "private";
+      visibility.addEventListener("change", () => { visibility.disabled = true; void updateLibrarySticker(sticker, visibility.value); });
+      const remove = document.createElement("button");
+      remove.type = "button"; remove.className = "sticker-library-remove"; remove.textContent = "Remove";
+      remove.setAttribute("aria-label", `Remove ${sticker.name || "sticker"} from your library`);
+      remove.addEventListener("click", () => { remove.disabled = true; void updateLibrarySticker(sticker); });
+      card.append(visibility, remove);
+    } else {
+      const owner = document.createElement("small"); owner.textContent = `By ${sticker.owner}`; card.append(owner);
+    }
+    container.append(card);
   });
+  if (stickers.length > 120) container.append(emptyBlock("Search to narrow down more stickers"));
 }
 
 async function createDmGroup(event) {

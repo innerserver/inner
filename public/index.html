@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=connectifi-244-forms-ui" />
+    <link rel="stylesheet" href="/styles.css?v=connectifi-254-sticker-library" />
     <link rel="stylesheet" href="/reliability-finish.css?v=connectifi-244-forms-ui" />
     <link rel="stylesheet" href="/ui-polish.css?v=connectifi-244-forms-ui" />
     <link rel="stylesheet" href="/school.css?v=246" />
@@ -263,17 +263,19 @@
                   <input id="messageAttachment" class="menu-file-input" type="file" accept="image/*,video/*,audio/*" form="messageForm" />
                   <input id="messageSelfieInput" class="hidden" type="file" accept="image/*" capture="user" form="messageForm" />
                   <button id="messageSelfieButton" class="secondary-button more-menu-action" type="button">Photo</button>
-                  <details class="message-tools-panel sticker-tools-panel">
-                    <summary>Stickers</summary>
+                  <details id="messageStickerPanel" class="message-tools-panel sticker-tools-panel">
+                    <summary>Sticker library</summary>
                     <input id="messageStickerSearch" class="compact-search sticker-search" maxlength="80" placeholder="Search stickers" autocomplete="off" />
-                    <label class="switch-row compact-switch"><input id="messageStickerPublic" type="checkbox" /><span>Public import</span></label>
+                    <label>Browse<select id="messageStickerScope"><option value="all">All available stickers</option><option value="mine">My stickers</option><option value="public">Public library</option></select></label>
+                    <label>New uploads<select id="messageStickerPublic"><option value="private">Private, only my library</option><option value="public">Public, everyone can use</option></select></label>
+                    <p class="sticker-library-note">Private stickers stay in your library. People you send them to can still see them in that chat.</p>
                     <details class="sticker-import-help">
                       <summary>How to get WhatsApp stickers</summary>
                       <ol>
                         <li>On Android, open Files and look for WhatsApp sticker images under Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Stickers.</li>
                         <li>Select the .webp sticker files, or compress that sticker folder into a .zip.</li>
                         <li>On iPhone, save sticker images/files to Files first, then select them here.</li>
-                        <li>Use Public import only when everyone should be able to reuse those stickers.</li>
+                        <li>Choose Public for new uploads only when everyone should be able to reuse those stickers.</li>
                       </ol>
                     </details>
                     <label class="more-menu-action" for="messageStickerImport">Import stickers or WhatsApp ZIP</label>
@@ -322,17 +324,19 @@
                   <input id="dmAttachment" class="menu-file-input" type="file" accept="image/*,video/*,audio/*" form="dmForm" />
                   <input id="dmSelfieInput" class="hidden" type="file" accept="image/*" capture="user" form="dmForm" />
                   <button id="dmSelfieButton" class="secondary-button more-menu-action" type="button">Photo</button>
-                  <details class="message-tools-panel sticker-tools-panel">
-                    <summary>Stickers</summary>
+                  <details id="dmStickerPanel" class="message-tools-panel sticker-tools-panel">
+                    <summary>Sticker library</summary>
                     <input id="dmStickerSearch" class="compact-search sticker-search" maxlength="80" placeholder="Search stickers" autocomplete="off" />
-                    <label class="switch-row compact-switch"><input id="dmStickerPublic" type="checkbox" /><span>Public import</span></label>
+                    <label>Browse<select id="dmStickerScope"><option value="all">All available stickers</option><option value="mine">My stickers</option><option value="public">Public library</option></select></label>
+                    <label>New uploads<select id="dmStickerPublic"><option value="private">Private, only my library</option><option value="public">Public, everyone can use</option></select></label>
+                    <p class="sticker-library-note">Private stickers stay in your library. People you send them to can still see them in that chat.</p>
                     <details class="sticker-import-help">
                       <summary>How to get WhatsApp stickers</summary>
                       <ol>
                         <li>On Android, open Files and look for WhatsApp sticker images under Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Stickers.</li>
                         <li>Select the .webp sticker files, or compress that sticker folder into a .zip.</li>
                         <li>On iPhone, save sticker images/files to Files first, then select them here.</li>
-                        <li>Use Public import only when everyone should be able to reuse those stickers.</li>
+                        <li>Choose Public for new uploads only when everyone should be able to reuse those stickers.</li>
                       </ol>
                     </details>
                     <label class="more-menu-action" for="dmStickerImport">Import stickers or WhatsApp ZIP</label>
@@ -1254,7 +1258,7 @@
     <script src="/ui-boot.js?v=connectifi-210-dm-recovery" defer></script>
     <script src="/i18n.js?v=246" defer></script>
     <script src="/grade-utils.js?v=248" defer></script>
-    <script src="/app.js?v=connectifi-253-rooms-export-status" defer></script>
+    <script src="/app.js?v=connectifi-254-sticker-library" defer></script>
     <script src="/passkeys.js?v=250" defer></script>
     <script src="/grade-progression.js?v=252" defer></script>
     <script src="/connections.js?v=248" defer></script>

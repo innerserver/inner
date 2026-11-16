@@ -344,3 +344,57 @@ test("disabled direct upload routes still return their original 410 response", a
     assert.equal(result.status, 410); assert.equal(result.data.error, "Use the app upload endpoint for file type and size validation.");
   }
 });
+
+test("sticker library defaults private, supports owner-only publishing and keeps backing files private", async () => {
+  const uploaded = await call("alice", "/api/upload", png, "POST", { "x-file-name": "my-sticker.png", "x-file-type": "image/png", "x-file-private": "true" });
+  assert.equal(uploaded.status, 201); assert.equal(uploaded.data.file.private, true);
+  const created = await call("alice", "/api/stickers", { fileId: uploaded.data.file.id });
+  assert.equal(created.status, 201);
+  const sticker = created.data.stickers.find(entry => entry.fileId === uploaded.data.file.id);
+  assert.equal(sticker.visibility, "private");
+  assert.equal((await call("bob", "/api/stickers")).data.stickers.some(entry => entry.id === sticker.id), false);
+  const image = async (name) => fetch(origin + sticker.attachment.url, { headers: { Cookie: `server_app_session=${tokens[name]}` } });
+  assert.equal((await image("bob")).status, 404);
+  assert.equal((await call("bob", `/api/stickers/${sticker.id}`, { visibility: "public" }, "PATCH")).status, 404);
+  assert.equal((await call("alice", `/api/stickers/${sticker.id}`, { visibility: "public" }, "PATCH")).status, 200);
+  assert.equal((await call("bob", "/api/stickers")).data.stickers.some(entry => entry.id === sticker.id), true);
+  assert.equal((await image("bob")).status, 200);
+  assert.equal(JSON.parse(await readFile(app.FILES.uploads)).find(file => file.id === uploaded.data.file.id).private, true);
+  assert.equal((await call("bob", `/api/stickers/${sticker.id}`, undefined, "DELETE")).status, 404);
+  await call("alice", `/api/stickers/${sticker.id}`, { visibility: "private" }, "PATCH");
+  assert.equal((await image("bob")).status, 404);
+});
+
+test("private sticker sends stay visible only to chat recipients after removal, without adding to their library", async () => {
+  const uploaded = await call("alice", "/api/upload", png, "POST", { "x-file-name": "private-dm-sticker.png", "x-file-type": "image/png", "x-file-private": "true" });
+  const created = await call("alice", "/api/stickers", { fileId: uploaded.data.file.id });
+  const sticker = created.data.stickers.find(entry => entry.fileId === uploaded.data.file.id);
+  await writeFile(app.FILES.friends, JSON.stringify({ requests: [], friendships: [{ users: ["alice", "bob"] }] }));
+  const denied = await call("bob", "/api/dms", { to: "alice", attachment: sticker.attachment });assert.equal(denied.status, 403);
+  const sent = await call("alice", "/api/dms", { to: "bob", attachment: sticker.attachment });assert.equal(sent.status, 201);
+  const image = (name) => fetch(origin + sent.data.dm.attachment.url, { headers: { Cookie: `server_app_session=${tokens[name]}` } });
+  assert.equal((await image("bob")).status, 200);assert.equal((await image("teacher")).status, 404);
+  assert.equal((await call("bob", "/api/stickers")).data.stickers.some(entry => entry.id === sticker.id), false);
+  assert.equal((await call("alice", `/api/stickers/${sticker.id}`, undefined, "DELETE")).status, 200);
+  assert.equal((await image("bob")).status, 200);assert.equal((await image("teacher")).status, 404);
+});
+
+test("simultaneous sticker imports preserve both library entries", async () => {
+  const uploads = await Promise.all(["one.png", "two.png"].map(name => call("alice", "/api/upload", png, "POST", { "x-file-name": name, "x-file-type": "image/png", "x-file-private": "true" })));
+  const results = await Promise.all(uploads.map(result => call("alice", "/api/stickers", { fileId: result.data.file.id, visibility: "public" })));
+  assert.equal(results.every(result => result.status === 201), true);
+  const ids = new Set((await call("bob", "/api/stickers")).data.stickers.map(sticker => sticker.fileId));
+  assert.equal(uploads.every(result => ids.has(result.data.file.id)), true);
+});
+
+test("legacy private stickers protect old file URLs while preserving sent attachment access", async () => {
+  const uploaded = await upload("alice", "legacy-sticker.png", png);
+  assert.equal(uploaded.data.file.private, false);
+  const file = uploaded.data.file;
+  await writeFile(app.FILES.stickers, JSON.stringify([{ id: 'legacy-private', owner: 'alice', fileId: file.id, visibility: 'private' }]));
+  await writeFile(app.FILES.dms, JSON.stringify([{ id: 'legacy-message', participants: ['alice','bob'], attachment: { ...file, sticker: true } }]));
+  await vm.runInContext('protectStickerFiles([{id:"legacy-private",owner:"alice",fileId:' + JSON.stringify(file.id) + '}])', context);
+  const fetchImage = name => fetch(origin + file.url, { headers: { Cookie: `server_app_session=${tokens[name]}` } });
+  assert.equal((await fetchImage("bob")).status, 200);assert.equal((await fetchImage("teacher")).status, 403);
+  assert.equal((await call("bob", "/api/stickers")).data.stickers.some(sticker => sticker.id === 'legacy-private'), false);
+});

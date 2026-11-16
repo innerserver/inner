@@ -1008,12 +1008,19 @@ textarea:focus {
 
 .sticker-picker {
   display: grid;
-  grid-template-columns: repeat(5, minmax(48px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   max-height: 220px;
   overflow: auto;
   padding: 10px 0 2px;
 }
+
+.sticker-library-card { display: grid; gap: 5px; min-width: 0; align-content: start; }
+.sticker-library-card .sticker-button { width: 100%; min-height: 88px; }
+.sticker-library-card select { width: 100%; min-width: 0; padding: 5px; font-size: .8rem; }
+.sticker-library-card > small { overflow-wrap: anywhere; color: var(--muted); font-size: .75rem; }
+.sticker-library-remove { border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); padding: 4px; font-size: .75rem; cursor: pointer; }
+.sticker-library-note { color: var(--muted); font-size: .8rem; line-height: 1.4; margin: 8px 0; }
 
 .sticker-search {
   width: 100%;

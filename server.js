@@ -30,6 +30,12 @@ let activeUploads = 0;
 let activeBrowserFetches = 0;
 const userUploadCounts = new Map();
 let uploadRecordQueue = Promise.resolve();
+let stickerWriteQueue = Promise.resolve();
+function mutateStickers(operation) {
+  const pending = stickerWriteQueue.then(operation);
+  stickerWriteQueue = pending.catch(() => {});
+  return pending;
+}
 const passwordResetClaims = new Set();
 const AUTH_IP_REQUEST_LIMIT = Math.max(10, Number(process.env.INNER_AUTH_IP_REQUEST_LIMIT || 600));
 const TRUST_PROXY = process.env.INNER_TRUST_PROXY === undefined ? Boolean(process.env.RENDER) : isTruthy(process.env.INNER_TRUST_PROXY);
@@ -508,6 +514,7 @@ async function ensureStorage() {
   await ensureJson(FILES.dmGroups, []);
   await ensureJson(FILES.uploads, []);
   await ensureJson(FILES.stickers, []);
+  await protectStickerFiles(await readJson(FILES.stickers, []));
   await ensureJson(FILES.userPins, {});
   await ensureJson(FILES.accountRequests, []);
   await ensureJson(FILES.store, { items: [], orders: [] });
@@ -2047,12 +2054,19 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "GET" && pathname === "/api/stickers") {
+    res.setHeader("Cache-Control", "no-store");
     const stickers = await readJson(FILES.stickers, []);
     const files = await readJson(FILES.uploads, []);
     return json(res, 200, { stickers: safeStickers(stickers, user, files) });
   }
 
+  const stickerImage = pathname.match(/^\/api\/stickers\/([^/]+)\/image$/);
+  if (req.method === "GET" && stickerImage) {
+    return serveStickerImage(req, res, user, decodeURIComponent(stickerImage[1]));
+  }
+
   if (req.method === "POST" && pathname === "/api/stickers") {
+    return mutateStickers(async () => {
     const body = await readJsonBody(req);
     const files = await readJson(FILES.uploads, []);
     const stickers = await readJson(FILES.stickers, []);
@@ -2062,14 +2076,14 @@ async function routeApi(req, res, requestUrl) {
       .slice(0, 80);
     if (!ids.length) return json(res, 400, { error: "Choose at least one sticker file" });
     const visibility = body.public === true || String(body.visibility || "").toLowerCase() === "public" ? "public" : "private";
-    const existingKeys = new Set(stickers.map((entry) => `${String(entry.owner || "").toLowerCase()}:${String(entry.fileId || "")}:${String(entry.visibility || "private")}`));
+    const existingKeys = new Set(stickers.map((entry) => `${String(entry.owner || "").toLowerCase()}:${String(entry.fileId || "")}`));
     const now = new Date().toISOString();
     const created = [];
     for (const fileId of ids) {
       const file = files.find((entry) => entry.id === fileId);
       if (!file || file.user !== user.username) continue;
-      if (!isStickerFileRecord(file)) continue;
-      const key = `${user.username.toLowerCase()}:${file.id}:${visibility}`;
+      if (!isStickerFileRecord(file) || file.schoolContext || (file.scanStatus && !["clean", "not-required-photo"].includes(file.scanStatus))) continue;
+      const key = `${user.username.toLowerCase()}:${file.id}`;
       if (existingKeys.has(key)) continue;
       const sticker = {
         id: crypto.randomUUID(),
@@ -2084,12 +2098,32 @@ async function routeApi(req, res, requestUrl) {
       created.push(sticker);
     }
     if (!created.length) return json(res, 400, { error: "No supported sticker files were imported" });
+    await protectStickerFiles(stickers);
     await writeJson(FILES.stickers, stickers.slice(0, 5000));
     await addSystemLog("stickers.imported", user.username, { count: created.length, visibility }, req);
     return json(res, 201, { stickers: safeStickers(stickers, user, files), imported: created.length });
+    });
   }
 
-  if (req.method === "DELETE" && pathname.startsWith("/api/stickers/")) {
+  if (req.method === "PATCH" && /^\/api\/stickers\/[^/]+$/.test(pathname)) {
+    return mutateStickers(async () => {
+      const id = decodeURIComponent(pathname.split("/").pop());
+      const body = await readJsonBody(req);
+      if (!["private", "public"].includes(body.visibility)) return json(res, 400, { error: "Choose Private or Public" });
+      const stickers = await readJson(FILES.stickers, []);
+      const sticker = stickers.find((entry) => entry.id === id && entry.owner === user.username);
+      if (!sticker) return json(res, 404, { error: "Sticker not found" });
+      sticker.visibility = body.visibility;
+      await protectStickerFiles(stickers);
+      await writeJson(FILES.stickers, stickers);
+      await addSystemLog("sticker.visibility.changed", user.username, { id, visibility: sticker.visibility }, req);
+      const files = await readJson(FILES.uploads, []);
+      return json(res, 200, { stickers: safeStickers(stickers, user, files) });
+    });
+  }
+
+  if (req.method === "DELETE" && /^\/api\/stickers\/[^/]+$/.test(pathname)) {
+    return mutateStickers(async () => {
     const id = decodeURIComponent(pathname.split("/").pop() || "");
     const stickers = await readJson(FILES.stickers, []);
     const next = stickers.filter((entry) => !(entry.id === id && entry.owner === user.username));
@@ -2098,6 +2132,7 @@ async function routeApi(req, res, requestUrl) {
     await addSystemLog("sticker.removed", user.username, { id }, req);
     const files = await readJson(FILES.uploads, []);
     return json(res, 200, { stickers: safeStickers(next, user, files) });
+    });
   }
 
   if (req.method === "POST" && pathname.startsWith("/api/user-pins/")) {
@@ -2134,7 +2169,7 @@ async function routeApi(req, res, requestUrl) {
     const roomId = String(body.roomId || "main").trim() || "main";
     const roomMessageFeatureError = await featureGateError(settings, "messages", user, { roomId });
     if (roomMessageFeatureError) return json(res, 423, { error: roomMessageFeatureError });
-    const attachment = await resolveChatAttachment(body.attachment);
+    const attachment = await resolveChatAttachment(body.attachment, user);
     if (!textValue && !attachment) return json(res, 400, { error: "Message cannot be empty" });
     if (textValue.length > 2000) return json(res, 400, { error: "Message is too long" });
     textValue = applySlashCommand(textValue);
@@ -2189,7 +2224,7 @@ async function routeApi(req, res, requestUrl) {
     if (rateError) return json(res, 429, { error: rateError });
     const body = await readJsonBody(req);
     const textValue = String(body.text || "").trim().slice(0, 2000);
-    const attachment = await resolveChatAttachment(body.attachment);
+    const attachment = await resolveChatAttachment(body.attachment, user);
     if (!textValue && !attachment) return json(res, 400, { error: "Message cannot be empty" });
     const automodError = await checkAutomod(textValue, user, req);
     if (automodError) return json(res, 400, { error: automodError });
@@ -2315,7 +2350,7 @@ async function routeApi(req, res, requestUrl) {
     const [files, rooms] = await Promise.all([readJson(FILES.uploads, []), readJson(FILES.rooms, [])]);
     const record = files.find((entry) => entry.id === id);
     if (!record) return text(res, 404, "File not found");
-    if (!canAccessFileRecord(record, user, rooms)) return text(res, 403, "Private or unreleased file");
+    if (!canAccessFileRecord(record, user, rooms) && !(await canReadStickerFile(record, user, rooms))) return text(res, 403, "Private or unreleased file");
     return serveFileRecord(req, res, record);
   }
 
@@ -3122,7 +3157,7 @@ async function routeApi(req, res, requestUrl) {
     const textValue = String(body.text || "").trim();
     if (!to && !groupId) return json(res, 400, { error: "Choose who to message" });
     if (to && to.toLowerCase() === user.username.toLowerCase()) return json(res, 400, { error: "Choose another account" });
-    const attachment = await resolveChatAttachment(body.attachment);
+    const attachment = await resolveChatAttachment(body.attachment, user);
     if (!textValue && !attachment) return json(res, 400, { error: "Message cannot be empty" });
     if (textValue.length > 2000) return json(res, 400, { error: "Message is too long" });
 
@@ -4535,13 +4570,19 @@ async function saveUpload(req, res, user) {
   return json(res, 201, { file: safeRecord });
 }
 
-async function resolveChatAttachment(attachment) {
+async function resolveChatAttachment(attachment, user) {
   if (!attachment || typeof attachment !== "object") return null;
   const id = String(attachment.id || "");
   if (!id) return null;
   const files = await readJson(FILES.uploads, []);
   const file = files.find((entry) => entry.id === id);
   if (!file) return null;
+  if (attachment.stickerId) {
+    const stickers = await readJson(FILES.stickers, []);
+    const sticker = safeStickers(stickers, user, files).find((entry) => entry.id === String(attachment.stickerId) && entry.fileId === id);
+    if (!sticker) throw Object.assign(new Error("Sticker is private or unavailable"), { statusCode: 403 });
+    return sticker.attachment;
+  }
   if (!["image", "video", "audio"].includes(file.kind)) return null;
   if (file.private) return null;
   const safe = safeFileRecord(file, null);
@@ -7208,7 +7249,7 @@ function safeSticker(sticker, filesById) {
     public: visibility === "public",
     fileId: String(sticker.fileId || ""),
     createdAt: String(sticker.createdAt || ""),
-    attachment: { ...safeFile, sticker: true },
+    attachment: { ...safeFile, sticker: true, stickerId: String(sticker.id), url: `/api/stickers/${encodeURIComponent(sticker.id)}/image` },
   };
 }
 
@@ -7219,11 +7260,55 @@ function safeStickers(stickers, user, files = []) {
     .filter((entry) => entry && (entry.owner === user.username || String(entry.visibility || "private") === "public"))
     .filter((entry) => {
       const file = filesById.get(String(entry.fileId || ""));
-      return file && (file.user === user.username || (String(entry.visibility || "private") === "public" && !file.private));
+      return isStickerFileRecord(file) && (!file.scanStatus || ["clean", "not-required-photo"].includes(file.scanStatus)) && !file.schoolContext;
     })
     .map((entry) => safeSticker(entry, filesById))
     .filter(Boolean)
-    .slice(0, 240);
+    .slice(0, 5000);
+}
+
+async function protectStickerFiles(stickers) {
+  const pending = uploadRecordQueue.then(async () => {
+    const files = await readJson(FILES.uploads, []);
+    const owned = new Set(stickers.map((entry) => JSON.stringify([entry.fileId, entry.owner])));
+    let changed = false;
+    for (const file of files) if (!file.private && isStickerFileRecord(file) && !file.schoolContext && owned.has(JSON.stringify([file.id, file.user]))) {
+      file.private = true; changed = true;
+    }
+    if (changed) await writeJson(FILES.uploads, files);
+  });
+  uploadRecordQueue = pending.catch(() => {});
+  return pending;
+}
+
+async function readableStickerMessages(user, rooms) {
+  const [messages, dms, secretMessages, settings] = await Promise.all([
+    readJson(FILES.messages, []), readJson(FILES.dms, []), readJson(FILES.secretMessages, []), readJson(FILES.settings, {}),
+  ]);
+  return messages.filter((entry) => canAccessRoom(rooms.find((room) => room.id === (entry.roomId || "main")), user))
+    .concat(dms.filter((entry) => (entry.participants || []).includes(user.username)), safeSecretMessages(secretMessages, user, settings));
+}
+
+async function canReadStickerFile(file, user, rooms) {
+  if (!user || !isStickerFileRecord(file) || file.schoolContext || (file.scanStatus && !["clean", "not-required-photo"].includes(file.scanStatus))) return false;
+  const stickers = await readJson(FILES.stickers, []);
+  if (safeStickers(stickers, user, [file]).length) return true;
+  return (await readableStickerMessages(user, rooms)).some((entry) => entry.attachment?.id === file.id);
+}
+
+async function serveStickerImage(req, res, user, id) {
+  // Private library files remain private downloads. Sent copies are visible only
+  // through a conversation the viewer can read, including after library removal.
+  res.setHeader("Cache-Control", "private, no-store");
+  const [stickers, files] = await Promise.all([readJson(FILES.stickers, []), readJson(FILES.uploads, [])]);
+  const library = safeStickers(stickers, user, files).find((entry) => entry.id === id);
+  if (library) return serveFileRecord(req, res, { ...files.find((entry) => entry.id === library.fileId), private: true });
+  const rooms = await readJson(FILES.rooms, []);
+  const shared = (await readableStickerMessages(user, rooms)).find((entry) => entry.attachment?.stickerId === id);
+  const fileId = shared?.attachment?.id;
+  const file = files.find((entry) => entry.id === fileId);
+  if (!file || !isStickerFileRecord(file) || (file.scanStatus && !["clean", "not-required-photo"].includes(file.scanStatus))) return text(res, 404, "Sticker not found");
+  return serveFileRecord(req, res, { ...file, private: true });
 }
 
 function safeFileRecords(files, user, rooms = []) {
@@ -11100,7 +11185,7 @@ async function serveUpload(req, res, pathname, user) {
   const [files, rooms] = await Promise.all([readJson(FILES.uploads, []), readJson(FILES.rooms, [])]);
   const record = files.find((entry) => entry.storedName === storedName);
   if (!record) return text(res, 404, "Not found");
-  if (!canAccessFileRecord(record, user, rooms)) return text(res, 403, "Private or unreleased file");
+  if (!canAccessFileRecord(record, user, rooms) && !(await canReadStickerFile(record, user, rooms))) return text(res, 403, "Private or unreleased file");
 
   const target = path.join(UPLOAD_DIR, storedName);
   return serveFileRecord(req, res, record, target);

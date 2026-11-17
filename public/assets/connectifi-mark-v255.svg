@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Connectifi">
+  <rect width="64" height="64" rx="10" fill="#245c4f"/>
+  <path d="M21 13h17a10 10 0 0 1 10 10v6a10 10 0 0 1-10 10H25l-12 9V23a10 10 0 0 1 8-10Z" fill="#f4f7f2"/>
+  <path d="M33 28h12a9 9 0 0 1 9 9v17l-10-7H33a9 9 0 0 1-9-9v-1a9 9 0 0 1 9-9Z" fill="#8dd5b6" stroke="#245c4f" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M33 37h12" fill="none" stroke="#245c4f" stroke-width="3" stroke-linecap="round"/>
+</svg>

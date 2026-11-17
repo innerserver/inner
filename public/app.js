@@ -6590,6 +6590,7 @@ function applyProfileTheme(themeOverride = "") {
   applyCustomThemeVariables(normalized === "custom" ? editorTheme || profile.customTheme : null);
   applyProfileVisualStyle(adminVisualStyle || (els.profileVisualStyle && els.profileVisualStyle.value) || profile.visualStyle || "forest");
   applyProfileThemeImage(adminTheme || adminVisualStyle ? "" : ((els.profileThemeImageUrl && els.profileThemeImageUrl.value) || profile.themeImageUrl || ""));
+  syncThemeContrast();
 }
 
 function applyProfileVisualStyle(styleOverride = "") {
@@ -6743,7 +6744,8 @@ function applyCustomThemeVariables(customTheme) {
   if (!customTheme) return;
   const bg = safeColor(customTheme.bg, "#f7f7f4");
   const surface = safeColor(customTheme.surface, "#ffffff");
-  const ink = safeColor(customTheme.ink, "#151515");
+  const preferredInk = safeColor(customTheme.ink, "#151515");
+  const ink = themeContrastRatio(preferredInk, surface) >= 4.5 ? preferredInk : themeForeground(surface);
   const accent = safeColor(customTheme.accent, "#245c4f");
   root.style.setProperty("--custom-bg", bg);
   root.style.setProperty("--custom-surface", surface);
@@ -6753,6 +6755,34 @@ function applyCustomThemeVariables(customTheme) {
   root.style.setProperty("--custom-line", `${ink}26`);
   root.style.setProperty("--custom-muted", `${ink}aa`);
   root.style.setProperty("--custom-surface-muted", `${surface}dd`);
+  syncThemeContrast();
+}
+
+function themeLuminance(value) {
+  if (!/^#[0-9a-f]{6}$/i.test(value)) return null;
+  const rgb = [1, 3, 5].map((offset) => parseInt(value.slice(offset, offset + 2), 16) / 255)
+    .map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+  return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+}
+
+function themeContrastRatio(left, right) {
+  const a = themeLuminance(left), b = themeLuminance(right);
+  return a === null || b === null ? 1 : (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+function themeForeground(background) {
+  return themeContrastRatio("#ffffff", background) >= themeContrastRatio("#000000", background) ? "#ffffff" : "#000000";
+}
+
+function syncThemeContrast() {
+  const body = document.body, colors = getComputedStyle(body);
+  const accent = colors.getPropertyValue("--accent").trim();
+  const surface = colors.getPropertyValue("--surface").trim();
+  const bg = colors.getPropertyValue("--bg").trim();
+  body.style.setProperty("--on-accent", themeForeground(accent));
+  body.dataset.colorMode = (themeLuminance(surface) ?? themeLuminance(bg) ?? 1) < 0.18 ? "dark" : "light";
+  const chromeColor = document.querySelector('meta[name="theme-color"]');
+  if (chromeColor && themeLuminance(bg) !== null) chromeColor.content = bg;
 }
 
 function safeColor(value, fallback) {

@@ -2,17 +2,17 @@
   "name": "Connectifi",
   "short_name": "Connectifi",
   "description": "Private workspace for rooms, DMs, files, screen sharing, admin controls, backups, and contact settings.",
-  "start_url": "/?v=connectifi-210-dm-recovery",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f7f7f4",
   "theme_color": "#f7f7f4",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "/assets/connectifi-mark-v255.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

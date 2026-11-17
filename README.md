@@ -1,6 +1,6 @@
 # Inner
 
-Current release: v255. See [dark contrast and connected-chat logo](docs/V255.md), [v254 private and public sticker library](docs/V254.md), [v253 room synchronization, chat exports and status cleanup](docs/V253.md), [v252 cleanup, newcomers and questionnaire identity](docs/V252.md), [v251 grade promotion and graduation](docs/V251.md), [v250 passkeys and setup reminders](docs/V250.md), [v249 shared grade rooms and pins](docs/V249.md), [v248 shared UI and grade fixes](docs/V248.md), [v247 Friends and announcements](docs/V247.md), [v246 school features and scanner setup](docs/V246.md), and [v245 security changes](SECURITY-v245.md).
+Current release: v256. See [passkey autofill](docs/V256.md), [v255 dark contrast and connected-chat logo](docs/V255.md), [v254 private and public sticker library](docs/V254.md), [v253 room synchronization, chat exports and status cleanup](docs/V253.md), [v252 cleanup, newcomers and questionnaire identity](docs/V252.md), [v251 grade promotion and graduation](docs/V251.md), [v250 passkeys and setup reminders](docs/V250.md), [v249 shared grade rooms and pins](docs/V249.md), [v248 shared UI and grade fixes](docs/V248.md), [v247 Friends and announcements](docs/V247.md), [v246 school features and scanner setup](docs/V246.md), and [v245 security changes](SECURITY-v245.md).
 
 A Node.js private workspace app with:
 

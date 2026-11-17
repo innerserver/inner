@@ -1180,6 +1180,7 @@ function restoreInputDraft(input, draft) {
 
 async function handleLogin(event) {
   event.preventDefault();
+  if (window.ConnectifiPasskeys && !await window.ConnectifiPasskeys.beginPasswordLogin()) return;
   els.loginError.textContent = "";
   const submitButton = els.loginForm && els.loginForm.querySelector("button[type='submit']");
 
@@ -1204,6 +1205,7 @@ async function handleLogin(event) {
     els.loginError.textContent = error.message;
   } finally {
     if (submitButton) submitButton.disabled = false;
+    window.ConnectifiPasskeys?.endPasswordLogin();
   }
 }
 
@@ -1561,10 +1563,12 @@ function showLogin(message = "", options = {}) {
   els.appView.classList.add("hidden");
   els.loginError.textContent = message;
   setConnection("Signed out");
-  if (!options.keepPasswordReset) setTimeout(() => els.loginPassword.focus(), 0);
+  void window.ConnectifiPasskeys?.startAutofill();
+  if (!options.keepPasswordReset) setTimeout(() => els.loginUsername.focus(), 0);
 }
 
 function showApp(options = {}) {
+  void window.ConnectifiPasskeys?.stopAutofill();
   els.loginView.classList.add("hidden");
   els.appView.classList.remove("hidden");
   els.appView.classList.toggle("app-loading", Boolean(options.loading));

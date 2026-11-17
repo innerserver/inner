@@ -19,6 +19,80 @@
   }
   const errorText = (error) => ["NotAllowedError", "AbortError"].includes(error.name) ? "Passkey request cancelled or timed out. You can try again or use your password." : error.name === "InvalidStateError" ? "This device already has this passkey. Try signing in with it." : error.message || "Passkey request failed.";
   let busy = false, generation = 0, setupDialog = null, remindersDisabled = false;
+  const loginForm = byId("loginForm"), loginView = byId("loginView");
+  let conditional = null, conditionalTask = null, conditionalGeneration = 0, renewalTimer = null, passwordSigningIn = false;
+  let capability = null;
+  const visibleLogin = () => !state.loggedIn && !document.hidden && !loginView.classList.contains("hidden") && !loginForm.classList.contains("hidden")
+    && !loginView.classList.contains("signup-expanded")
+    && ["passwordResetRequestForm", "passwordResetCompleteForm"].every((id) => !byId(id) || byId(id).classList.contains("hidden"));
+  function stopAutofill() {
+    ++conditionalGeneration;
+    clearTimeout(renewalTimer); renewalTimer = null;
+    conditional?.abort(); conditional = null;
+    return conditionalTask || Promise.resolve();
+  }
+  async function supportsAutofill() {
+    if (!supported) return false;
+    if (capability === null) capability = (async () => {
+      try {
+        if (typeof PublicKeyCredential.isConditionalMediationAvailable === "function") return await PublicKeyCredential.isConditionalMediationAvailable();
+        if (typeof PublicKeyCredential.getClientCapabilities === "function") return (await PublicKeyCredential.getClientCapabilities()).conditionalGet === true;
+      } catch { /* Keep password and explicit passkey sign-in available. */ }
+      return false;
+    })();
+    return capability;
+  }
+  const requestOptions = (options) => ({ ...options, challenge: decode(options.challenge), allowCredentials: (options.allowCredentials || []).map((key) => ({ ...key, id: decode(key.id) })) });
+  async function completePasskeyLogin(credential) {
+    await api("/api/passkeys/login/verify", { method: "POST", json: serialize(credential) });
+    els.loginPassword.value = ""; showApp();
+    try { await loadState(); } catch (error) { showLogin(error.message || "Could not load workspace"); }
+  }
+  function startAutofill() {
+    if (!supported || !visibleLogin() || busy || passwordSigningIn) return Promise.resolve();
+    if (conditionalTask) {
+      if (!conditional || conditional.signal.aborted) void conditionalTask.then(() => startAutofill());
+      return conditionalTask;
+    }
+    const controller = new AbortController(), current = ++conditionalGeneration;
+    conditional = controller;
+    const valid = () => !controller.signal.aborted && current === conditionalGeneration && visibleLogin() && !passwordSigningIn;
+    const task = (async () => {
+      let completing = false;
+      try {
+        if (!await supportsAutofill() || !valid()) return;
+        const options = await api("/api/passkeys/login/options", { method: "POST", json: {}, signal: controller.signal });
+        if (!valid()) return;
+        // Renew before the server's five-minute challenge expires, only while
+        // the sign-in screen is active. This does not open a modal prompt.
+        renewalTimer = setTimeout(() => { void stopAutofill().then(() => startAutofill()); }, 4 * 60 * 1000);
+        const credential = await navigator.credentials.get({ publicKey: { ...requestOptions(options), allowCredentials: [] }, mediation: "conditional", signal: controller.signal });
+        if (!credential || !valid() || busy) return;
+        clearTimeout(renewalTimer); renewalTimer = null;
+        completing = busy = true;
+        login.disabled = true;
+        loginForm.querySelector("[type=submit]").disabled = true;
+        await completePasskeyLogin(credential);
+      } catch (error) {
+        // Unsupported/no saved credential/cancellation must never block passwords.
+        // A selected credential that actually fails verification gets feedback.
+        if (completing && !controller.signal.aborted && visibleLogin()) byId("loginError").textContent = errorText(error);
+      } finally {
+        if (completing) { busy = false; login.disabled = !supported; loginForm.querySelector("[type=submit]").disabled = false; }
+        if (conditional === controller) { conditional = null; clearTimeout(renewalTimer); renewalTimer = null; }
+      }
+    })();
+    conditionalTask = task;
+    void task.finally(() => { if (conditionalTask === task) conditionalTask = null; });
+    return task;
+  }
+  async function beginPasswordLogin() {
+    if (busy || passwordSigningIn) return false;
+    passwordSigningIn = true;
+    await stopAutofill();
+    return true;
+  }
+  function endPasswordLogin() { passwordSigningIn = false; void startAutofill(); }
   async function registerPasskey(currentPassword, name) {
     const options = await api("/api/passkeys/register/options", { method: "POST", json: { password: currentPassword, name } });
     const credential = await navigator.credentials.create({ publicKey: { ...options, challenge: decode(options.challenge), user: { ...options.user, id: decode(options.user.id) }, excludeCredentials: (options.excludeCredentials || []).map((key) => ({ ...key, id: decode(key.id) })) } });
@@ -26,10 +100,10 @@
     await api("/api/passkeys/register/verify", { method: "POST", json: serialize(credential) });
   }
   async function action(button, fn, target = status) {
-    if (busy) return;
+    if (busy || passwordSigningIn) return;
     busy = true; button.disabled = true; target.textContent = "";
     try { await fn(); } catch (error) { target.textContent = errorText(error); }
-    finally { busy = false; button.disabled = !supported; password.value = ""; }
+    finally { busy = false; button.disabled = !supported; password.value = ""; void startAutofill(); }
   }
   async function refresh() {
     const current = ++generation, identity = `${state.user?.username}:${state.csrfToken}`;
@@ -58,12 +132,11 @@
   login.disabled = add.disabled = !supported;
   if (!supported) status.textContent = "Passkeys need HTTPS and a supported browser. You can continue using your password.";
   login.onclick = () => action(login, async () => {
+    await stopAutofill();
     const options = await api("/api/passkeys/login/options", { method: "POST", json: {} });
-    const credential = await navigator.credentials.get({ publicKey: { ...options, challenge: decode(options.challenge), allowCredentials: (options.allowCredentials || []).map((key) => ({ ...key, id: decode(key.id) })) } });
+    const credential = await navigator.credentials.get({ publicKey: requestOptions(options) });
     if (!credential) throw new Error("No passkey selected.");
-    await api("/api/passkeys/login/verify", { method: "POST", json: serialize(credential) });
-    els.loginPassword.value = ""; showApp();
-    await loadState();
+    await completePasskeyLogin(credential);
   }, byId("loginError"));
   add.onclick = () => action(add, async () => {
     if (!password.value) throw new Error("Enter your current password to add a passkey.");
@@ -76,7 +149,7 @@
     await api("/api/passkeys/reminders", { method: "POST", json: { disabled: !remindersDisabled } });
     await refresh(); status.textContent = remindersDisabled ? "Setup reminders turned off for your account." : "Setup reminders will appear after 20 password logins without a passkey.";
   });
-  window.ConnectifiPasskeys = { showSetupPrompt() {
+  window.ConnectifiPasskeys = { startAutofill, stopAutofill, beginPasswordLogin, endPasswordLogin, showSetupPrompt() {
     if (!supported || !state.loggedIn || setupDialog) return;
     const dialog = document.createElement("dialog"); dialog.className = "school-dialog passkey-setup-dialog";
     dialog.setAttribute("aria-labelledby", "passkeySetupHeading"); dialog.setAttribute("aria-describedby", "passkeySetupDescription");
@@ -100,4 +173,10 @@
   new MutationObserver(() => { if (byId("appView").classList.contains("hidden")) { generation++; setupDialog?.close(); password.value = ""; list.replaceChildren(); } }).observe(byId("appView"), { attributes: true, attributeFilter: ["class"] });
   const profile = byId("profileView");
   new MutationObserver(() => { if (profile.classList.contains("active")) refresh().catch((error) => { status.textContent = error.message; }); }).observe(profile, { attributes: true, attributeFilter: ["class"] });
+  const loginObserver = new MutationObserver(() => { if (visibleLogin()) void startAutofill(); else void stopAutofill(); });
+  for (const element of [loginView, loginForm, byId("passwordResetRequestForm"), byId("passwordResetCompleteForm")].filter(Boolean)) loginObserver.observe(element, { attributes: true, attributeFilter: ["class", "hidden"] });
+  byId("loginUsername").addEventListener("focus", () => { void startAutofill(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) void stopAutofill(); else void startAutofill(); });
+  window.addEventListener("pagehide", () => { void stopAutofill(); });
+  window.addEventListener("pageshow", () => { void startAutofill(); });
 })();

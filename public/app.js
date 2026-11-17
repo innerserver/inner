@@ -7194,6 +7194,9 @@ function renderFiles() {
     downloadButton.textContent = "Download";
     downloadButton.addEventListener("click", () => downloadUrl(downloadableUrl(file.url), file.originalName));
     actions.append(downloadButton);
+    if (window.ConnectifiStudyNotes?.supports(file.originalName)) {
+      actions.append(accountButton('Make notes', () => window.ConnectifiStudyNotes.open(file)));
+    }
     if (isOwner()) {
       const deleteButton = document.createElement("button");
       deleteButton.className = "ghost-light-button compact-button";

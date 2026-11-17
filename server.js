@@ -213,6 +213,8 @@ const mimeTypes = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".wasm": "application/wasm",
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
   ".png": "image/png",
@@ -6307,6 +6309,11 @@ function applySecurityHeaders(req, res) {
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
   res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
   res.setHeader("Content-Security-Policy", "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' ws: wss: https:; worker-src 'self' blob:; manifest-src 'self'; frame-src 'self' https: http:");
+  // Only the isolated local-model worker can compile WebAssembly. Page scripts
+  // and all uploaded content keep the existing policy and execution restrictions.
+  if (String(req.url || '').split('?')[0] === '/study-notes/ai-worker.js') {
+    res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co https://*.xethub.hf.co; worker-src 'self'; base-uri 'none'; object-src 'none'");
+  }
   if (isHttpsRequest(req)) res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 }
 

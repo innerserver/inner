@@ -19,6 +19,7 @@
     <link rel="stylesheet" href="/passkeys.css?v=250" />
     <link rel="stylesheet" href="/grade-progression.css?v=251" />
     <link rel="stylesheet" href="/theme-contrast.css?v=257" />
+    <link rel="stylesheet" href="/controls.css?v=258" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -41,6 +42,7 @@
           </label>
           <button class="primary-button" type="submit">Sign in</button>
           <button id="passkeyLoginButton" class="secondary-button" type="button">Sign in with a passkey</button>
+          <p id="passkeyLoginHint" class="passkey-login-hint" role="status">Use a passkey saved for this Connectifi address, or sign in with your password.</p>
           <button id="forgotPasswordButton" class="ghost-button" type="button">Forgot password?</button>
           <button id="signupEntryButton" class="secondary-button" type="button">Request account</button>
           <p id="loginError" class="form-error" role="alert"></p>
@@ -1262,8 +1264,8 @@
     <script src="/ui-boot.js?v=connectifi-210-dm-recovery" defer></script>
     <script src="/i18n.js?v=246" defer></script>
     <script src="/grade-utils.js?v=248" defer></script>
-    <script src="/app.js?v=connectifi-257-glass-photo" defer></script>
-    <script src="/passkeys.js?v=256" defer></script>
+    <script src="/app.js?v=connectifi-258-passkey-controls" defer></script>
+    <script src="/passkeys.js?v=258" defer></script>
     <script src="/grade-progression.js?v=252" defer></script>
     <script src="/connections.js?v=248" defer></script>
     <script src="/announcement-composer.js?v=247" defer></script>

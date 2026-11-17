@@ -1,0 +1,95 @@
+/* v258: control finishes. Sidebar geometry and user appearance preferences stay local. */
+body :is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.questionnaire-dialog,.account-detail-shell,.tutorial-shell) :is(.primary-button,.secondary-button,.ghost-button,.ghost-light-button,.danger-button,.connections-button,.collapse-toggle) {
+  border-radius: var(--ui-control-radius, 4px) !important;
+  font-weight: 600 !important;
+  font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif !important;
+  gap: 7px;
+  text-decoration: none;
+  touch-action: manipulation;
+}
+body :is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.questionnaire-dialog,.account-detail-shell,.tutorial-shell) :is(.secondary-button,.connections-button:not(.primary)) {
+  border-color: color-mix(in srgb, var(--ink) 26%, var(--surface)) !important;
+  background: var(--surface) !important;
+  box-shadow: 0 1px 2px rgb(0 0 0 / .06) !important;
+}
+body :is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.questionnaire-dialog,.account-detail-shell,.tutorial-shell) :is(.primary-button,.connections-button.primary) {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .12), 0 1px 2px rgb(0 0 0 / .12) !important;
+}
+body :is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.questionnaire-dialog,.account-detail-shell,.tutorial-shell) :is(.primary-button,.secondary-button,.ghost-button,.ghost-light-button,.danger-button,.connections-button):hover:not(:disabled) {
+  outline: 1px solid color-mix(in srgb, var(--ink) 24%, transparent);
+  outline-offset: -3px;
+}
+body :is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.questionnaire-dialog,.account-detail-shell,.tutorial-shell) :is(.primary-button,.secondary-button,.ghost-button,.ghost-light-button,.danger-button,.connections-button):active:not(:disabled) {
+  box-shadow: inset 0 1px 3px rgb(0 0 0 / .2) !important;
+}
+body :is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.questionnaire-dialog,.account-detail-shell,.tutorial-shell) :is(button,select):focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 3px !important;
+}
+.passkey-login-hint { margin: -2px 0 4px; font: 400 12px/1.5 "Segoe UI", system-ui, sans-serif; color: var(--muted); }
+
+/* Style the actual picker in the browser's top layer, preserving labels,
+   native keyboard/typeahead, validation, dynamic options and change events.
+   Older engines retain the usable native picker instead of a partial imitation. */
+@supports (appearance: base-select) {
+  body select:not([multiple]):not([size]),
+  body select[size="1"]:not([multiple]),
+  body select:not([multiple]):not([size])::picker(select),
+  body select[size="1"]:not([multiple])::picker(select) { appearance: base-select; }
+  body select:not([multiple]):not([size]),body select[size="1"]:not([multiple]) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    cursor: pointer;
+    min-width: 0;
+    background-image: none !important;
+  }
+  body select::picker-icon { color: var(--muted); font-size: 11px; }
+  body select::picker(select) {
+    margin-block: 6px;
+    padding: 5px;
+    border: 1px solid var(--line);
+    border-radius: var(--ui-panel-radius, 6px);
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: 0 8px 24px rgb(0 0 0 / .18);
+    font: 400 14px/1.45 "Segoe UI", system-ui, sans-serif;
+    max-height: min(360px, 65dvh);
+    max-width: calc(100vw - 20px);
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) var(--surface);
+  }
+  body select:not([multiple]):is(:not([size]),[size="1"]) option {
+    padding: 9px 12px;
+    gap: 10px;
+    min-height: 38px;
+    border: 0;
+    border-radius: var(--ui-control-radius, 4px);
+    white-space: normal;
+    overflow-wrap: anywhere;
+    background: var(--surface);
+    color: var(--ink);
+  }
+  body select:not([multiple]):is(:not([size]),[size="1"]) option:is(:hover,:focus-visible,:checked) {
+    background: var(--surface-muted, var(--surface)) !important;
+    color: var(--ink) !important;
+  }
+  body select option:checked { font-weight: 600; }
+  body select option::checkmark { color: var(--accent); margin-inline-start: auto; order: 1; }
+  body select option:disabled { opacity: .5; cursor: not-allowed; }
+  body select optgroup { padding-block: 4px; color: var(--muted); background: var(--surface); }
+}
+
+body :is(.message-more-menu-content,.dm-tools-panel,.sticker-tools-panel) {
+  border: 1px solid var(--line) !important;
+  border-radius: var(--ui-panel-radius, 6px) !important;
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  box-shadow: 0 6px 20px rgb(0 0 0 / .14) !important;
+}
+@media (forced-colors: active) {
+  body select::picker(select) { border-color: CanvasText; background: Canvas; color: CanvasText; }
+  body select option:checked { outline: 1px solid Highlight; }
+}

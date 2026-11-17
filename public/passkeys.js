@@ -22,6 +22,18 @@
   const loginForm = byId("loginForm"), loginView = byId("loginView");
   let conditional = null, conditionalTask = null, conditionalGeneration = 0, renewalTimer = null, passwordSigningIn = false;
   let capability = null;
+  let loginReady = false, automaticAttempted = false, automaticRequested = false;
+  const passkeyHint = (message) => { const hint = byId("passkeyLoginHint"); if (hint) hint.textContent = message; };
+  async function offerLogin({ automatic = true } = {}) {
+    loginReady = true;
+    if (!automatic) { automaticAttempted = true; automaticRequested = false; }
+    if (!automaticAttempted) {
+      automaticAttempted = true;
+      automaticRequested = true;
+      await stopAutofill();
+    }
+    return startAutofill();
+  }
   const visibleLogin = () => !state.loggedIn && !document.hidden && !loginView.classList.contains("hidden") && !loginForm.classList.contains("hidden")
     && !loginView.classList.contains("signup-expanded")
     && ["passwordResetRequestForm", "passwordResetCompleteForm"].every((id) => !byId(id) || byId(id).classList.contains("hidden"));
@@ -57,16 +69,25 @@
     const controller = new AbortController(), current = ++conditionalGeneration;
     conditional = controller;
     const valid = () => !controller.signal.aborted && current === conditionalGeneration && visibleLogin() && !passwordSigningIn;
+    let wasModal = false;
     const task = (async () => {
       let completing = false;
       try {
-        if (!await supportsAutofill() || !valid()) return;
+        let modal = false;
+        if (loginReady && automaticRequested) {
+          automaticRequested = false;
+          // Device capability is not proof that this site has a saved passkey.
+          try { modal = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable?.() === true; } catch { /* Fall back to autofill. */ }
+        }
+        if (!valid() || (!modal && !await supportsAutofill()) || !valid()) return;
+        wasModal = modal;
         const options = await api("/api/passkeys/login/options", { method: "POST", json: {}, signal: controller.signal });
         if (!valid()) return;
         // Renew before the server's five-minute challenge expires, only while
         // the sign-in screen is active. This does not open a modal prompt.
-        renewalTimer = setTimeout(() => { void stopAutofill().then(() => startAutofill()); }, 4 * 60 * 1000);
-        const credential = await navigator.credentials.get({ publicKey: { ...requestOptions(options), allowCredentials: [] }, mediation: "conditional", signal: controller.signal });
+        if (!modal) renewalTimer = setTimeout(() => { void stopAutofill().then(() => startAutofill()); }, 4 * 60 * 1000);
+        passkeyHint(modal ? "Use your device unlock to sign in, or cancel to use your password." : "Select a saved passkey from username autofill, or choose Sign in with a passkey.");
+        const credential = await navigator.credentials.get({ publicKey: { ...requestOptions(options), allowCredentials: [], ...(modal ? { hints: ["client-device"] } : {}) }, mediation: modal ? "optional" : "conditional", signal: controller.signal });
         if (!credential || !valid() || busy) return;
         clearTimeout(renewalTimer); renewalTimer = null;
         completing = busy = true;
@@ -77,13 +98,19 @@
         // Unsupported/no saved credential/cancellation must never block passwords.
         // A selected credential that actually fails verification gets feedback.
         if (completing && !controller.signal.aborted && visibleLogin()) byId("loginError").textContent = errorText(error);
+        else if (!controller.signal.aborted && visibleLogin()) passkeyHint("Choose Sign in with a passkey to open your device’s passkey picker, or use your password.");
       } finally {
         if (completing) { busy = false; login.disabled = !supported; loginForm.querySelector("[type=submit]").disabled = false; }
         if (conditional === controller) { conditional = null; clearTimeout(renewalTimer); renewalTimer = null; }
       }
     })();
     conditionalTask = task;
-    void task.finally(() => { if (conditionalTask === task) conditionalTask = null; });
+    void task.finally(() => {
+      if (conditionalTask === task) conditionalTask = null;
+      // An automatic prompt is attempted once. Cancellation falls back to quiet
+      // autofill, never a loop of device dialogs.
+      if (wasModal && valid()) void startAutofill();
+    });
     return task;
   }
   async function beginPasswordLogin() {
@@ -149,7 +176,7 @@
     await api("/api/passkeys/reminders", { method: "POST", json: { disabled: !remindersDisabled } });
     await refresh(); status.textContent = remindersDisabled ? "Setup reminders turned off for your account." : "Setup reminders will appear after 20 password logins without a passkey.";
   });
-  window.ConnectifiPasskeys = { startAutofill, stopAutofill, beginPasswordLogin, endPasswordLogin, showSetupPrompt() {
+  window.ConnectifiPasskeys = { offerLogin, startAutofill, stopAutofill, beginPasswordLogin, endPasswordLogin, showSetupPrompt() {
     if (!supported || !state.loggedIn || setupDialog) return;
     const dialog = document.createElement("dialog"); dialog.className = "school-dialog passkey-setup-dialog";
     dialog.setAttribute("aria-labelledby", "passkeySetupHeading"); dialog.setAttribute("aria-describedby", "passkeySetupDescription");

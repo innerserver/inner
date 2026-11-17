@@ -1448,7 +1448,7 @@ async function handleLogout() {
   stopShare({ silent: true });
   await api("/api/logout", { method: "POST" }).catch(() => {});
   state.csrfToken = "";
-  showLogin();
+  showLogin("", { automaticPasskey: false });
 }
 
 async function loadState() {
@@ -1569,7 +1569,7 @@ function showLogin(message = "", options = {}) {
   els.appView.classList.add("hidden");
   els.loginError.textContent = message;
   setConnection("Signed out");
-  void window.ConnectifiPasskeys?.startAutofill();
+  void window.ConnectifiPasskeys?.offerLogin({ automatic: options.automaticPasskey !== false });
   if (!options.keepPasswordReset) setTimeout(() => els.loginUsername.focus(), 0);
 }
 

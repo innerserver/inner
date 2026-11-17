@@ -34,6 +34,12 @@ body[data-theme="glass"][data-theme-image="true"] #appView .workspace :is(.panel
   backdrop-filter: blur(12px);
 }
 body[data-theme="glass"][data-theme-image="true"] #appView .workspace .message.mine { background: rgb(35 62 47 / .95) !important; }
+/* A photo-generated Custom palette replaces the preset colours. The picture
+   remains visible between opaque, readable content panels. */
+body[data-theme="custom"][data-theme-image="true"] #appView.app:not(.hidden) {
+  background: linear-gradient(color-mix(in srgb, var(--bg) 62%, transparent), color-mix(in srgb, var(--bg) 76%, transparent)), var(--account-theme-image) center / cover fixed !important;
+}
+body[data-theme="custom"][data-theme-image="true"] #appView .workspace { background: transparent; backdrop-filter: none; }
 #profileForm .profile-background-controls { grid-column: 1 / -1; display: grid; gap: 10px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 6px; }
 #profileForm .profile-background-controls :is(.panel-note,.inline-status) { margin: 0; font-size: 13px; line-height: 1.5; }
 #profileForm .profile-background-controls input[type="file"] { width: 100%; max-width: 100%; }

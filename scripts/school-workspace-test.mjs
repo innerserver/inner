@@ -165,6 +165,20 @@ test("acknowledgements are room-scoped, timestamped and idempotent", async () =>
   assert.equal(notice.receipts.length, 1); assert.ok(notice.receipts[0].acknowledgedAt);
   assert.equal((await call("alice", "/api/school")).data.notices[0].receipts, undefined);
 });
+
+test('PTM endpoints inherit authentication and CSRF, and save through the normal school store', async () => {
+  const start=new Date(Date.now()+7*86400000);start.setUTCHours(9,0,0,0);
+  const draft={title:'PTM route fixture',teacher:'teacher',subject:'Science',grade:'9',slotMinutes:15,timeZone:'UTC',days:[{startsAt:start.toISOString(),endsAt:new Date(+start+3600000).toISOString(),breaks:[]}]};
+  assert.equal((await call('alice','/api/school/ptm',draft)).status,403);
+  const noCsrf=await fetch(origin+'/api/school/ptm',{method:'POST',headers:{Origin:origin,Cookie:`server_app_session=${tokens.admin}`,'Content-Type':'application/json'},body:JSON.stringify(draft)});
+  assert.equal(noCsrf.status,403);
+  assert.equal((await call('admin','/api/school/ptm',draft)).status,200);
+  const data=(await call('alice','/api/school')).data;
+  const schedule=data.ptmSchedules.find(entry=>entry.title===draft.title);assert.ok(schedule);
+  assert.equal(data.events.filter(entry=>entry.ptmScheduleId===schedule.id).length,4);
+  assert.equal((await call('alice',`/api/school/ptm/${schedule.id}/cancel`,{})).status,403);
+  assert.equal((await call('admin',`/api/school/ptm/${schedule.id}/cancel`,{})).status,200);
+});
 test("specific-person announcements and acknowledgements stay private across state and live payloads", async () => {
   assert.equal((await call("alice", "/api/announcements/recipients")).status, 403);
   const directory = await call("admin", "/api/announcements/recipients?q=alice");

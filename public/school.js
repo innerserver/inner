@@ -84,17 +84,146 @@
     };
     dialog.append(form);
   }
+  function createPtm() {
+    const { dialog, close } = modal('Create PTM schedule'), form = node('form', undefined, 'school-editor');
+    dialog.classList.add('ptm-dialog');
+    const title = input(), teacher = select(snapshot.teachers.map((entry) => [entry.username, entry.username]));
+    const subject = input(), grade = select([6,7,8,9,10,11,12].map((year) => [String(year), `Grade ${year}`]));
+    const duration = input('number'), location = input('text', false), description = node('textarea');
+    title.value = 'Parent teacher meeting'; title.maxLength = 120; subject.maxLength = 100;
+    duration.value = '10'; duration.min = '5'; duration.max = '120'; duration.step = '1'; description.maxLength = 2000;
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    description.rows = 2;
+    const fields = node('div', undefined, 'ptm-editor-fields');
+    fields.append(field('Title', title), field('Teacher', teacher), field('Teaching subject', subject), field('Grade', grade), field('Minutes per slot', duration), field('Location', location), field('Details', description));
+    form.append(fields, node('p', `Times are entered in ${timeZone}. Each full slot is for one student. Grades include classes A, B and C.`, 'panel-note'));
+    const days = node('div', undefined, 'ptm-days-editor'), rows = [], preview = node('p', 'Add dates, availability and any breaks, then preview the slots.', 'panel-note');
+    preview.setAttribute('role', 'status');
+    function addDay() {
+      if (rows.length >= 30) return notify('Maximum 30 days per schedule');
+      const panel = node('fieldset', undefined, 'ptm-day-editor'), legend = node('legend', 'Availability day');
+      const day = input('date'), start = input('time'), end = input('time'), breaks = node('div', undefined, 'ptm-breaks');
+      start.value = '09:00'; end.value = '13:00';
+      const row = { day, start, end, breaks: [] }; rows.push(row);
+      function addBreak() {
+        if (row.breaks.length >= 12) return notify('Maximum 12 breaks per day');
+        const line = node('div', undefined, 'ptm-time-row'), from = input('time'), to = input('time');
+        const pause = { from, to }; row.breaks.push(pause);
+        line.append(field('Break starts', from), field('Break ends', to), button('Remove break', () => { row.breaks.splice(row.breaks.indexOf(pause), 1); line.remove(); preview.textContent = 'Preview again after changing availability.'; })); breaks.append(line);
+      }
+      const line = node('div', undefined, 'ptm-time-row'); line.append(field('Date', day), field('From', start), field('Until', end));
+      const actions = node('div', undefined, 'button-row'); actions.append(button('Add break', addBreak), button('Remove day', () => { rows.splice(rows.indexOf(row), 1); panel.remove(); preview.textContent = 'Preview again after changing availability.'; }));
+      panel.append(legend, line, breaks, actions); days.append(panel);
+    }
+    function localInstant(day, time) {
+      const parsed = new Date(`${day}T${time}`);
+      const pad = (value) => String(value).padStart(2, '0');
+      if (!day || !time || !Number.isFinite(parsed.getTime()) || `${parsed.getFullYear()}-${pad(parsed.getMonth()+1)}-${pad(parsed.getDate())}T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}` !== `${day}T${time}`) throw new Error('Choose a valid local date and time');
+      return parsed.toISOString();
+    }
+    function collect() {
+      if (!rows.length) throw new Error('Add at least one PTM day');
+      return rows.map((row) => ({ startsAt: localInstant(row.day.value, row.start.value), endsAt: localInstant(row.day.value, row.end.value), breaks: row.breaks.map((pause) => ({ startsAt: localInstant(row.day.value, pause.from.value), endsAt: localInstant(row.day.value, pause.to.value) })) }));
+    }
+    function previewSlots() {
+      const minutes = Number(duration.value);
+      if (!Number.isInteger(minutes) || minutes < 5 || minutes > 120) throw new Error('Choose 5 to 120 minutes per slot');
+      const labels = collect().map((day) => {
+        let cursor = Date.parse(day.startsAt), count = 0;
+        const end = Date.parse(day.endsAt);
+        if (cursor <= Date.now() || end <= cursor) throw new Error('Availability must start in the future and end after it starts');
+        for (const pause of [...day.breaks].sort((a,b) => Date.parse(a.startsAt)-Date.parse(b.startsAt))) {
+          const from = Date.parse(pause.startsAt), to = Date.parse(pause.endsAt);
+          if (from < cursor || to > end || to <= from) throw new Error('Breaks must be inside availability and cannot overlap');
+          count += Math.floor((from-cursor)/(minutes*60000)); cursor = to;
+        }
+        count += Math.floor((end-cursor)/(minutes*60000));
+        return `${when(day.startsAt)}: ${count} slots, ${day.breaks.length} breaks`;
+      });
+      preview.textContent = `${labels.join(' · ')}. Partial slots are left unavailable. The server checks teacher conflicts before saving.`;
+    }
+    const dayActions = node('div', undefined, 'button-row'); dayActions.append(button('Add day', addDay), button('Preview slots', previewSlots));
+    form.append(days, dayActions, preview);
+    const send = node('button', 'Create schedule', 'primary-button'); send.type = 'submit'; form.append(send);
+    form.onsubmit = async (event) => {
+      event.preventDefault(); send.disabled = true;
+      try { previewSlots(); await write('/api/school/ptm', { title: title.value, teacher: teacher.value, subject: subject.value, grade: grade.value, slotMinutes: Number(duration.value), location: location.value, description: description.value, timeZone, days: collect() }); close(); }
+      catch (error) { preview.textContent = error.message; } finally { send.disabled = false; }
+    };
+    addDay(); dialog.append(form);
+  }
+  const ptmSelections = new Map();
+  function renderPtm() {
+    const container = document.getElementById('schoolPtm'); if (!container) return;
+    container.replaceChildren();
+    const schedules = (snapshot.ptmSchedules || []).filter((entry) => !entry.cancelled && snapshot.events.some((slot) => slot.ptmScheduleId === entry.id && !slot.cancelled && Date.parse(slot.endsAt) > Date.now())).sort((a,b) => Number(a.grade)-Number(b.grade) || a.teacher.localeCompare(b.teacher));
+    container.parentElement.hidden = !schedules.length;
+    const groups = new Map();
+    for (const schedule of schedules) {
+      if (!groups.has(schedule.grade)) { const group = node('section', undefined, 'ptm-grade'); group.append(node('h4', `Grade ${schedule.grade}`)); groups.set(schedule.grade, group); container.append(group); }
+      const card = node('article', undefined, 'school-card ptm-schedule');
+      card.append(node('h5', `${schedule.teacher} · ${schedule.subject}`), node('p', schedule.title), node('p', `${schedule.slotMinutes} minutes per student · ${schedule.timeZone}${schedule.location ? ` · ${schedule.location}` : ''}`, 'panel-note'));
+      if (schedule.description) card.append(node('p', schedule.description, 'school-text'));
+      const selectionKey = `${state.user.username}:${state.csrfToken}:${schedule.id}`;
+      let student;
+      if (admin()) {
+        student = select([['', 'Choose a student to book for'], ...(snapshot.ptmStudents || []).filter((entry) => window.ConnectifiGrades.gradeYear(entry.grade) === schedule.grade).map((entry) => [entry.username, `${entry.username} · ${entry.grade}`])]);
+        student.value = ptmSelections.get(selectionKey) || '';
+        card.append(field('Book for student', student));
+        student.onchange = () => { ptmSelections.set(selectionKey, student.value); renderDays(); };
+      }
+      const days = node('div', undefined, 'ptm-schedule-days'); card.append(days);
+      function renderDays() {
+        days.replaceChildren();
+        const slots = snapshot.events.filter((entry) => entry.ptmScheduleId === schedule.id && !entry.cancelled && Date.parse(entry.endsAt) > Date.now()).sort((a,b) => Date.parse(a.startsAt)-Date.parse(b.startsAt));
+        const target = admin() ? student.value : state.user.username;
+        const existing = snapshot.events.find((entry) => entry.ptmScheduleId === schedule.id && !entry.cancelled && (entry.bookings?.some((booking) => booking.username === target) || (!admin() && entry.booked)));
+        if (existing) days.append(node('p', `Already booked: ${new Intl.DateTimeFormat(window.ConnectifiI18n?.language || 'en', { timeZone: schedule.timeZone, dateStyle: 'medium', timeStyle: 'short' }).format(new Date(existing.startsAt))}. Cancel that slot before choosing another for this student.`, 'panel-note'));
+        const byDay = new Map(), formatter = new Intl.DateTimeFormat(window.ConnectifiI18n?.language || 'en', { timeZone: schedule.timeZone, dateStyle: 'full' });
+        const time = new Intl.DateTimeFormat(window.ConnectifiI18n?.language || 'en', { timeZone: schedule.timeZone, timeStyle: 'short' });
+        const slotTime = (value) => time.format(new Date(value));
+        for (const slot of slots) { const key = formatter.format(new Date(slot.startsAt)); if (!byDay.has(key)) byDay.set(key, []); byDay.get(key).push(slot); }
+        let first = true;
+        for (const [label, entries] of byDay) {
+          const details = node('details', undefined, 'ptm-day'), list = node('ul', undefined, 'ptm-slot-list');
+          details.open = first || entries.some((entry) => entry.booked || entry.id === existing?.id); first = false;
+          details.append(node('summary', `${label} · ${entries.filter((entry) => !entry.bookedCount && Date.parse(entry.startsAt)>Date.now()).length} available`));
+          const scheduleDay = schedule.days.find((day) => formatter.format(new Date(day.startsAt)) === label);
+          if (scheduleDay) details.append(node('p', `Available: ${slotTime(scheduleDay.startsAt)} to ${slotTime(scheduleDay.endsAt)}${scheduleDay.breaks.length ? ` · Breaks: ${scheduleDay.breaks.map((pause) => `${slotTime(pause.startsAt)} to ${slotTime(pause.endsAt)}`).join('; ')}` : ''}`, 'panel-note'));
+          for (const slot of entries) {
+            const row = node('li', undefined, 'ptm-slot-row'), info = node('div');
+            info.append(node('strong', `${slotTime(slot.startsAt)} to ${slotTime(slot.endsAt)}`));
+            const booking = slot.bookings?.[0];
+            info.append(node('small', booking ? `${booking.username} · ${booking.grade || ''}` : slot.booked ? 'Your booking' : slot.bookedCount ? 'Booked' : 'Available'));
+            row.append(info);
+            if (slot.booked || (admin() && booking)) row.append(button('Cancel booking', () => write(`/api/school/events/${slot.id}/cancel-booking`, booking ? { username: booking.username } : {})));
+            else if (!slot.bookedCount && Date.parse(slot.startsAt)>Date.now() && (admin() || state.user.role === 'member')) {
+              const book = button('Book slot', () => { if (admin() && !student.value) throw new Error('Choose a student first'); return write(`/api/school/events/${slot.id}/book`, admin() ? { username: student.value } : {}); }, true);
+              book.disabled = Boolean(existing); row.append(book);
+            }
+            list.append(row);
+          }
+          details.append(list); days.append(details);
+        }
+      }
+      renderDays();
+      if (admin()) card.append(button('Cancel PTM schedule', async () => { if (confirm('Cancel this schedule and all its slots?')) await write(`/api/school/ptm/${schedule.id}/cancel`); }));
+      groups.get(schedule.grade).append(card);
+    }
+  }
   function render() {
     const workspace = document.getElementById("schoolWorkspace"); if (!workspace || !state.loggedIn) return;
     const toolbar = document.getElementById("schoolActions"); toolbar.replaceChildren();
     if (staff()) toolbar.append(button("Post task", () => createTask(state.selectedRoomId), true));
     if (admin()) toolbar.append(button("Create event or appointment", createEvent));
+    if (admin()) toolbar.append(button('Create PTM schedule', createPtm));
     const tasks = document.getElementById("schoolTasks"), events = document.getElementById("schoolEvents"), notices = document.getElementById("schoolAcknowledgements");
     tasks.replaceChildren(); events.replaceChildren(); notices.replaceChildren();
     const visibleTasks = [...snapshot.tasks].sort((a, b) => (Date.parse(a.dueAt) || Infinity) - (Date.parse(b.dueAt) || Infinity));
     tasks.parentElement.hidden = !visibleTasks.length;
     visibleTasks.forEach((task) => tasks.append(taskCard(task)));
-    const upcoming = snapshot.events.filter((event) => !event.cancelled && Date.parse(event.endsAt) > Date.now()).sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+    renderPtm();
+    const upcoming = snapshot.events.filter((event) => !event.ptmScheduleId && !event.cancelled && Date.parse(event.endsAt) > Date.now()).sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
     events.parentElement.hidden = !upcoming.length;
     for (const event of upcoming) {
       const card = node("article", undefined, "school-card");
@@ -135,6 +264,7 @@
     try {
       const data = await api("/api/school");
       if (!state.loggedIn || key !== `${state.user.username}:${state.user.grade}:${state.csrfToken}`) return;
+      if (loaded !== key) ptmSelections.clear();
       snapshot = data; loaded = key;
       window.ConnectifiI18n?.setLanguage(data.language);
       render();

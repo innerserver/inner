@@ -421,6 +421,7 @@ function cacheElements() {
     "profileThemePhotoPreview",
     "profileThemePhotoStatus",
     "clearProfileThemeImageButton",
+    "profilePhotoColoursButton",
     "customThemeFields",
     "profileThemeBg",
     "profileThemeSurface",
@@ -929,8 +930,12 @@ function bindEvents() {
   if (els.clearProfileAvatarButton) els.clearProfileAvatarButton.addEventListener("click", clearProfileAvatar);
   if (els.profileThemeImageFile) els.profileThemeImageFile.addEventListener("change", handleProfileThemeImageFile);
   if (els.clearProfileThemeImageButton) els.clearProfileThemeImageButton.addEventListener("click", clearProfileThemeImage);
+  if (els.profilePhotoColoursButton) els.profilePhotoColoursButton.addEventListener("click", useProfilePhotoColours);
   [els.profileDisplayName, els.profileAvatarUrl, els.profileBannerUrl, els.profileStatus, els.profileCustomStatus, els.profileThemeBg, els.profileThemeSurface, els.profileThemeInk, els.profileThemeAccent].forEach((input) => {
-    if (input) input.addEventListener("input", updateProfilePreview);
+    if (input) input.addEventListener("input", () => {
+      if ([els.profileThemeBg, els.profileThemeSurface, els.profileThemeInk, els.profileThemeAccent].includes(input)) captureAppearanceDraft();
+      updateProfilePreview();
+    });
   });
   els.uploadForm.addEventListener("submit", uploadFile);
   els.openChessButton.addEventListener("click", () => openSelectedGameInFrame());
@@ -6566,7 +6571,7 @@ function renderProfile() {
 function renderProfileInner() {
   if (!els.profileForm || !state.user) return;
   const profile = state.profiles[state.user.username] || {};
-  const customTheme = profile.customTheme || {};
+  const customTheme = currentAppearanceDraft()?.customTheme || profile.customTheme || {};
   setInputIfNotFocused(els.profileDisplayName, profile.displayName || state.user.username);
   setInputIfNotFocused(els.profileAvatarUrl, profile.avatarUrl || "");
   setInputIfNotFocused(els.profileBannerUrl, profile.bannerUrl || "");
@@ -6600,6 +6605,7 @@ function captureAppearanceDraft() {
     theme: els.profileTheme.value,
     visualStyle: els.profileVisualStyle.value,
     themeImageUrl: els.profileThemeImageUrl.value,
+    customTheme: currentProfileThemeEditor(),
   };
 }
 
@@ -6612,8 +6618,8 @@ function applyProfileTheme(themeOverride = "") {
   const theme = adminTheme || themeOverride || appearance.theme || "system";
   const normalized = ["connectifi", "dark", "bd-somani", "midnight", "ocean", "forest", "rose", "slate", "glass", "custom"].includes(theme) ? theme : "";
   document.body.dataset.theme = normalized;
-  const editorTheme = !adminTheme && els.profileThemeBg && els.profileTheme && els.profileTheme.value === "custom" ? currentProfileThemeEditor() : null;
-  applyCustomThemeVariables(normalized === "custom" ? editorTheme || profile.customTheme : null);
+  const editorTheme = !adminTheme && currentAppearanceDraft() && els.profileThemeBg && els.profileTheme && els.profileTheme.value === "custom" ? currentProfileThemeEditor() : null;
+  applyCustomThemeVariables(normalized === "custom" ? editorTheme || appearance.customTheme : null);
   applyProfileVisualStyle(adminVisualStyle || appearance.visualStyle || "forest");
   applyProfileThemeImage(state.loggedIn ? appearance.themeImageUrl || "" : "");
   syncThemeContrast();
@@ -6664,7 +6670,8 @@ function updateProfilePreview() {
   }
   if (els.profileThemePhotoStatus) els.profileThemePhotoStatus.textContent = currentAppearanceDraft()
     ? "Preview updated. Save profile to keep these changes."
-    : themeImageUrl ? "Your background photo is saved. It stays when you switch themes." : "Choose a photo for your workspace background.";
+    : themeImageUrl ? "Your photo is saved. Choose Use photo colours to match the app to it." : "Choose a photo to create a custom background and matching colours.";
+  if (els.profilePhotoColoursButton) els.profilePhotoColoursButton.disabled = !themeImageUrl;
   if (els.profileTheme.value === "custom") applyCustomThemeVariables(customTheme);
 }
 
@@ -6739,8 +6746,10 @@ async function handleProfileThemeImageFile() {
   try {
     if (els.profileThemePhotoStatus) els.profileThemePhotoStatus.textContent = "Preparing your photo…";
     const dataUrl = await prepareThemePhoto(file);
+    const palette = await window.ConnectifiPhotoPalette.fromImage(dataUrl);
     if (!state.loggedIn || identity !== `${state.user?.username}:${state.csrfToken}` || els.profileThemeImageFile.files?.[0] !== file) return;
     if (els.profileThemeImageUrl) els.profileThemeImageUrl.value = dataUrl;
+    setPhotoPaletteEditor(palette);
     captureAppearanceDraft();
     applyProfileTheme();
     updateProfilePreview();
@@ -6750,6 +6759,23 @@ async function handleProfileThemeImageFile() {
       updateProfilePreview();
     }
   }
+}
+
+function setPhotoPaletteEditor(palette) {
+  els.profileTheme.value = 'custom';
+  for (const [key, id] of Object.entries({ bg: 'profileThemeBg', surface: 'profileThemeSurface', ink: 'profileThemeInk', accent: 'profileThemeAccent' })) els[id].value = palette[key];
+}
+
+async function useProfilePhotoColours() {
+  const source = els.profileThemeImageUrl.value, identity = `${state.user?.username}:${state.csrfToken}`;
+  if (!source) return notify('Choose a background photo first');
+  els.profilePhotoColoursButton.disabled = true;
+  try {
+    const palette = await window.ConnectifiPhotoPalette.fromImage(source);
+    if (!state.loggedIn || identity !== `${state.user?.username}:${state.csrfToken}` || els.profileThemeImageUrl.value !== source) return;
+    setPhotoPaletteEditor(palette); captureAppearanceDraft(); applyProfileTheme(); updateProfilePreview();
+  } catch (error) { if (identity === `${state.user?.username}:${state.csrfToken}`) notify(error.message); }
+  finally { els.profilePhotoColoursButton.disabled = !els.profileThemeImageUrl.value; }
 }
 
 async function prepareThemePhoto(file) {

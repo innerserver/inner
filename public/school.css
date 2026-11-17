@@ -24,3 +24,24 @@
 .questionnaire-question[hidden] { display: none; }
 @media(max-width:600px) { .school-workspace,.school-dialog { padding: 14px; } .school-toolbar { align-items: flex-start; } .form-condition { grid-template-columns: 1fr; } }
 .form-condition[hidden] { display: none; }
+.ptm-grades,.ptm-schedule-days,.ptm-days-editor,.ptm-breaks { display: grid; gap: 14px; }
+.ptm-grade { display: grid; gap: 12px; }
+.ptm-grade > h4 { margin: 4px 0; font-size: .95rem; color: var(--muted); }
+.ptm-schedule h5 { font-size: 1rem; margin: 0 0 8px; }
+.ptm-schedule > label { display: grid; gap: 6px; margin: 14px 0; }
+.ptm-schedule select { width: 100%; }
+.ptm-day { border-top: 1px solid var(--line); padding: 12px 0; }
+.ptm-day summary { font-weight: 600; cursor: pointer; }
+.ptm-slot-list { list-style: none; padding: 0; margin: 12px 0 0; }
+.ptm-slot-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); padding: 10px 0; }
+.ptm-slot-row:first-child { border-top: 0; }
+.ptm-slot-row small { display: block; color: var(--muted); margin-top: 3px; }
+.ptm-slot-row strong { font-size: .9rem; }
+.ptm-day-editor { min-width: 0; border: 1px solid var(--line); border-radius: var(--ui-panel-radius); padding: 16px; display: grid; gap: 12px; }
+.ptm-day-editor legend { font-weight: 600; padding: 0 6px; }
+.ptm-time-row { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; align-items: end; }
+.ptm-day-editor .button-row { flex-wrap: wrap; }
+.ptm-editor-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.ptm-editor-fields label:last-child { grid-column: 1 / -1; }
+.ptm-dialog .panel-note { margin: 0; }
+@media(max-width:600px) { .ptm-time-row,.ptm-editor-fields { grid-template-columns: 1fr; } .ptm-slot-row { flex-wrap: wrap; } .ptm-day-editor { padding: 12px; } }

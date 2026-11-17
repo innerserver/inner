@@ -1,4 +1,5 @@
 const state = {
+  appearanceDraft: null,
   connectionStatus: "not-live",
   user: null,
   csrfToken: "",
@@ -417,6 +418,8 @@ function cacheElements() {
     "profileVisualStyle",
     "profileThemeImageFile",
     "profileThemeImageUrl",
+    "profileThemePhotoPreview",
+    "profileThemePhotoStatus",
     "clearProfileThemeImageButton",
     "customThemeFields",
     "profileThemeBg",
@@ -911,12 +914,14 @@ function bindEvents() {
   }
   els.profileForm.addEventListener("submit", saveProfile);
   els.profileTheme.addEventListener("change", () => {
+    captureAppearanceDraft();
     applyProfileTheme(els.profileTheme.value);
     updateProfilePreview();
   });
   if (els.profileVisualStyle) {
     els.profileVisualStyle.addEventListener("change", () => {
-      applyProfileVisualStyle(els.profileVisualStyle.value);
+      captureAppearanceDraft();
+      applyProfileTheme();
       updateProfilePreview();
     });
   }
@@ -1547,6 +1552,7 @@ async function hydrateAdminState() {
 
 function showLogin(message = "", options = {}) {
   state.loggedIn = false;
+  state.appearanceDraft = null;
   ++stickerLibraryRequest;
   state.stickers = [];
   for (const target of ["message", "dm"]) {
@@ -6570,9 +6576,10 @@ function renderProfileInner() {
   setInputIfNotFocused(els.profileGrade, profile.grade || state.user.grade || "");
   setInputIfNotFocused(els.profileEmail, state.user.email || "");
   setInputIfNotFocused(els.profilePhone, state.user.phone || "");
-  setInputIfNotFocused(els.profileTheme, profile.theme || "system");
-  setInputIfNotFocused(els.profileVisualStyle, normalizeVisualStyle(profile.visualStyle || "forest"));
-  setInputIfNotFocused(els.profileThemeImageUrl, profile.themeImageUrl || "");
+  const appearance = currentAppearanceDraft() || profile;
+  setInputIfNotFocused(els.profileTheme, appearance.theme || "system");
+  setInputIfNotFocused(els.profileVisualStyle, normalizeVisualStyle(appearance.visualStyle || "forest"));
+  setInputIfNotFocused(els.profileThemeImageUrl, appearance.themeImageUrl || "");
   setInputIfNotFocused(els.profileThemeBg, safeColor(customTheme.bg, "#f7f7f4"));
   setInputIfNotFocused(els.profileThemeSurface, safeColor(customTheme.surface, "#ffffff"));
   setInputIfNotFocused(els.profileThemeInk, safeColor(customTheme.ink, "#151515"));
@@ -6582,18 +6589,33 @@ function renderProfileInner() {
   updateProfilePreview();
 }
 
+function currentAppearanceDraft() {
+  return state.loggedIn && state.appearanceDraft?.identity === `${state.user?.username}:${state.csrfToken}` ? state.appearanceDraft : null;
+}
+
+function captureAppearanceDraft() {
+  if (!state.loggedIn || !state.user) return;
+  state.appearanceDraft = {
+    identity: `${state.user.username}:${state.csrfToken}`,
+    theme: els.profileTheme.value,
+    visualStyle: els.profileVisualStyle.value,
+    themeImageUrl: els.profileThemeImageUrl.value,
+  };
+}
+
 function applyProfileTheme(themeOverride = "") {
-  const profile = state.user ? state.profiles[state.user.username] || {} : {};
+  const profile = state.loggedIn && state.user ? state.profiles[state.user.username] || {} : {};
+  const appearance = currentAppearanceDraft() || profile;
   const custom = state.settings && state.settings.customizations ? state.settings.customizations : {};
   const adminTheme = normalizeThemeName(custom.globalTheme || "");
   const adminVisualStyle = custom.globalVisualStyle ? normalizeVisualStyle(custom.globalVisualStyle) : "";
-  const theme = adminTheme || themeOverride || profile.theme || "system";
+  const theme = adminTheme || themeOverride || appearance.theme || "system";
   const normalized = ["connectifi", "dark", "bd-somani", "midnight", "ocean", "forest", "rose", "slate", "glass", "custom"].includes(theme) ? theme : "";
   document.body.dataset.theme = normalized;
   const editorTheme = !adminTheme && els.profileThemeBg && els.profileTheme && els.profileTheme.value === "custom" ? currentProfileThemeEditor() : null;
   applyCustomThemeVariables(normalized === "custom" ? editorTheme || profile.customTheme : null);
-  applyProfileVisualStyle(adminVisualStyle || (els.profileVisualStyle && els.profileVisualStyle.value) || profile.visualStyle || "forest");
-  applyProfileThemeImage(adminTheme || adminVisualStyle ? "" : ((els.profileThemeImageUrl && els.profileThemeImageUrl.value) || profile.themeImageUrl || ""));
+  applyProfileVisualStyle(adminVisualStyle || appearance.visualStyle || "forest");
+  applyProfileThemeImage(state.loggedIn ? appearance.themeImageUrl || "" : "");
   syncThemeContrast();
 }
 
@@ -6635,6 +6657,14 @@ function updateProfilePreview() {
   els.profilePreviewBanner.style.backgroundImage = bannerUrl ? `url("${cssUrl(bannerUrl)}")` : themeImageUrl ? `url("${cssUrl(themeImageUrl)}")` : "";
   els.profilePreview.style.setProperty("--preview-accent", customTheme.accent || "#245c4f");
   els.customThemeFields.classList.toggle("hidden", els.profileTheme.value !== "custom");
+  if (els.profileThemePhotoPreview) {
+    els.profileThemePhotoPreview.hidden = !themeImageUrl;
+    if (themeImageUrl) els.profileThemePhotoPreview.src = themeImageUrl;
+    else els.profileThemePhotoPreview.removeAttribute("src");
+  }
+  if (els.profileThemePhotoStatus) els.profileThemePhotoStatus.textContent = currentAppearanceDraft()
+    ? "Preview updated. Save profile to keep these changes."
+    : themeImageUrl ? "Your background photo is saved. It stays when you switch themes." : "Choose a photo for your workspace background.";
   if (els.profileTheme.value === "custom") applyCustomThemeVariables(customTheme);
 }
 
@@ -6701,23 +6731,54 @@ async function handleProfileThemeImageFile() {
     els.profileThemeImageFile.value = "";
     return notify("Choose a PNG, JPG, WebP, or GIF for the theme image");
   }
-  if (file.size > 700 * 1024) {
+  if (file.size > 12 * 1024 * 1024) {
     els.profileThemeImageFile.value = "";
-    return notify("Theme image must be under 700 KB");
+    return notify("Choose a photo under 12 MB");
   }
+  const identity = `${state.user?.username}:${state.csrfToken}`;
   try {
-    const dataUrl = await fileToDataUrl(file);
+    if (els.profileThemePhotoStatus) els.profileThemePhotoStatus.textContent = "Preparing your photo…";
+    const dataUrl = await prepareThemePhoto(file);
+    if (!state.loggedIn || identity !== `${state.user?.username}:${state.csrfToken}` || els.profileThemeImageFile.files?.[0] !== file) return;
     if (els.profileThemeImageUrl) els.profileThemeImageUrl.value = dataUrl;
+    captureAppearanceDraft();
     applyProfileTheme();
     updateProfilePreview();
-  } catch {
-    notify("Could not read that theme image");
+  } catch (error) {
+    if (identity === `${state.user?.username}:${state.csrfToken}`) {
+      notify(error.message || "Could not read that photo");
+      updateProfilePreview();
+    }
   }
+}
+
+async function prepareThemePhoto(file) {
+  const original = await fileToDataUrl(file);
+  const image = await new Promise((resolve, reject) => {
+    const photo = new Image();
+    photo.onload = () => resolve(photo);
+    photo.onerror = () => reject(new Error("This image could not be opened. Try a JPG, PNG or WebP photo."));
+    photo.src = original;
+  });
+  if (!image.naturalWidth || !image.naturalHeight || image.naturalWidth * image.naturalHeight > 40_000_000) throw new Error("Choose a photo smaller than 40 megapixels");
+  if (file.size <= 700 * 1024) return original;
+  if (file.type === "image/gif") throw new Error("Animated GIF backgrounds must be under 700 KB. Try a photo instead.");
+  const canvas = document.createElement("canvas");
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const scale = Math.min(1, (attempt < 3 ? 1600 : 1200) / Math.max(image.naturalWidth, image.naturalHeight));
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+    const data = canvas.toDataURL("image/webp", 0.84 - (attempt % 3) * 0.16);
+    if (data.length <= 950000) return data;
+  }
+  throw new Error("This photo is still too large after resizing. Try a smaller photo.");
 }
 
 function clearProfileThemeImage() {
   if (els.profileThemeImageFile) els.profileThemeImageFile.value = "";
   if (els.profileThemeImageUrl) els.profileThemeImageUrl.value = "";
+  captureAppearanceDraft();
   applyProfileTheme();
   updateProfilePreview();
 }
@@ -10969,6 +11030,7 @@ async function saveProfile(event) {
     });
     state.profiles = data.profiles || state.profiles;
     state.user = { ...state.user, ...(data.user || {}), email: els.profileEmail ? els.profileEmail.value.trim() : state.user.email, phone: els.profilePhone ? els.profilePhone.value.trim() : state.user.phone };
+    state.appearanceDraft = null;
     state.rooms = data.rooms || state.rooms;
     if (data.classRoomId) state.selectedRoomId = data.classRoomId;
     await refreshStateFromServer();

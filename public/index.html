@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="/ui-system.css?v=248" />
     <link rel="stylesheet" href="/passkeys.css?v=250" />
     <link rel="stylesheet" href="/grade-progression.css?v=251" />
-    <link rel="stylesheet" href="/theme-contrast.css?v=255" />
+    <link rel="stylesheet" href="/theme-contrast.css?v=257" />
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -476,12 +476,15 @@
             <label>Grade<select id="profileGrade"><option value="">Choose grade</option><option value="6A">Grade 6A</option><option value="6B">Grade 6B</option><option value="6C">Grade 6C</option><option value="7A">Grade 7A</option><option value="7B">Grade 7B</option><option value="7C">Grade 7C</option><option value="8A">Grade 8A</option><option value="8B">Grade 8B</option><option value="8C">Grade 8C</option><option value="9A">Grade 9A</option><option value="9B">Grade 9B</option><option value="9C">Grade 9C</option><option value="10A">Grade 10A</option><option value="10B">Grade 10B</option><option value="10C">Grade 10C</option><option value="11A">Grade 11A</option><option value="11B">Grade 11B</option><option value="11C">Grade 11C</option><option value="12A">Grade 12A</option><option value="12B">Grade 12B</option><option value="12C">Grade 12C</option><option value="college">College</option><option value="staff">Staff</option><option value="other">Other</option></select></label>
             <label>Email<input id="profileEmail" type="email" maxlength="120" autocomplete="email" /></label>
             <label>Phone<input id="profilePhone" maxlength="40" autocomplete="tel" /></label>
-            <label>Chat theme<select id="profileTheme"><option value="system">Light</option><option value="connectifi">Connectifi</option><option value="dark">Dark</option><option value="bd-somani">BD Somani</option><option value="midnight">Night</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="custom">Custom</option></select></label>
-            <label>Chat visual style<select id="profileVisualStyle"><option value="forest">Forest</option><option value="ocean">Ocean</option><option value="mountains">Mountains</option><option value="space">Space</option><option value="city">City</option><option value="abstract">Abstract</option><option value="nature">Nature</option></select></label>
-            <label>Chat theme image<input id="profileThemeImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label>
-            <input id="profileThemeImageUrl" type="hidden" />
-            <div class="button-row profile-photo-actions">
-              <button id="clearProfileThemeImageButton" class="secondary-button compact-button" type="button">Remove theme image</button>
+            <label>Appearance<select id="profileTheme"><option value="system">Light</option><option value="connectifi">Connectifi</option><option value="dark">Dark</option><option value="bd-somani">BD Somani</option><option value="midnight">Night</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="slate">Slate</option><option value="glass">Glass</option><option value="custom">Custom</option></select></label>
+            <label>Background style<select id="profileVisualStyle"><option value="forest">Forest</option><option value="ocean">Ocean</option><option value="mountains">Mountains</option><option value="space">Space</option><option value="city">City</option><option value="abstract">Abstract</option><option value="nature">Nature</option></select></label>
+            <div class="profile-background-controls">
+              <label>Workspace background photo<input id="profileThemeImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-describedby="profileThemePhotoHelp profileThemePhotoStatus" /></label>
+              <p id="profileThemePhotoHelp" class="panel-note">Works with Glass and every other theme. JPG, PNG or WebP up to 12 MB are resized on your device. Animated GIFs: up to 700 KB.</p>
+              <input id="profileThemeImageUrl" type="hidden" />
+              <img id="profileThemePhotoPreview" class="profile-background-preview" alt="Your workspace background preview" hidden />
+              <div class="button-row profile-photo-actions"><button id="clearProfileThemeImageButton" class="secondary-button compact-button" type="button">Remove background photo</button></div>
+              <p id="profileThemePhotoStatus" class="inline-status" role="status" aria-live="polite"></p>
             </div>
             <div id="customThemeFields" class="theme-editor">
               <label>Background<input id="profileThemeBg" type="color" value="#f7f7f4" /></label>
@@ -1259,7 +1262,7 @@
     <script src="/ui-boot.js?v=connectifi-210-dm-recovery" defer></script>
     <script src="/i18n.js?v=246" defer></script>
     <script src="/grade-utils.js?v=248" defer></script>
-    <script src="/app.js?v=connectifi-256-passkey-autofill" defer></script>
+    <script src="/app.js?v=connectifi-257-glass-photo" defer></script>
     <script src="/passkeys.js?v=256" defer></script>
     <script src="/grade-progression.js?v=252" defer></script>
     <script src="/connections.js?v=248" defer></script>

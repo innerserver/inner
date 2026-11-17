@@ -15,6 +15,31 @@ body[data-theme="dark"] {
 body[data-color-mode="dark"] { color-scheme: dark; }
 body[data-color-mode="light"] { color-scheme: light; }
 body[data-theme="glass"] { background: var(--bg); }
+body[data-theme="glass"] {
+  --bg: #101816;
+  --surface: #1d2a25;
+  --surface-muted: #2b3b33;
+  --ink: #eef5f0;
+  --muted: #becfc4;
+  --line: #637b6c;
+  --accent: #8dd5b6;
+  --accent-soft: #294638;
+}
+body[data-theme="glass"][data-theme-image="true"] #appView.app:not(.hidden) {
+  background: linear-gradient(rgb(11 20 16 / .75), rgb(11 20 16 / .82)), var(--account-theme-image) center / cover fixed !important;
+}
+body[data-theme="glass"][data-theme-image="true"] #appView .workspace { background: transparent; backdrop-filter: none; }
+body[data-theme="glass"][data-theme-image="true"] #appView .workspace :is(.panel-form,.status-panel,.account-card,.file-card,.message-list,.message,.school-card,.profile-preview) {
+  background: rgb(20 32 26 / .9) !important;
+  backdrop-filter: blur(12px);
+}
+body[data-theme="glass"][data-theme-image="true"] #appView .workspace .message.mine { background: rgb(35 62 47 / .95) !important; }
+#profileForm .profile-background-controls { grid-column: 1 / -1; display: grid; gap: 10px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 6px; }
+#profileForm .profile-background-controls :is(.panel-note,.inline-status) { margin: 0; font-size: 13px; line-height: 1.5; }
+#profileForm .profile-background-controls input[type="file"] { width: 100%; max-width: 100%; }
+#profileForm .profile-background-preview { display: block; width: 100%; max-height: 160px; object-fit: cover; border: 1px solid var(--line); border-radius: 4px; }
+#profileForm .profile-background-preview[hidden] { display: none; }
+#profileForm .profile-photo-actions { justify-content: flex-start; min-height: 0; }
 
 /* The foreground belongs to the filled control, including any nested label. */
 body :is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.questionnaire-dialog,.account-detail-shell,.passkey-setup-dialog) :is(.primary-button,.connections-button.primary),

@@ -234,6 +234,10 @@ test("account custom colours and photo backgrounds survive saving and state refr
   const refreshed = await call("alice", "/api/state?fast=1");
   assert.equal(refreshed.status, 200); assert.equal(refreshed.data.profiles.alice.theme, "custom");
   assert.equal(refreshed.data.profiles.alice.themeImageUrl, photo);
+  const glass = await call("alice", "/api/profile", { displayName: "Alice", grade: "9A", theme: "glass", visualStyle: "forest", themeImageUrl: photo, customTheme });
+  assert.equal(glass.status, 200);assert.equal(glass.data.profile.theme, "glass");assert.equal(glass.data.profile.themeImageUrl, photo);
+  const persisted = (await call("alice", "/api/state?fast=1")).data.profiles.alice;
+  assert.equal(persisted.theme, "glass");assert.equal(persisted.themeImageUrl, photo);
 });
 test("language preferences are validated and isolated per account", async () => {
   assert.equal((await call("alice", "/api/school/language", { language: "es" })).status, 200);

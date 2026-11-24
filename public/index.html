@@ -22,6 +22,7 @@
     <link rel="stylesheet" href="/controls.css?v=258" />
     <link rel="stylesheet" href="/study-notes/notes.css?v=260" />
     <link rel="stylesheet" href="/audit-finish.css?v=261" />
+    <script src="/login-theme.js?v=262"></script>
   </head>
   <body>
     <div id="loginView" class="login-shell">
@@ -562,10 +563,10 @@
           </div>
           <div id="gameLauncherList" class="game-launcher-list"></div>
           <p id="gameStatus" class="panel-note">Made by Dev Shah. Browser security can block third-party logins inside embedded games, so use Open full tab when a site blocks the frame.</p>
-          <iframe
+          <iframe loading="lazy"
             id="chessFrame"
             class="embedded-app-frame"
-            src="https://chessverse.co.in/"
+
             title="Chessverse"
             allow="fullscreen; clipboard-read; clipboard-write; autoplay; gamepad"
             referrerpolicy="strict-origin-when-cross-origin"
@@ -634,10 +635,10 @@
             <button id="googleSheetsModeButton" class="secondary-button compact-button" type="button" data-google-kind="sheets">Sheets</button>
           </div>
           <p id="googleWorkspaceNote" class="panel-note google-embed-note">Docs is selected. If Google blocks sign-in or editing inside the frame, use Open full tab or install the helper extension from extensions/inner-google-helper.</p>
-          <iframe
+          <iframe loading="lazy"
             id="googleWorkspaceFrame"
             class="embedded-app-frame google-app-frame"
-            src="https://docs.google.com/document/u/0/"
+
             title="Google Workspace"
             allow="clipboard-read; clipboard-write; fullscreen"
             referrerpolicy="strict-origin-when-cross-origin"
@@ -670,7 +671,7 @@
             <button id="publicBrowserSendButton" class="secondary-button" type="button">Send in Connectifi</button>
           </div>
           <p id="publicBrowserStatus" class="panel-note">Private from other users; admin-audited. Embedded preview works for simple pages. Use Full tab for Google, Instagram, sign-in pages, videos, and sites that block frames.</p>
-          <iframe id="publicBrowserFrame" class="embedded-app-frame" title="Public browser" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+          <iframe loading="lazy" id="publicBrowserFrame" class="embedded-app-frame" title="Public browser" referrerpolicy="strict-origin-when-cross-origin"></iframe>
         </section>
 
         <section id="domainView" class="view owner-only hidden">
@@ -1190,7 +1191,7 @@
               </form>
               <div class="button-row"><button id="adminBrowserNewTabButton" class="ghost-light-button compact-button" type="button">Open full tab</button><button id="adminBrowserShareButton" class="ghost-light-button compact-button" type="button">Share to friends</button></div>
               <p id="adminBrowserStatus" class="inline-status"></p>
-              <iframe id="adminBrowserFrame" class="admin-browser-frame" title="Admin browser"></iframe>
+              <iframe loading="lazy" id="adminBrowserFrame" class="admin-browser-frame" title="Admin browser"></iframe>
             </div>
             <form id="browserPolicyForm" class="panel-form owner-only hidden wide-panel">
               <h3>Browser rules</h3>
@@ -1269,7 +1270,7 @@
     <script src="/i18n.js?v=246" defer></script>
     <script src="/grade-utils.js?v=248" defer></script>
     <script src="/photo-palette.js?v=259" defer></script>
-    <script src="/app.js?v=connectifi-261-visual-finish" defer></script>
+    <script src="/app.js?v=connectifi-262-startup" defer></script>
     <script src="/passkeys.js?v=258" defer></script>
     <script src="/grade-progression.js?v=252" defer></script>
     <script src="/connections.js?v=248" defer></script>

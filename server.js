@@ -11,6 +11,7 @@ const crypto = require("crypto");
 const os = require("os");
 const { Readable } = require("stream");
 const { URL } = require("url");
+const sendStaticAsset = require('./lib/static-assets');
 const { WebSocketServer } = require("ws");
 const ipaddr = require("ipaddr.js");
 const createSchool = require("./lib/school");
@@ -11172,6 +11173,7 @@ async function serveStatic(req, res, filePath) {
     const stat = await fsp.stat(safePath);
     if (!stat.isFile()) return text(res, 404, "Not found");
     const extension = path.extname(safePath).toLowerCase();
+    if (await sendStaticAsset(req, res, safePath, stat, mimeTypes[extension] || 'application/octet-stream')) return;
     res.writeHead(200, {
       "Content-Type": mimeTypes[extension] || "application/octet-stream",
       "Cache-Control": "no-cache",

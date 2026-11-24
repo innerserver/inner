@@ -1610,6 +1610,7 @@ function showView(viewName, options = {}) {
     viewName = "dashboard";
   }
   state.activeView = viewName;
+  if (viewName === 'chess') renderGames();
   if (viewName === "googleWorkspace") syncGoogleWorkspaceFrame();
   if (viewName === "friends") loadFriendCandidates({ silent: true });
   saveUiState();
@@ -3563,7 +3564,7 @@ function renderGames() {
     button.addEventListener("click", () => openSelectedGameInFrame(game.url));
     els.gameLauncherList.append(button);
   });
-  if (els.chessFrame && selected.url && normalizeExternalUrl(els.chessFrame.src) !== selected.url) {
+  if (state.activeView === 'chess' && els.chessFrame && selected.url && normalizeExternalUrl(els.chessFrame.src) !== selected.url) {
     els.chessFrame.src = selected.url;
   }
   if (els.gameStatus) {
@@ -6616,6 +6617,10 @@ function captureAppearanceDraft() {
 }
 
 function applyProfileTheme(themeOverride = "") {
+  if (!state.loggedIn) {
+    applyProfileThemeImage('');
+    if (globalThis.ConnectifiLoginTheme?.restore()) return;
+  } else globalThis.ConnectifiLoginTheme?.clear();
   const profile = state.loggedIn && state.user ? state.profiles[state.user.username] || {} : {};
   const appearance = currentAppearanceDraft() || profile;
   const custom = state.settings && state.settings.customizations ? state.settings.customizations : {};
@@ -6629,6 +6634,7 @@ function applyProfileTheme(themeOverride = "") {
   applyProfileVisualStyle(adminVisualStyle || appearance.visualStyle || "forest");
   applyProfileThemeImage(state.loggedIn ? appearance.themeImageUrl || "" : "");
   syncThemeContrast();
+  if (state.loggedIn) globalThis.ConnectifiLoginTheme?.remember();
 }
 
 function applyProfileVisualStyle(styleOverride = "") {
@@ -7564,7 +7570,7 @@ function renderServerInner() {
   setInputIfNotFocused(els.persistentRoles, Array.isArray(persistent.roles) ? persistent.roles.join(", ") : "");
   setInputIfNotFocused(els.persistentRooms, Array.isArray(persistent.rooms) ? persistent.rooms.join(", ") : "");
   renderGames();
-  if (els.chessFrame && !els.chessFrame.src) els.chessFrame.src = selectedGameLink().url;
+  if (state.activeView === 'chess' && els.chessFrame && !els.chessFrame.src) els.chessFrame.src = selectedGameLink().url;
   els.serverEnabled.checked = enabled;
   if (els.newAccountPersistent) els.newAccountPersistent.checked = effectivePersistentDefaultForNewAccount();
 

@@ -5409,6 +5409,7 @@ function setupAdminCollapsibles() {
       panel.append(button);
     }
     if (panel.dataset.connectifiAdminCollapsible === "1") return;
+    button.setAttribute('aria-label', `Collapse or expand ${title.textContent.trim() || 'admin panel'}`);
     const storageKey = `connectifiAdminPanelCollapsedV188:${index}:${title.textContent}`;
     const setCollapsed = (collapsed, persist = true) => {
       panel.classList.toggle("admin-collapsed", collapsed);
@@ -6166,6 +6167,11 @@ function renderDmsInner() {
     })
   );
   els.dmPeerSelect.value = state.selectedDmUser;
+  if (!people.length) {
+    const empty = document.createElement('option');
+    empty.value = ''; empty.textContent = 'No chats yet. Add a friend to start.';
+    els.dmPeerSelect.append(empty);
+  }
   renderShareTargets();
   const activeGroup = selectedDmGroup();
   const canDeleteGroup = activeGroup && (isOwner() || activeGroup.createdBy === state.user.username);

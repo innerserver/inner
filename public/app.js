@@ -1575,7 +1575,7 @@ function showLogin(message = "", options = {}) {
   closeSignupChoice();
   if (!options.keepPasswordReset) hidePasswordResetPanels();
   els.appView.classList.add("hidden");
-  els.loginError.textContent = message;
+  els.loginError.textContent = globalThis.ConnectifiGoogleLogin?.error() || message;
   setConnection("Signed out");
   void window.ConnectifiPasskeys?.offerLogin({ automatic: options.automaticPasskey !== false });
   if (!options.keepPasswordReset) setTimeout(() => els.loginUsername.focus(), 0);

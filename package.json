@@ -1,6 +1,6 @@
 {
   "name": "inner",
-  "version": "2.6.4",
+  "version": "2.6.5",
   "private": true,
   "description": "Private workspace app with messages, DMs, rooms, uploads, screen sharing, admin controls, backups, and VPN profile settings.",
   "main": "server.js",
@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@simplewebauthn/server": "14.1.0",
+    "google-auth-library": "^11.3.4",
     "ipaddr.js": "^2.5.0",
     "mongodb": "^7.6.0",
     "nodemailer": "^10.5.0",

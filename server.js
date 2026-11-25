@@ -1009,22 +1009,26 @@ async function route(req, res) {
   text(res, 404, "Not found");
 }
 
-async function completeLogin(users, user, req, res, authenticationMethod = "password") {
+async function completeLogin(users, user, req, res, authenticationMethod = "password", redirectAfterLogin = false) {
+    const loginFailure = (status, payload) => {
+      if (!redirectAfterLogin) return json(res,status,payload);
+      res.writeHead(303,{Location:'/?google_error=blocked','Cache-Control':'no-store'});res.end();
+    };
     await academicUserWriteQueue;
     const latestUsers = await readJson(FILES.users, []);
     const currentAccount = latestUsers.find((entry) => entry.username === user.username && entry.passwordHash === user.passwordHash);
-    if (!currentAccount) return json(res, 401, { error: "Account changed. Please sign in again." });
+    if (!currentAccount) return loginFailure( 401, { error: "Account changed. Please sign in again." });
     users = latestUsers; user = currentAccount;
-    if (user.graduation?.deleteAfter && Date.parse(user.graduation.deleteAfter) <= Date.now()) return json(res, 403, { error: "Your graduation export period has ended." });
+    if (user.graduation?.deleteAfter && Date.parse(user.graduation.deleteAfter) <= Date.now()) return loginFailure( 403, { error: "Your graduation export period has ended." });
     const requestBlock = await requestLoginBlockForExistingUser(user);
     if (requestBlock) {
       await addSystemLog("login.blocked", user.username, { reason: "Account request not approved", requestStatus: requestBlock.status }, req);
-      return json(res, 403, { error: requestBlock.message, requestStatus: requestBlock.status });
+      return loginFailure( 403, { error: requestBlock.message, requestStatus: requestBlock.status });
     }
 
     if ((!canManage(user) || String(user.banReason || "").startsWith("Owner failsafe:")) && isUserBanned(user)) {
       await addSystemLog("login.blocked", user.username, { reason: "Banned account", bannedUntil: user.bannedUntil }, req);
-      return json(res, 403, { error: `Account is temporarily banned until ${new Date(user.bannedUntil).toLocaleString()}` });
+      return loginFailure( 403, { error: `Account is temporarily banned until ${new Date(user.bannedUntil).toLocaleString()}` });
     }
 
     await syncClassRoom(user);
@@ -1034,11 +1038,11 @@ async function completeLogin(users, user, req, res, authenticationMethod = "pass
     ]);
     if (settings.serverEnabled === false && !canAccessWhileServerLocked(user, settings)) {
       await addSystemLog("login.blocked", user.username, { reason: "Server shutdown mode" }, req);
-      return json(res, 423, { error: serverLockedMessage(settings) });
+      return loginFailure( 423, { error: serverLockedMessage(settings) });
     }
     if (ownerCheckinModeratorOnly(settings) && !canModerate(user)) {
       await addSystemLog("login.blocked", user.username, { reason: "Owner check-in moderator continuity mode" }, req);
-      return json(res, 423, { error: "Moderator continuity mode is active. Only moderators and owner admins can access the app right now." });
+      return loginFailure( 423, { error: "Moderator continuity mode is active. Only moderators and owner admins can access the app right now." });
     }
 
     const persistent = effectivePersistentLogin(user, settings, rooms);
@@ -1046,7 +1050,7 @@ async function completeLogin(users, user, req, res, authenticationMethod = "pass
     if (previousToken) revokeSession(previousToken);
     const accountSessions = [...sessions.entries()].filter(([, entry]) => entry.username === user.username);
     while (accountSessions.length >= 10) revokeSession(accountSessions.shift()[0]);
-    if (sessions.size >= WS_MAX_CLIENTS * 20) return json(res, 503, { error: "Session capacity reached. Please try again later." });
+    if (sessions.size >= WS_MAX_CLIENTS * 20) return loginFailure( 503, { error: "Session capacity reached. Please try again later." });
     const passkeyPrompt = authenticationMethod === "password" ? await getPasskeyHandler().recordPasswordLogin(user) : false;
     const token = crypto.randomBytes(32).toString("hex");
     sessions.set(token, {
@@ -1132,8 +1136,11 @@ async function completeLogin(users, user, req, res, authenticationMethod = "pass
       });
     }
 
-    res.setHeader("Set-Cookie", sessionCookie(token, req, persistent ? Math.floor(SESSION_PERSISTENT_MS / 1000) : null));
-    json(res, 200, { user: safeUser(user), csrfToken: sessionCsrfToken(token), passkeyPrompt });
+    const existingCookies = res.getHeader?.("Set-Cookie");
+    const loginCookie = sessionCookie(token, req, persistent ? Math.floor(SESSION_PERSISTENT_MS / 1000) : null);
+    res.setHeader("Set-Cookie", existingCookies ? [loginCookie, ...[existingCookies].flat()] : loginCookie);
+    if (redirectAfterLogin) { res.writeHead(303, { Location: '/', 'Cache-Control': 'no-store' }); res.end(); }
+    else json(res, 200, { user: safeUser(user), csrfToken: sessionCsrfToken(token), passkeyPrompt });
     void addSystemLog("login.success", user.username, { role: normalizeRole(user.role), persistent, persistentReason: persistentLoginReason(user, settings, rooms) }, req).catch((error) => {
       console.error("Login audit log failed:", error.message || error);
     });
@@ -1142,6 +1149,11 @@ async function completeLogin(users, user, req, res, authenticationMethod = "pass
 }
 
 let passkeyHandler;
+let googleLoginHandler;
+function handleGoogleLogin(req,res,url) {
+  googleLoginHandler ||= require('./lib/google-login')({users:()=>readJson(FILES.users,[]),login:completeLogin,json,cookie:getCookie,isHttps:isHttpsRequest,ip:getClientIp,rate:consumeSecurityRate});
+  return googleLoginHandler(req,res,url);
+}
 function getPasskeyHandler() {
   passkeyHandler ||= require("./lib/passkeys")({
     origin: () => firstEnvValue("INNER_PASSKEY_ORIGIN", "INNER_PUBLIC_URL", "PUBLIC_URL") || (isProductionRuntime() ? PUBLIC_HOST_FALLBACK : ""),
@@ -1214,6 +1226,7 @@ function syncPromotedStudents(students) {
 
 async function routeApi(req, res, requestUrl) {
   const pathname = requestUrl.pathname;
+  if (pathname.startsWith('/api/auth/google') && await handleGoogleLogin(req,res,requestUrl)) return;
 
   if (requiresCsrfProtection(req) && (
     req.headers["sec-fetch-site"] === "cross-site" ||

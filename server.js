@@ -11,6 +11,7 @@ const crypto = require("crypto");
 const os = require("os");
 const { Readable } = require("stream");
 const { URL } = require("url");
+const { parentEmails: validateParentEmails, publicStudent } = require('./lib/student-contacts');
 const sendStaticAsset = require('./lib/static-assets');
 const { WebSocketServer } = require("ws");
 const ipaddr = require("ipaddr.js");
@@ -964,7 +965,8 @@ async function route(req, res) {
     pathname = decodeURIComponent(requestUrl.pathname);
   } catch { return text(res, 400, "Invalid request URL"); }
 
-  if ((req.method === "GET" || req.method === "HEAD") && pathname === "/") {
+  const appPaths = new Set(['/', '/messages', '/dms', '/secret', '/friends', '/profile', '/store', '/files', '/google-workspace', '/browser', '/chess', '/voice', '/screen', '/moderation', '/domain', '/admin', '/hmd', '/ptm']);
+  if ((req.method === "GET" || req.method === "HEAD") && appPaths.has(pathname)) {
     return serveStatic(req, res, path.join(PUBLIC_DIR, "index.html"));
   }
 
@@ -1483,6 +1485,8 @@ async function routeApi(req, res, requestUrl) {
 
   if (req.method === "POST" && pathname === "/api/account-requests") {
     const body = await readJsonBody(req);
+    publicStudent(body);
+    const parentEmails = validateParentEmails(body.parentEmails);
     const settings = await readJson(FILES.settings, {});
     clearSessionForRequest(req, res);
     const username = normalizeUsername(body.username);
@@ -1491,6 +1495,7 @@ async function routeApi(req, res, requestUrl) {
     const phone = String(body.phone || "").trim().slice(0, 80);
     const password = String(body.password || "");
     const grade = normalizeGrade(body.grade || "");
+    if (!grade || ["staff", "other"].includes(grade)) return json(res, 400, { error: "Choose a student grade" });
     const contact = String(body.contact || [email, phone].filter(Boolean).join(" / ")).trim().slice(0, 160);
     if (password.length < MIN_PASSWORD_LENGTH) return json(res, 400, { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
     if (settings.requireContact !== false && !contact) {
@@ -1522,9 +1527,10 @@ async function routeApi(req, res, requestUrl) {
       displayName: body.displayName,
       contact,
       email,
+      parentEmails,
       phone,
       grade,
-      requestedRole: normalizePublicRequestedRole(body.requestedRole),
+      requestedRole: "member",
       passwordHash: await hashPasswordAsync(password),
       passwordSet: true,
       note: body.note,
@@ -1576,12 +1582,15 @@ async function routeApi(req, res, requestUrl) {
       return json(res, 403, { error: "Open signup is off. Request an account instead." });
     }
     const body = await readJsonBody(req);
+    publicStudent(body);
+    const parentEmails = validateParentEmails(body.parentEmails);
     const username = normalizeUsername(body.username);
     const password = String(body.password || "");
     const email = String(body.email || "").trim().slice(0, 120);
     const phone = String(body.phone || "").trim().slice(0, 80);
     const contact = String(body.contact || [email, phone].filter(Boolean).join(" / ")).trim().slice(0, 160);
     const grade = normalizeGrade(body.grade || "");
+    if (!grade || ["staff", "other"].includes(grade)) return json(res, 400, { error: "Choose a student grade" });
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
     if (password.length < MIN_PASSWORD_LENGTH) return json(res, 400, { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
     if (settings.requireContact !== false && !contact) {
@@ -1607,6 +1616,7 @@ async function routeApi(req, res, requestUrl) {
       passwordPreset: "",
       contact,
       email,
+      parentEmails,
       phone,
       grade,
       gradeUpdatedAt: grade ? now : "",
@@ -1935,7 +1945,7 @@ async function routeApi(req, res, requestUrl) {
     const visiblePeople = statePeopleForUser(users, profiles, user, friends, normalizedMessages, visibleDms);
     return json(res, 200, {
       csrfToken: csrfTokenForRequest(req),
-      user: safeUser(user, user),
+      user: safeUser(users.find(entry => entry.username === user.username) || user, user),
       settings: safeSettings(settings, user),
       rtcConfig: await buildRtcConfigForRequest(req),
       rtcStatus: buildRtcStatus(),
@@ -2359,6 +2369,9 @@ async function routeApi(req, res, requestUrl) {
 
   if (req.method === "POST" && pathname === "/api/profile") {
     const body = await readJsonBody(req);
+    const profileUsers = await readJson(FILES.users, []);
+    const contactUser = profileUsers.find(entry => entry.username === user.username) || user;
+    const parentEmails = contactUser.role === "member" ? validateParentEmails(body.parentEmails === undefined ? contactUser.parentEmails : body.parentEmails) : [];
     const profiles = await readJson(FILES.profiles, {});
     const previous = profiles[user.username] || defaultProfile(user.username);
     const now = new Date().toISOString();
@@ -2398,6 +2411,7 @@ async function routeApi(req, res, requestUrl) {
         grade: next.grade,
         gradeUpdatedAt: next.grade ? now : users[userIndex].gradeUpdatedAt,
         email: nextEmail,
+        parentEmails,
         phone: nextPhone,
         contact: contactParts.length ? contactParts.join(" / ") : users[userIndex].contact || "",
         contactUpdatedAt: contactParts.length ? now : users[userIndex].contactUpdatedAt,
@@ -3511,7 +3525,9 @@ async function routeApi(req, res, requestUrl) {
     const index = requests.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "Account request not found" });
     const request = sanitizeAccountRequest(requests[index]);
-    const grantedRole = normalizeRole(body.role || request.requestedRole || "member");
+    const grantedRole = "member";
+    publicStudent(body);
+    const parentEmails = validateParentEmails(body.parentEmails === undefined ? request.parentEmails : body.parentEmails);
     if (grantedRole === "admin") return json(res, 403, { error: "Creating new admin accounts is locked. Use the existing admin accounts only." });
     if (["hmd", "dev"].includes(grantedRole) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
     if (request.status === "approved") return json(res, 409, { error: "Request already approved" });
@@ -3530,6 +3546,7 @@ async function routeApi(req, res, requestUrl) {
       allowPersistentLogin: Boolean(body.allowPersistentLogin) || effectivePersistentLogin({ username: request.username, role: grantedRole, grade: request.grade }, await readJson(FILES.settings, {}), await readJson(FILES.rooms, [])),
       contact: request.contact,
       email: request.email,
+      parentEmails,
       phone: request.phone,
       grade: request.grade,
       gradeUpdatedAt: request.grade ? now : "",
@@ -3607,6 +3624,7 @@ async function routeApi(req, res, requestUrl) {
     if (["hmd", "dev"].includes(role) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
     if (password.length < MIN_PASSWORD_LENGTH) return json(res, 400, { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
 
+    const parentEmails = role === "member" ? validateParentEmails(body.parentEmails) : [];
     const users = await readJson(FILES.users, []);
     if (users.some((entry) => entry.username.toLowerCase() === username.toLowerCase())) {
       return json(res, 409, { error: "Username already exists" });
@@ -3618,6 +3636,7 @@ async function routeApi(req, res, requestUrl) {
       role,
       passwordHash: await hashPasswordAsync(password),
       email,
+      parentEmails,
       phone,
       contact,
       grade,
@@ -6451,6 +6470,7 @@ function safeUser(user, viewer = null) {
     locked: Boolean(user.locked),
     contact: ownerView || selfView ? user.contact || "" : "",
     email: ownerView || selfView ? user.email || "" : "",
+    ...(ownerView || selfView || canManage(viewer) ? { parentEmails: validateParentEmails(user.parentEmails, false) } : {}),
     phone: ownerView || selfView ? user.phone || "" : "",
     grade: normalizeGrade(user.grade || ""),
     gradeUpdatedAt: user.gradeUpdatedAt || "",
@@ -7502,6 +7522,7 @@ function sanitizeAccountRequest(request) {
     phone: String(request.phone || "").trim().slice(0, 80),
     grade: normalizeGrade(request.grade || ""),
     requestedRole: normalizeRole(request.requestedRole || "member"),
+    parentEmails: validateParentEmails(request.parentEmails, false),
     passwordHash: String(request.passwordHash || "").slice(0, 240),
     passwordSet: Boolean(request.passwordHash || request.passwordSet),
     note: String(request.note || "").trim().slice(0, 600),

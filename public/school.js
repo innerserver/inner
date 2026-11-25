@@ -153,6 +153,24 @@
     addDay(); dialog.append(form);
   }
   const ptmSelections = new Map();
+  function requestPtm() {
+    const {dialog,close}=modal('Request a parent teacher meeting'),form=node('form',undefined,'school-editor');
+    const student=select([['','Choose a student'],...(snapshot.ptmRecipients||[]).map(entry=>[entry.username,`${entry.username} · ${entry.grade}`])]);student.required=true;
+    const schedule=select([['','Arrange a meeting without existing slots'],...(snapshot.ptmSchedules||[]).filter(entry=>!entry.cancelled&&entry.teacher===state.user.username&&entry.days.some(day=>Date.parse(day.endsAt)>Date.now())).map(entry=>[entry.id,`Grade ${entry.grade} · ${entry.subject} · ${entry.title}`])]);
+    const subject=input(),message=node('textarea'),expires=input('datetime-local',false),status=node('p','', 'panel-note');subject.maxLength=100;message.maxLength=2000;message.required=true;
+    form.append(field('Student',student),field('Optional booking schedule',schedule),field('Teaching subject',subject),field('Meeting message',message),field('Request expires (optional, default 14 days)',expires),status);
+    const send=node('button','Send PTM request','primary-button');send.type='submit';form.append(send);
+    form.onsubmit=async event=>{event.preventDefault();send.disabled=true;try{await write('/api/school/ptm-requests',{student:student.value,scheduleId:schedule.value,subject:subject.value,message:message.value,expiresAt:expires.value?new Date(expires.value).toISOString():''});close();showView('ptm');}catch(error){status.textContent=error.message;}finally{send.disabled=false;}};dialog.append(form);
+  }
+  function renderPtmRequests() {
+    const list=document.getElementById('ptmRequests');if(!list)return false;list.replaceChildren();
+    const entries=(snapshot.ptmRequests||[]).filter(entry=>['pending','accepted'].includes(entry.status)&&Date.parse(entry.expiresAt)>Date.now()&&(!entry.scheduleId||(snapshot.ptmSchedules||[]).some(schedule=>schedule.id===entry.scheduleId&&!schedule.cancelled&&schedule.days.some(day=>Date.parse(day.endsAt)>Date.now()))));
+    for(const entry of entries){const card=node('article',undefined,'school-card');card.append(node('h3',entry.subject),node('p',`${entry.teacher} → ${entry.student} · ${entry.grade}`,'panel-note'),node('p',entry.message,'school-text'),node('p',`${entry.status==='accepted'?'Accepted, arranging meeting':'Awaiting student response'} · Expires ${when(entry.expiresAt)}`,'panel-note'));
+      const actions=node('div',undefined,'button-row');if(entry.student===state.user.username&&entry.status==='pending'){for(const action of ['accept','decline'])actions.append(button(action==='accept'?'Accept meeting request':'Decline',()=>write(`/api/school/ptm-requests/${entry.id}/${action}`),action==='accept'));}
+      if(entry.teacher===state.user.username||admin())actions.append(button('Withdraw request',()=>write(`/api/school/ptm-requests/${entry.id}/cancel`)));
+      if(entry.scheduleId)card.append(node('p','Choose an available time in the teacher schedule below. Accepting this request does not reserve a slot.','panel-note'));card.append(actions);list.append(card);
+    }return entries.length>0;
+  }
   function renderPtm() {
     const container = document.getElementById('schoolPtm'); if (!container) return;
     container.replaceChildren();
@@ -217,12 +235,18 @@
     if (staff()) toolbar.append(button("Post task", () => createTask(state.selectedRoomId), true));
     if (admin()) toolbar.append(button("Create event or appointment", createEvent));
     if (admin()) toolbar.append(button('Create PTM schedule', createPtm));
+    if (staff()) toolbar.append(button('Request PTM with student',requestPtm));
     const tasks = document.getElementById("schoolTasks"), events = document.getElementById("schoolEvents"), notices = document.getElementById("schoolAcknowledgements");
     tasks.replaceChildren(); events.replaceChildren(); notices.replaceChildren();
     const visibleTasks = [...snapshot.tasks].sort((a, b) => (Date.parse(a.dueAt) || Infinity) - (Date.parse(b.dueAt) || Infinity));
     tasks.parentElement.hidden = !visibleTasks.length;
     visibleTasks.forEach((task) => tasks.append(taskCard(task)));
     renderPtm();
+    const hasRequests=renderPtmRequests(),hasPtm=hasRequests||!document.getElementById('schoolPtm').parentElement.hidden;
+    document.getElementById('ptmNavButton').dataset.ptmActive=String(hasPtm);
+    setNavVisibility(document.getElementById('ptmNavButton'),hasPtm);
+    document.getElementById('ptmShortcut').hidden=!hasPtm;
+    if(state.activeView==='ptm'&&!hasPtm)showView('dashboard');
     const upcoming = snapshot.events.filter((event) => !event.ptmScheduleId && !event.cancelled && Date.parse(event.endsAt) > Date.now()).sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
     events.parentElement.hidden = !upcoming.length;
     for (const event of upcoming) {
@@ -258,7 +282,7 @@
   window.refreshSchool = async (force = false) => {
     if (!state.user || !state.loggedIn) { loaded = ""; return; }
     const key = `${state.user.username}:${state.user.grade}:${state.csrfToken}`;
-    if (loading) { if (force) refreshPending = true; return; }
+    if (loading) { if (force || loaded !== key) refreshPending = true; return; }
     if (!force && loaded === key) return;
     loading = true;
     try {
@@ -272,6 +296,13 @@
     finally { loading = false; if (refreshPending) { refreshPending = false; void window.refreshSchool(true); } }
   };
   document.getElementById("roomTasksButton").onclick = async () => { await window.refreshSchool(true); openRoomTasks(); };
+  document.getElementById('openPtmButton').onclick=()=>showView('ptm');
+  new MutationObserver(()=>{
+    if(!document.getElementById('appView').classList.contains('hidden'))return;
+    loaded='';snapshot.ptmRequests=[];snapshot.ptmSchedules=[];snapshot.events=[];
+    document.getElementById('ptmRequests').replaceChildren();document.getElementById('schoolPtm').replaceChildren();
+    document.getElementById('ptmNavButton').dataset.ptmActive='false';setNavVisibility(document.getElementById('ptmNavButton'),false);document.getElementById('ptmShortcut').hidden=true;
+  }).observe(document.getElementById('appView'),{attributes:true,attributeFilter:['class']});
   const picker = document.getElementById("schoolLanguage");
   picker.value = window.ConnectifiI18n.language;
   picker.onchange = async () => {

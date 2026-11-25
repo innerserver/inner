@@ -7,7 +7,7 @@ const createSchool=require('../lib/school');
 const at=(time,day='2050-01-10')=>`${day}T${time}:00.000Z`;
 const draft=(extra={})=>({teacher:'teacher',subject:'Mathematics',grade:'8',title:'January PTM',slotMinutes:10,timeZone:'UTC',days:[{startsAt:at('09:00'),endsAt:at('10:00'),breaks:[{startsAt:at('09:20'),endsAt:at('09:35')}]}],...extra});
 function setup(){
- const users=[{username:'admin',role:'admin'},{username:'teacher',role:'moderator'},{username:'teacher2',role:'moderator'},{username:'alice',role:'member',grade:'8A'},{username:'bob',role:'member',grade:'8B'},{username:'cara',role:'member',grade:'9A'}];
+ const users=[{username:'admin',role:'admin'},{username:'teacher',role:'moderator'},{username:'teacher2',role:'moderator'},{username:'alice',role:'member',parentEmails:['parent@example.test'],grade:'8A'},{username:'bob',role:'member',parentEmails:['parent@example.test'],grade:'8B'},{username:'cara',role:'member',parentEmails:['parent@example.test'],grade:'9A'}];
  const store={users,rooms:[],announcements:[],school:{}};
  const school=createSchool({FILES:Object.fromEntries(Object.keys(store).map(key=>[key,key])),readJson:async(key,fallback)=>structuredClone(store[key]??fallback),writeJson:async(key,data)=>{store[key]=structuredClone(data);},canManage:user=>user.role==='admin',canModerate:user=>['admin','moderator'].includes(user.role),canAccessRoom:()=>false,readJsonBody:async req=>req.body,json:(_res,status,data)=>({status,data}),broadcast(){}});
  const call=async(username,route,body)=>{try{return await school.handle({method:body===undefined?'GET':'POST',body},{},users.find(user=>user.username===username),new URL(route,'http://local'));}catch(error){return {status:error.statusCode||500,data:{error:error.message}};}};
@@ -74,4 +74,13 @@ test('an admin can cancel an old booking after the student moves grade or leaves
  f.store.users.find(entry=>entry.username==='alice').grade='9A';
  assert.equal((await f.call('admin',`/api/school/events/${slot.id}/cancel-booking`,{username:'alice'})).status,200);
  assert.equal(f.store.school.bookings.length,0);
+});
+test('teacher PTM requests are scoped, private and respondable only by the recipient',async()=>{const f=setup();f.store.rooms.push({id:'class-8',name:'Grade 8',allowedUsers:['teacher','alice']});
+// Fixture room policy for this isolated check deliberately grants no rooms;
+// an admin can request a meeting while an unrelated teacher cannot.
+assert.equal((await f.call('alice','/api/school/ptm-requests',{student:'bob',subject:'Math',message:'Meet please'})).status,403);
+assert.equal((await f.call('teacher','/api/school/ptm-requests',{student:'alice',subject:'Math',message:'Meet please'})).status,403);
+assert.equal((await f.call('admin','/api/school/ptm-requests',{student:'alice',subject:'Math',message:'Discuss progress'})).status,200);
+const request=f.store.school.ptmRequests[0];assert.equal((await f.call('bob','/api/school')).data.ptmRequests.length,0);assert.equal((await f.call('alice','/api/school')).data.ptmRequests.length,1);
+assert.equal((await f.call('bob',`/api/school/ptm-requests/${request.id}/accept`,{})).status,404);assert.equal((await f.call('alice',`/api/school/ptm-requests/${request.id}/accept`,{})).status,200);assert.equal(f.store.school.ptmRequests[0].status,'accepted');assert.equal(f.store.school.bookings.length,0);assert.equal((await f.call('admin',`/api/school/ptm-requests/${request.id}/cancel`,{})).status,200);
 });

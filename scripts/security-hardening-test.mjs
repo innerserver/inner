@@ -38,7 +38,7 @@ let server, origin;
 const req = (headers = {}) => ({ headers: { host: "example.test", ...headers }, socket: { remoteAddress: "127.0.0.1" } });
 const session = (name = "alice") => {
   const token = `${name}-${Math.random()}`;
-  app.sessions.set(token, { username: name, role: "member", grade: "9A", csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
+  app.sessions.set(token, { username: name, role: "member", parentEmails: ["parent@example.test"], grade: "9A", csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
   return token;
 };
 const message = (ws, type) => new Promise((resolve, reject) => {
@@ -60,7 +60,7 @@ before(async () => {
   await mkdir(path.join(directory, "uploads"), { recursive: true });
   const fixtures = {
     settings: { serverEnabled: true },
-    users: [{ username: "alice", role: "member", grade: "9A" }, { username: "bob", role: "member", grade: "9A" }],
+    users: [{ username: "alice", role: "member", parentEmails: ["parent@example.test"], grade: "9A" }, { username: "bob", role: "member", parentEmails: ["parent@example.test"], grade: "9A" }],
     profiles: {}, rooms: [{ id: "main", name: "Main" }], friends: { requests: [], friendships: [["alice", "bob"]] },
   };
   for (const [key, value] of Object.entries(fixtures)) await writeFile(app.FILES[key], JSON.stringify(value));

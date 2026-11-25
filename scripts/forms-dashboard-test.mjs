@@ -29,7 +29,7 @@ const walk = (node) => node.children.flatMap((child) => [child, ...walk(child)])
 const nodes = Object.fromEntries(["questionnairePanel", "questionnaireList", "createQuestionnaire", "manageQuestionnaires", "refreshQuestionnaires"].map((id) => [id, new Element("div")]));
 nodes.questionnairePanel.className = "questionnaire-panel hidden";
 const body = new Element("body");
-const state = { user: { username: "alice", role: "member", grade: "9A" }, loggedIn: true, csrfToken: "session", rooms: [{ id: "main", name: "Main" }] };
+const state = { user: { username: "alice", role: "member", parentEmails: ["parent@example.test"], grade: "9A" }, loggedIn: true, csrfToken: "session", rooms: [{ id: "main", name: "Main" }] };
 let forms = [];
 let sent = null;
 const context = vm.createContext({

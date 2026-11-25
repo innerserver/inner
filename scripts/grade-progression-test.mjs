@@ -19,7 +19,7 @@ const tokens={admin2:'admin2',teacher:'teacher',student0:'student0',graduate:'gr
 before(async()=>{await mkdir(path.join(directory,'backups'));await mkdir(path.join(directory,'uploads'));server=app.createInnerServer((req,res)=>app.route(req,res).catch(error=>{if(!res.headersSent){res.writeHead(error.statusCode||500,{'Content-Type':'application/json'});res.end(JSON.stringify({error:error.message}));}}));server.listen(0,'127.0.0.1');await once(server,'listening');origin=`http://127.0.0.1:${server.address().port}`;});
 beforeEach(async()=>{
  clock=Date.parse('2026-11-16T10:00:00Z');app.sessions.clear();
- users=[{username:'admin2',role:'admin',grade:'12A'}, {username:'teacher',role:'moderator',grade:'8A'}, ...Array.from({length:8},(_,i)=>({username:`student${i}`,role:'member',grade:`8${'ABC'[i%3]}`,passwordHash:'test-hash'})),{username:'older',role:'member',grade:'9B',passwordHash:'test-hash'},{username:'nextsenior',role:'member',grade:'11C',passwordHash:'test-hash'},{username:'graduate',role:'member',grade:'12A',passwordHash:'test-hash'}];
+ users=[{username:'admin2',role:'admin',grade:'12A'}, {username:'teacher',role:'moderator',grade:'8A'}, ...Array.from({length:8},(_,i)=>({username:`student${i}`,role:'member',parentEmails:['parent@example.test'],grade:`8${'ABC'[i%3]}`,passwordHash:'test-hash'})),{username:'older',role:'member',parentEmails:['parent@example.test'],grade:'9B',passwordHash:'test-hash'},{username:'nextsenior',role:'member',parentEmails:['parent@example.test'],grade:'11C',passwordHash:'test-hash'},{username:'graduate',role:'member',parentEmails:['parent@example.test'],grade:'12A',passwordHash:'test-hash'}];
  const fixtures={users,gradeProgression:{plans:[],deleted:[]},settings:{serverEnabled:true},rooms:[{id:'main',name:'Main'},{id:'private9',name:'Private group',private:true,allowedUsers:['older']}],profiles:{graduate:{displayName:'Graduate'}},passkeys:[{username:'graduate',id:'old-credential'}],passkeyPreferences:{graduate:{disabled:true}},friends:{requests:[{from:'graduate',to:'student0'}],friendships:[{users:['graduate','student0']}]},userPins:{graduate:{}},accountRequests:[],messages:[{id:'public',roomId:'main',user:'older',text:'Public history'},{id:'secret',roomId:'private9',user:'older',text:'Hidden'}],dms:[{id:'mine',participants:['graduate','student0'],from:'graduate',text:'My DM'},{id:'other',participants:['student0','older'],text:'Other DM'}]};
  for(const[key,value]of Object.entries(fixtures))await writeFile(app.FILES[key],JSON.stringify(value));
  for(const [name,token]of Object.entries(tokens)){const user=users.find(entry=>entry.username===name);app.sessions.set(token,{...user,csrfToken:'test-csrf',expiresAt:clock+1e10});}
@@ -51,7 +51,7 @@ test('approval moves each original grade once, updates rooms and schedules only 
  assert.equal((await approve(plan.id)).data.alreadyApplied,true);assert.equal((await preview()).status,400);
 });
 test('changed or expired previews cannot apply a stale roster',async()=>{
- let plan=(await preview('8')).data.plan;users.push({username:'newstudent',role:'member',grade:'8B'});await writeFile(app.FILES.users,JSON.stringify(users));assert.equal((await approve(plan.id)).status,409);
+ let plan=(await preview('8')).data.plan;users.push({username:'newstudent',role:'member',parentEmails:['parent@example.test'],grade:'8B'});await writeFile(app.FILES.users,JSON.stringify(users));assert.equal((await approve(plan.id)).status,409);
  plan=(await preview('8')).data.plan;clock+=31*60*1000;assert.equal((await approve(plan.id)).status,409);
 });
 test('chat export includes only accessible messages and participating DMs',async()=>{
@@ -131,7 +131,7 @@ test('an interrupted approval recovers on the next sweep without promoting twice
 test('late students can join a grade and promote into the smallest existing destination classes',async()=>{
  const first=(await preview('8')).data.plan;assert.equal((await approve(first.id)).status,200);
  const saved=JSON.parse(await readFile(app.FILES.users)),placements=new Map(saved.map(user=>[user.username,user.grade]));
- const newcomers=[{username:'lateone',role:'member',grade:'8A',passwordHash:'new-one'},{username:'latetwo',role:'member',grade:'8C',passwordHash:'new-two'}];
+ const newcomers=[{username:'lateone',role:'member',parentEmails:['parent@example.test'],grade:'8A',passwordHash:'new-one'},{username:'latetwo',role:'member',parentEmails:['parent@example.test'],grade:'8C',passwordHash:'new-two'}];
  await app.writeJson(app.FILES.users,saved.concat(newcomers));
  context.lateStudent=newcomers[0];await vm.runInContext('syncClassRoom(lateStudent)',context);
  assert.ok(JSON.parse(await readFile(app.FILES.rooms)).find(room=>room.name==='Grade 8').allowedUsers.includes('lateone'));
@@ -145,6 +145,6 @@ test('late students can join a grade and promote into the smallest existing dest
 });
 test('a new destination-grade student invalidates an older balancing preview',async()=>{
  const plan=(await preview('8')).data.plan;
- const saved=JSON.parse(await readFile(app.FILES.users));saved.push({username:'newdestination',role:'member',grade:'9A',passwordHash:'new-destination'});await app.writeJson(app.FILES.users,saved);
+ const saved=JSON.parse(await readFile(app.FILES.users));saved.push({username:'newdestination',role:'member',parentEmails:['parent@example.test'],grade:'9A',passwordHash:'new-destination'});await app.writeJson(app.FILES.users,saved);
  assert.equal((await approve(plan.id)).status,409);
 });

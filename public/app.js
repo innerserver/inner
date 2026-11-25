@@ -161,6 +161,7 @@ const viewRoutes = {
   chess: "/chess",
   voice: "/voice",
   screen: "/screen",
+  ptm: "/ptm",
   moderator: "/moderation",
   domain: "/domain",
   admin: "/admin",
@@ -1229,6 +1230,7 @@ async function submitAccountRequest(event) {
     const data = await api("/api/account-requests", {
       method: "POST",
       json: {
+        parentEmails: globalThis.ConnectifiStudentContacts?.read(document.getElementById("accountRequestForm")) || [],
         username: els.requestUsername.value.trim(),
         displayName: els.requestDisplayName.value.trim(),
         email: els.requestEmail ? els.requestEmail.value.trim() : "",
@@ -1260,6 +1262,7 @@ async function handleSignup(event) {
     await api("/api/signup", {
       method: "POST",
       json: {
+        parentEmails: globalThis.ConnectifiStudentContacts?.read(document.getElementById("signupForm")) || [],
         username: els.signupUsername.value.trim(),
         displayName: els.signupDisplayName.value.trim(),
         email: els.signupEmail ? els.signupEmail.value.trim() : "",
@@ -2942,6 +2945,7 @@ async function createAccount(event) {
     const data = await api("/api/users", {
       method: "POST",
       json: {
+        parentEmails: globalThis.ConnectifiStudentContacts?.read(document.getElementById("createAccountForm")) || [],
         username: els.newAccountUsername.value,
         password: els.newAccountPassword.value,
         role: els.newAccountRole.value,
@@ -6577,6 +6581,7 @@ function renderProfile() {
 
 function renderProfileInner() {
   if (!els.profileForm || !state.user) return;
+  globalThis.ConnectifiStudentContacts?.fill(state.user);
   const profile = state.profiles[state.user.username] || {};
   const customTheme = currentAppearanceDraft()?.customTheme || profile.customTheme || {};
   setInputIfNotFocused(els.profileDisplayName, profile.displayName || state.user.username);
@@ -7752,6 +7757,7 @@ function renderUsers() {
     meta.append(textNode(`Created ${formatDate(user.createdAt) || "-"}`));
     if (user.createdBy) meta.append(textNode(`By ${user.createdBy}`));
     if (user.grade) meta.append(textNode(`Grade ${user.grade}`));
+    if (user.parentEmails?.length) meta.append(textNode(`Parent emails: ${user.parentEmails.join(', ')}`));
     if (user.lastLoginAt) meta.append(textNode(`Last login ${formatDate(user.lastLoginAt)}`));
     if (user.lastLoginIp) meta.append(textNode(`From ${user.lastLoginIp}`));
     if (user.lastLoginDevice) meta.append(textNode(`Device ${user.lastLoginDevice}`));
@@ -10068,12 +10074,17 @@ async function approveAccountRequest(id, username, requestedRole = "member") {
   if (!isOwner()) return notify("Admin access required");
   const password = window.prompt(`Set a password for ${username}. Leave blank to use the requested password.`);
   if (password === null) return;
-  const roleInput = window.prompt(`Account type for ${username}`, requestedRole || "member");
-  const role = normalizeRoleInput(roleInput || requestedRole || "member");
+  const role = "member";
+  let parentEmails = (state.accountRequests.find(entry => entry.id === id) || {}).parentEmails || [];
+  if (!parentEmails.length) {
+    const entered = window.prompt("Add one to three parent emails, separated by commas. At least one is required.");
+    if (entered === null) return;
+    parentEmails = entered.split(",").map(email => email.trim()).filter(Boolean);
+  }
   try {
     const data = await api("/api/account-requests/approve", {
       method: "POST",
-      json: { id, password, role },
+      json: { id, password, role, parentEmails },
     });
     state.users = data.users || state.users;
     state.accountRequests = data.accountRequests || state.accountRequests;
@@ -10730,6 +10741,7 @@ function browserNetworkInfo() {
 
 function syncHiddenNav() {
   document.querySelectorAll(".nav-button[data-view]").forEach((button) => {
+    if (button.dataset.view === 'ptm') { setNavVisibility(button, button.dataset.ptmActive === 'true'); return; }
     if (button.dataset.view === "profile") {
       button.hidden = false;
       button.classList.remove("hidden");
@@ -11052,6 +11064,7 @@ async function saveProfile(event) {
     const data = await api("/api/profile", {
       method: "POST",
       json: {
+        parentEmails: globalThis.ConnectifiStudentContacts?.read(document.getElementById("profileForm")) || [],
         displayName: els.profileDisplayName.value,
         avatarUrl: els.profileAvatarUrl.value,
         bannerUrl: els.profileBannerUrl.value,

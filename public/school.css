@@ -45,3 +45,15 @@
 .ptm-editor-fields label:last-child { grid-column: 1 / -1; }
 .ptm-dialog .panel-note { margin: 0; }
 @media(max-width:600px) { .ptm-time-row,.ptm-editor-fields { grid-template-columns: 1fr; } .ptm-slot-row { flex-wrap: wrap; } .ptm-day-editor { padding: 12px; } }
+.student-parent-emails { grid-column: 1 / -1; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--ui-panel-radius,6px); display: grid; gap: 12px; }
+.student-parent-emails[hidden], #ptmShortcut[hidden] { display: none !important; }
+.student-parent-emails label { display: grid; gap: 6px; }
+.student-parent-emails legend { padding: 0 6px; font-weight: 600; }
+.student-parent-emails input { width: 100%; min-width: 0; box-sizing: border-box; }
+#ptmShortcut { margin: 12px 0; }
+#ptmView > .school-section { background: var(--surface); padding: 16px; border: 1px solid var(--line); border-radius: var(--ui-panel-radius,6px); }
+#ptmRequests .button-row { display: flex; flex-wrap: wrap; gap: 12px; }
+#ptmRequests .button-row button {
+  flex: 1 1 160px; min-width: 0; max-width: 100%;
+  white-space: normal !important; overflow-wrap: anywhere; line-height: 1.4 !important;
+}

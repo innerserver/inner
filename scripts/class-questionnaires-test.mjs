@@ -10,7 +10,7 @@ const { synchronizeGradeRooms } = createRequire(import.meta.url)("../lib/grade-r
 const source = await readFile(new URL("../server.js", import.meta.url), "utf8");
 const block = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 const data = {
-  users: [{ username: "teacher", role: "moderator", grade: "staff" }, { username: "alice", role: "member", grade: "9A" }, { username: "bob", role: "member", grade: "9B" }, { username: "carol", role: "member", grade: "10A" }],
+  users: [{ username: "teacher", role: "moderator", grade: "staff" }, { username: "alice", role: "member", parentEmails: ["parent@example.test"], grade: "9A" }, { username: "bob", role: "member", parentEmails: ["parent@example.test"], grade: "9B" }, { username: "carol", role: "member", parentEmails: ["parent@example.test"], grade: "10A" }],
   rooms: [{ id: "main", name: "Main" }, { id: "old", name: "Class 8A", private: true, allowedUsers: ["alice"] }],
   questionnaires: [],
   formDrafts: [],

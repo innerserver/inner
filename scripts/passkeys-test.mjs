@@ -56,8 +56,8 @@ before(async () => {
 });
 beforeEach(async () => {
   app.securityRateLimits.clear(); app.sessions.clear();
-  app.sessions.set(token, { username: "alice", role: "member", grade: "8A", csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
-  for (const [name, value] of Object.entries({ users: [{ username: "alice", role: "member", grade: "8A", passwordHash }], passkeys: [], passkeyPreferences: {}, settings: { serverEnabled: true }, rooms: [{ id: "main", name: "Main" }], accountRequests: [], profiles: {}, logs: [] })) await writeFile(app.FILES[name], JSON.stringify(value));
+  app.sessions.set(token, { username: "alice", role: "member", parentEmails: ["parent@example.test"], grade: "8A", csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
+  for (const [name, value] of Object.entries({ users: [{ username: "alice", role: "member", parentEmails: ["parent@example.test"], grade: "8A", passwordHash }], passkeys: [], passkeyPreferences: {}, settings: { serverEnabled: true }, rooms: [{ id: "main", name: "Main" }], accountRequests: [], profiles: {}, logs: [] })) await writeFile(app.FILES[name], JSON.stringify(value));
 });
 after(async () => { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); app.websocketServer.close(); await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 test("enrolment requires a signed-in account, CSRF and the current password", async () => {
@@ -91,22 +91,22 @@ test("forged signatures, missing user verification and wrong user handles fail",
 });
 test("registration binds the challenge to the original session", async () => {
   const options = await call("/api/passkeys/register/options", { password }); const key = credential(options.body);
-  app.sessions.set("other", { username: "alice", role: "member", csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
+  app.sessions.set("other", { username: "alice", role: "member", parentEmails: ["parent@example.test"], csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
   assert.equal((await call("/api/passkeys/register/verify", key.registration, `server_app_session=other; ${options.cookie}`)).status, 400);
 });
 test("passkey login obeys bans and server shutdown", async () => {
   const { key } = await enroll();
-  await writeFile(app.FILES.users, JSON.stringify([{ username: "alice", role: "member", grade: "8A", passwordHash, bannedUntil: new Date(Date.now() + 3600000).toISOString() }]));
+  await writeFile(app.FILES.users, JSON.stringify([{ username: "alice", role: "member", parentEmails: ["parent@example.test"], grade: "8A", passwordHash, bannedUntil: new Date(Date.now() + 3600000).toISOString() }]));
   let options = await call("/api/passkeys/login/options", {}, "");
   assert.equal((await call("/api/passkeys/login/verify", assertion(key, options.body), options.cookie)).status, 403);
-  await writeFile(app.FILES.users, JSON.stringify([{ username: "alice", role: "member", grade: "8A", passwordHash }]));
+  await writeFile(app.FILES.users, JSON.stringify([{ username: "alice", role: "member", parentEmails: ["parent@example.test"], grade: "8A", passwordHash }]));
   await writeFile(app.FILES.settings, JSON.stringify({ serverEnabled: false }));
   options = await call("/api/passkeys/login/options", {}, "");
   assert.equal((await call("/api/passkeys/login/verify", assertion(key, options.body, { counter: 2 }), options.cookie)).status, 423);
 });
 test("password reset invalidates previously registered passkeys", async () => {
   const { key } = await enroll();
-  await writeFile(app.FILES.users, JSON.stringify([{ username: "alice", role: "member", passwordHash: await app.hashPasswordAsync("Changed-password-123") }]));
+  await writeFile(app.FILES.users, JSON.stringify([{ username: "alice", role: "member", parentEmails: ["parent@example.test"], passwordHash: await app.hashPasswordAsync("Changed-password-123") }]));
   const options = await call("/api/passkeys/login/options", {}, "");
   assert.equal((await call("/api/passkeys/login/verify", assertion(key, options.body), options.cookie)).status, 401);
 });
@@ -119,7 +119,7 @@ test("removal requires a password and immediately blocks future sign-in", async 
 });
 
 test("setup prompts on the first successful password login and every 20 more", async () => {
-  const user = { username: "alice", role: "member", grade: "8A", passwordHash };
+  const user = { username: "alice", role: "member", parentEmails: ["parent@example.test"], grade: "8A", passwordHash };
   context.passkeyTestUser = user;
   const record = () => vm.runInContext("getPasskeyHandler().recordPasswordLogin(passkeyTestUser)", context);
   assert.equal(await record(), true);
@@ -132,7 +132,7 @@ test("setup prompts on the first successful password login and every 20 more", a
 });
 
 test("Don't remind me again persists per account and can be re-enabled", async () => {
-  context.passkeyTestUser = { username: "alice", role: "member", grade: "8A", passwordHash };
+  context.passkeyTestUser = { username: "alice", role: "member", parentEmails: ["parent@example.test"], grade: "8A", passwordHash };
   assert.equal((await call("/api/passkeys/reminders", { disabled: true })).status, 200);
   for (let count = 0; count < 22; count++) assert.equal(await vm.runInContext("getPasskeyHandler().recordPasswordLogin(passkeyTestUser)", context), false);
   assert.equal((await call("/api/passkeys")).body.remindersDisabled, true);

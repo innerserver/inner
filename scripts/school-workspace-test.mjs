@@ -20,7 +20,7 @@ const context = vm.createContext({ require, __dirname: root, Buffer, URL, AbortS
 vm.runInContext(source.slice(0, source.lastIndexOf("main().catch(")) + ";globalThis.app={route,createInnerServer,sessions,FILES,websocketServer};", context);
 const { app } = context;
 let server, origin;
-const users = [{ username: "admin", role: "admin", email: "admin@example.test" }, { username: "teacher", role: "moderator" }, { username: "alice", role: "member", grade: "9A" }, { username: "bob", role: "member", grade: "9B" }];
+const users = [{ username: "admin", role: "admin", email: "admin@example.test" }, { username: "teacher", role: "moderator" }, { username: "alice", role: "member", parentEmails: ["parent@example.test"], grade: "9A" }, { username: "bob", role: "member", parentEmails: ["parent@example.test"], grade: "9B" }];
 const tokens = {};
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aP00AAAAASUVORK5CYII=", "base64");
 before(async () => {
@@ -222,7 +222,7 @@ test("only the sender can cancel an outgoing friend request", async () => {
 });
 test("grade discovery and friend requests include all A, B and C sections of that year", async () => {
   const fullUsers = JSON.parse(await readFile(app.FILES.users, "utf8"));
-  fullUsers.push({ username: "charlie", role: "member", grade: "9C" }, { username: "outside", role: "member", grade: "10A" });
+  fullUsers.push({ username: "charlie", role: "member", parentEmails: ["parent@example.test"], grade: "9C" }, { username: "outside", role: "member", parentEmails: ["parent@example.test"], grade: "10A" });
   await writeFile(app.FILES.users, JSON.stringify(fullUsers));
   const found = await call("alice", "/api/friends/candidates");
   assert.equal(found.data.people.some((person) => person.username === "bob"), true);
@@ -308,7 +308,7 @@ test("startup provisions Grades 6–12 for all sections, without exposing old se
     if (user.username === "charlie") user.grade = "8C";
     if (user.username === "outside") user.grade = "9A";
   }
-  for (let year = 6; year <= 12; year++) for (const section of ["A", "B", "C"]) storedUsers.push({ username: `sample${year}${section.toLowerCase()}`, role: "member", grade: `${year}${section}` });
+  for (let year = 6; year <= 12; year++) for (const section of ["A", "B", "C"]) storedUsers.push({ username: `sample${year}${section.toLowerCase()}`, role: "member", parentEmails: ["parent@example.test"], grade: `${year}${section}` });
   await writeFile(app.FILES.users, JSON.stringify(storedUsers));
   const oldRooms = JSON.parse(await readFile(app.FILES.rooms, "utf8"));
   oldRooms.push({ id: "legacy-8a", name: "Class 8A", classGrade: "8A", private: true, allowedUsers: ["alice"], createdBy: "system" });
@@ -336,7 +336,7 @@ test("startup provisions Grades 6–12 for all sections, without exposing old se
   assert.equal((await call("outside", "/api/school")).data.notices.some((entry) => entry.id === notice.data.announcement.id), false);
   const profile = await call("alice", "/api/profile", { grade: "8A", displayName: "Alice" });
   assert.equal(profile.status, 200);
-  const moved = await vm.runInContext("syncClassRoom({username:'alice',role:'member',grade:'8A'})", context);
+  const moved = await vm.runInContext("syncClassRoom({username:'alice',role:'member',parentEmails:['parent@example.test'],grade:'8A'})", context);
   assert.equal(moved.roomId, grade8.id);
 });
 
@@ -415,4 +415,14 @@ test("legacy private stickers protect old file URLs while preserving sent attach
   const fetchImage = name => fetch(origin + file.url, { headers: { Cookie: `server_app_session=${tokens[name]}` } });
   assert.equal((await fetchImage("bob")).status, 200);assert.equal((await fetchImage("teacher")).status, 403);
   assert.equal((await call("bob", "/api/stickers")).data.stickers.some(sticker => sticker.id === 'legacy-private'), false);
+});
+test('student-only public registration and parent-email privacy are enforced by HTTP routes',async()=>{
+ for(const route of ['/api/account-requests','/api/signup']){
+  if(route==='/api/signup'){const settings=JSON.parse(await readFile(app.FILES.settings,'utf8'));await writeFile(app.FILES.settings,JSON.stringify({...settings,signupMode:'open'}));}
+  const staff=await call('anonymous',route,{username:'attemptedstaff',password:'AuditPassword123',role:'moderator',requestedRole:'moderator',parentEmails:['parent@example.test']});assert.equal(staff.status,403);
+  assert.equal((await call('anonymous',route,{username:'noparents',password:'AuditPassword123',grade:'8A'})).status,400);
+ }
+ const peer=vm.runInContext('safeUser({username:"alice",role:"member",parentEmails:["private-parent@example.test"]},{username:"bob",role:"member"})',context);assert.equal(peer.parentEmails,undefined);
+ const own=vm.runInContext('safeUser({username:"alice",role:"member",parentEmails:["private-parent@example.test"]},{username:"alice",role:"member"})',context);assert.equal(own.parentEmails[0],'private-parent@example.test');
+ const noParents=await call('alice','/api/profile',{parentEmails:[],grade:'8A'});assert.equal(noParents.status,400);
 });

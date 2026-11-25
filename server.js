@@ -13,6 +13,7 @@ const { Readable } = require("stream");
 const { URL } = require("url");
 const { parentEmails: validateParentEmails, publicStudent } = require('./lib/student-contacts');
 const sendStaticAsset = require('./lib/static-assets');
+const protectServer = require('./lib/server-limits');
 const { WebSocketServer } = require("ws");
 const ipaddr = require("ipaddr.js");
 const createSchool = require("./lib/school");
@@ -434,6 +435,11 @@ function ownerCheckinRecipients(settings) {
 }
 
 function createInnerServer(handler) {
+  const configure = server => {
+    const guarded = protectServer(server, { activeRequests: process.env.INNER_MAX_ACTIVE_HTTP_REQUESTS, connections: process.env.INNER_MAX_HTTP_CONNECTIONS })(handler);
+    server.on('request', guarded);
+    return server;
+  };
   if (HTTPS_KEY_PATH || HTTPS_CERT_PATH) {
     if (!HTTPS_KEY_PATH || !HTTPS_CERT_PATH) {
       throw new Error("Set both INNER_HTTPS_KEY and INNER_HTTPS_CERT to enable HTTPS.");
@@ -444,15 +450,14 @@ function createInnerServer(handler) {
         key: fs.readFileSync(HTTPS_KEY_PATH),
         cert: fs.readFileSync(HTTPS_CERT_PATH),
       },
-      handler,
     );
     server.isInnerHttps = true;
-    return server;
+    return configure(server);
   }
 
-  const server = http.createServer(handler);
+  const server = http.createServer({ maxHeaderSize: 16384 });
   server.isInnerHttps = false;
-  return server;
+  return configure(server);
 }
 
 async function initPersistence() {
@@ -6110,7 +6115,7 @@ function broadcastSecretMessage(payload, settings) {
   const sender = String(payload && payload.message && payload.message.user || "").toLowerCase();
   for (const client of realtimeClients()) {
     const username = String(client.username || "").toLowerCase();
-    if (canOwn(client) || username === sender || allowed.has(username)) {
+    if (canOwn(client) || allowed.has(username)) {
       deliverRealtime(client, {
         ...payload,
         message: safeSecretMessages([payload.message], client, settings)[0],
@@ -6119,10 +6124,14 @@ function broadcastSecretMessage(payload, settings) {
   }
 }
 
-function broadcastDm(payload, dm) {
+function broadcastDm(payload, dm, secretSettings = null) {
+  if (dm.secret && !secretSettings) {
+    readJson(FILES.settings, {}).then(settings => broadcastDm(payload, dm, settings)).catch(() => {});return;
+  }
   const participants = new Set(Array.isArray(dm.participants) ? dm.participants : [dm.from, dm.to]);
   for (const client of realtimeClients()) {
     if (!participants.has(client.username)) continue;
+    if (dm.secret && !canAccessSecretMessaging(secretSettings || {}, client)) continue;
     const safePayload = payload && payload.dm ? { ...payload, dm: safeDm(payload.dm, client) } : payload;
     deliverRealtime(client, safePayload);
   }
@@ -7161,6 +7170,10 @@ async function canUserAccessMessageId(id, user) {
 async function canUserAccessDmId(id, user) {
   const dms = await readJson(FILES.dms, []);
   const dm = dms.find((entry) => entry.id === id);
+  if (dm?.secret) {
+    const settings = await readJson(FILES.settings, {});
+    return canOwn(user) || (canAccessSecretMessaging(settings, user) && Array.isArray(dm.participants) && dm.participants.includes(user.username));
+  }
   return Boolean(dm && (canManage(user) || (Array.isArray(dm.participants) && dm.participants.includes(user.username))));
 }
 
@@ -7175,7 +7188,7 @@ function safeSecretMessages(messages, user, settings = {}) {
   if (!user) return [];
   const allowed = canAccessSecretMessaging(settings, user);
   return (messages || [])
-    .filter((message) => canOwn(user) || allowed || message.user === user.username)
+    .filter(() => canOwn(user) || allowed)
     .map((message) => ({
       id: message.id,
       text: message.text,
@@ -7191,7 +7204,7 @@ function safeSecretDms(dms, user, settings = {}) {
   if (!user) return [];
   return (dms || [])
     .filter((dm) => Boolean(dm && dm.secret))
-    .filter((dm) => canOwn(user) || (Array.isArray(dm.participants) && dm.participants.includes(user.username)))
+    .filter((dm) => canOwn(user) || (canAccessSecretMessaging(settings, user) && Array.isArray(dm.participants) && dm.participants.includes(user.username)))
     .map((dm) => safeDm(dm, user));
 }
 

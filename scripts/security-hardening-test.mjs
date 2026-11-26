@@ -16,7 +16,7 @@ const require = createRequire(path.join(root, "server.js"));
 const source = await readFile(path.join(root, "server.js"), "utf8");
 const directory = await mkdtemp(path.join(tmpdir(), "connectifi-security-"));
 const exportsCode = `; globalThis.app = {
-  route, createInnerServer, handleUpgrade, sessions, wsClients, httpRealtimeClients, FILES,
+  route, createInnerServer, handleUpgrade, sessions, wsClients, httpRealtimeClients, FILES, ensureUsers, normalizeUsername, loginRateKey,
   readJsonBody, readBody, getCookie, isSameOriginRequest, getClientIp, isHttpsRequest,
   isPrivateBrowserAddress, assertSafeBrowserTarget, guardedBrowserFetch, serveBrowserFrame,
   consumeSecurityRate, securityRateLimits, verifyPasswordAsync, hashPasswordAsync,
@@ -302,3 +302,43 @@ test("aborted uploads remove their partial file", async () => {
   await waitUntil(async () => (await files()).length === 0);
 });
 test('owner secret access remains while removed allowlist members lose conversation visibility',()=>{const {context,app:isolated}=harness();try{const result=vm.runInContext(`(()=>{const allowed={secretMessaging:{allowedUsers:['alice']}},removed={secretMessaging:{allowedUsers:[]}};const message={id:'s1',user:'alice',text:'Private fixture'},dm={id:'d1',secret:true,participants:['alice','bob'],from:'alice',to:'bob',text:'Private fixture'};return {allowed:safeSecretMessages([message],{username:'alice',role:'member'},allowed).length,removed:safeSecretMessages([message],{username:'alice',role:'member'},removed).length,dmRemoved:safeSecretDms([dm],{username:'alice',role:'member'},removed).length,unselectedParticipant:safeSecretDms([dm],{username:'bob',role:'member'},allowed).length,owner:safeSecretDms([dm],{username:'admin',role:'admin'},removed).length};})()`,context);assert.equal(result.allowed,1);assert.equal(result.removed,0);assert.equal(result.dmRemoved,0);assert.equal(result.unselectedParticipant,0);assert.equal(result.owner,1);}finally{isolated.websocketServer.close();}});
+
+test("setup preserves reserved-name accounts' existing roles and credentials", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "connectifi-reserved-"));
+  const { app: isolated } = harness({ INNER_DATA_DIR: dir });
+  try {
+    const users = [
+      { username: "admin", role: "admin", passwordHash: "existing-admin-hash" },
+      { username: "admin2", role: "member", passwordHash: "existing-member-hash" },
+      { username: "hmd", role: "member", passwordHash: "existing-hmd-member-hash" },
+      { username: "dev", role: "dev", passwordHash: "existing-dev-hash" },
+    ];
+    await writeFile(isolated.FILES.users, JSON.stringify(users));
+    await writeFile(isolated.FILES.settings, JSON.stringify({ serverEnabled: true }));
+    await isolated.ensureUsers();
+    const persisted = JSON.parse(await readFile(isolated.FILES.users, "utf8"));
+    assert.deepEqual(persisted.map(({ username, role, passwordHash }) => ({ username, role, passwordHash })), users);
+  } finally {
+    isolated.websocketServer.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("username validation rejects non-name input and login limits ignore letter case", () => {
+  assert.equal(app.normalizeUsername("student name"), "");
+  assert.equal(app.normalizeUsername("student:name"), "");
+  assert.equal(app.normalizeUsername("Student_81"), "Student_81");
+  assert.equal(app.loginRateKey(req(), "Student_81"), app.loginRateKey(req(), "student_81"));
+});
+
+test("members cannot use privileged account and owner recovery endpoints", async () => {
+  const token = session();
+  for (const route of ["/api/users", "/api/users/update", "/api/delegated-admin-features", "/api/owner-failsafe/unlock"]) {
+    const response = await fetch(origin + route, {
+      method: "POST",
+      headers: { Origin: origin, Cookie: "server_app_session=" + token, "x-csrf-token": "test-csrf" },
+      body: "{}",
+    });
+    assert.equal(response.status, 403, route);
+  }
+});

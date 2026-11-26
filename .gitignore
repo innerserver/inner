@@ -11,3 +11,10 @@ server.err
 serviceAccountKey.json
 *.env
 .env*
+
+# Local deployment configuration and private credentials
+ENV.txt
+*.pem
+*.key
+*.p12
+*.pfx

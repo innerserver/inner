@@ -681,13 +681,13 @@ async function ensureUsers() {
       changed = true;
       return;
     }
-    if (index !== -1) {
+    if (index !== -1 && normalizeRole(users[index].role) === role) {
       const existing = users[index];
       const shouldSetPassword = !existing.passwordHash;
       users[index] = {
         ...existing,
         username,
-        role: normalizeRole(existing.role) === "member" ? role : normalizeRole(existing.role),
+        role,
         passwordHash: shouldSetPassword ? defaultHash(username) : existing.passwordHash,
         passwordPreset: shouldSetPassword ? preset : existing.passwordPreset,
         allowPersistentLogin: Boolean(existing.allowPersistentLogin),
@@ -709,7 +709,7 @@ async function ensureUsers() {
       createdAt: now,
     });
     changed = true;
-  } else {
+  } else if (normalizeRole(users[adminIndex].role) === "admin") {
     const admin = users[adminIndex];
     const shouldSetOwnerPassword = !admin.passwordHash;
     users[adminIndex] = {
@@ -737,7 +737,7 @@ async function ensureUsers() {
       createdBy: "system",
     });
     changed = true;
-  } else if (admin2Index !== -1) {
+  } else if (admin2Index !== -1 && normalizeRole(users[admin2Index].role) === "admin") {
     const admin2 = users[admin2Index];
     const shouldSetAdmin2Password = !admin2.passwordHash;
     users[admin2Index] = {
@@ -1509,6 +1509,7 @@ async function routeApi(req, res, requestUrl) {
     clearSessionForRequest(req, res);
     const username = normalizeUsername(body.username);
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
+    if (builtInManagerUsernames.has(username.toLowerCase())) return json(res, 409, { error: "That username is reserved" });
     const email = String(body.email || "").trim().slice(0, 120);
     const phone = String(body.phone || "").trim().slice(0, 80);
     const password = String(body.password || "");
@@ -1610,6 +1611,7 @@ async function routeApi(req, res, requestUrl) {
     const grade = normalizeGrade(body.grade || "");
     if (!grade || ["staff", "other"].includes(grade)) return json(res, 400, { error: "Choose a student grade" });
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
+    if (builtInManagerUsernames.has(username.toLowerCase())) return json(res, 409, { error: "That username is reserved" });
     if (password.length < MIN_PASSWORD_LENGTH) return json(res, 400, { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
     if (settings.requireContact !== false && !contact) {
       return json(res, 400, { error: "Add an email or phone number so admins can contact you." });
@@ -1743,6 +1745,10 @@ async function routeApi(req, res, requestUrl) {
     const settings = await readJson(FILES.settings, {});
     const failsafe = normalizeOwnerFailsafe(settings.ownerFailsafe);
     if (!failsafe.locked) return json(res, 400, { error: "The owner failsafe lock is not active" });
+    if (!consumeSecurityRate("owner-recovery:" + user.username.toLowerCase(), 5, 15 * 60 * 1000)) {
+      res.setHeader("Retry-After", "900");
+      return json(res, 429, { error: "Too many recovery attempts. Try again later." });
+    }
     if (!failsafe.recoveryCodeHash || !(await verifyPasswordAsync(String(body.recoveryCode || ""), failsafe.recoveryCodeHash))) {
       await addSystemLog("owner.failsafe.unlock.failed", user.username, {}, req);
       return json(res, 403, { error: "Recovery code did not match" });
@@ -1777,7 +1783,10 @@ async function routeApi(req, res, requestUrl) {
     }
     const existingSettings = await readJson(FILES.settings, {});
     const existingCheckin = normalizeOwnerCheckin(existingSettings.ownerCheckin);
-    if (!existingCheckin.pending && !(code === "100" && (ownerFailsafeLocked(existingSettings) || existingCheckin.moderatorOnlyActive || existingCheckin.restrictionActive))) {
+    if (code === "100" && ownerFailsafeLocked(existingSettings)) {
+      return json(res, 423, { error: "Use the dedicated recovery code to unlock the owner failsafe." });
+    }
+    if (!existingCheckin.pending && !(code === "100" && (existingCheckin.moderatorOnlyActive || existingCheckin.restrictionActive))) {
       return json(res, 409, { error: "Send a test check-in or wait for a scheduled check-in before entering a code." });
     }
     if (code === "102") {
@@ -1788,21 +1797,8 @@ async function routeApi(req, res, requestUrl) {
     const current = normalizeOwnerCheckin(settings.ownerCheckin);
     const cadence = code === "103" ? "monthly" : current.cadence;
     const restrictedFeatures = code === "101" ? ["browser", "store", "chess"] : [];
-    const unlockWithNormalCode = code === "100" && ownerFailsafeLocked(settings);
     const next = {
       ...settings,
-      serverEnabled: unlockWithNormalCode ? true : settings.serverEnabled,
-      shutdownAt: unlockWithNormalCode ? "" : settings.shutdownAt,
-      shutdownBy: unlockWithNormalCode ? "" : settings.shutdownBy,
-      shutdownReason: unlockWithNormalCode ? "" : settings.shutdownReason,
-      ownerFailsafe: unlockWithNormalCode
-        ? {
-          ...normalizeOwnerFailsafe(settings.ownerFailsafe),
-          locked: false,
-          unlockedAt: new Date().toISOString(),
-          unlockedBy: user.username,
-        }
-        : settings.ownerFailsafe,
       ownerCheckin: normalizeOwnerCheckin({
         ...current,
         cadence,
@@ -1821,7 +1817,7 @@ async function routeApi(req, res, requestUrl) {
       updatedBy: user.username,
     };
     await writeJson(FILES.settings, next);
-    await addSystemLog("owner.checkin.responded", user.username, { code, cadence, restrictedFeatures, unlocked: unlockWithNormalCode }, req);
+    await addSystemLog("owner.checkin.responded", user.username, { code, cadence, restrictedFeatures }, req);
     broadcastSettings(next);
     return json(res, 200, { settings: safeSettings(next, user) });
   }
@@ -3543,6 +3539,7 @@ async function routeApi(req, res, requestUrl) {
     const index = requests.findIndex((entry) => entry.id === id);
     if (index === -1) return json(res, 404, { error: "Account request not found" });
     const request = sanitizeAccountRequest(requests[index]);
+    if (!request.username || builtInManagerUsernames.has(request.username.toLowerCase())) return json(res, 409, { error: "Choose an unreserved username" });
     const grantedRole = "member";
     publicStudent(body);
     const parentEmails = validateParentEmails(body.parentEmails === undefined ? request.parentEmails : body.parentEmails);
@@ -3637,7 +3634,7 @@ async function routeApi(req, res, requestUrl) {
     const grade = normalizeGrade(body.grade || "");
     const contact = [email, phone].filter(Boolean).join(" / ");
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
-    if (username.toLowerCase() === "admin") return json(res, 400, { error: "The admin account already exists" });
+    if (builtInManagerUsernames.has(username.toLowerCase())) return json(res, 409, { error: "That username is reserved" });
     if (role === "admin" && !canOwn(user)) return json(res, 403, { error: "Only an owner admin can create non-owner admin accounts" });
     if (["hmd", "dev"].includes(role) && !canDev(user)) return json(res, 403, { error: "HMD/dev access required" });
     if (password.length < MIN_PASSWORD_LENGTH) return json(res, 400, { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
@@ -3721,6 +3718,9 @@ async function routeApi(req, res, requestUrl) {
       : username.toLowerCase() === "admin"
         ? "admin"
         : normalizeRole(body.role);
+    if (builtInManagerUsernames.has(username.toLowerCase()) && managerRoles.has(nextRole) && !managerRoles.has(effectiveRole(previous))) {
+      return json(res, 403, { error: "Reserved accounts must receive privileged credentials through server configuration" });
+    }
     const nextGrade = body.grade !== undefined ? normalizeGrade(body.grade) : normalizeGrade(previous.grade || "");
     const gradeChanged = nextGrade !== normalizeGrade(previous.grade || "");
     if (wantsTempAdmin && !canOwn(user)) {
@@ -6394,7 +6394,7 @@ function isValidCsrfRequest(req) {
 }
 
 function loginRateKey(req, username) {
-  return `${normalizeIpAddress(getClientIp(req)) || "unknown"}:${normalizeUsername(username) || "unknown"}`;
+  return `${normalizeIpAddress(getClientIp(req)) || "unknown"}:${normalizeUsername(username).toLowerCase() || "unknown"}`;
 }
 
 function consumeSecurityRate(key, limit, windowMs, now = Date.now()) {

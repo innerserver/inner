@@ -1591,14 +1591,16 @@ body[data-theme="glass"] .file-card {
   max-width: 280px;
 }
 
-#voiceView > .topbar-actions {
+#voiceView > .voice-call-actions {
   display: grid;
+  width: 100%;
+  min-width: 0;
   grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   gap: 8px;
   justify-content: stretch;
 }
 
-#voiceView > .topbar-actions > button {
+#voiceView > .voice-call-actions > button {
   width: 100%;
   min-height: 42px;
   padding-inline: 10px;
@@ -1739,7 +1741,7 @@ body[data-theme="glass"] .file-card {
     max-width: none;
   }
 
-  #voiceView > .topbar-actions {
+  #voiceView > .voice-call-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

@@ -1618,6 +1618,7 @@ function showView(viewName, options = {}) {
   if (viewName === 'chess') renderGames();
   if (viewName === "googleWorkspace") syncGoogleWorkspaceFrame();
   if (viewName === "friends") loadFriendCandidates({ silent: true });
+  if (viewName === "voice" && state.user) renderVoice();
   saveUiState();
   if (options.updateHistory !== false) updateRoute(viewName);
   document.querySelectorAll(".nav-button").forEach((button) => {

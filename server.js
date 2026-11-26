@@ -8320,7 +8320,7 @@ function buildRtcConfig() {
   const configuredIceServers = parseIceServersJson(
     firstEnvValue("INNER_ICE_SERVERS_JSON", "ICE_SERVERS_JSON", "TURN_ICE_SERVERS_JSON")
   );
-  const stunUrls = splitEnvList(firstEnvValue("INNER_STUN_URLS", "STUN_URLS", "STUN_URL")).map(normalizeIceUrl);
+  const stunUrls = splitEnvList(firstEnvValue("INNER_STUN_URLS", "STUN_URLS", "STUN_URL")).map((entry) => normalizeIceUrl(entry)).filter(Boolean);
   let turnUrls = splitEnvList(
     firstEnvValue(
       "INNER_TURN_URLS",
@@ -8333,7 +8333,7 @@ function buildRtcConfig() {
       "RTC_TURN_URLS",
       "TURNIX_URLS"
     )
-  ).map((entry) => normalizeIceUrl(entry, "turn"));
+  ).map((entry) => normalizeIceUrl(entry, "turn")).filter((url) => /^turns?:/i.test(url));
   if (!turnUrls.length) {
     const turnHost = firstEnvValue("INNER_TURN_HOST", "TURN_HOST", "TURN_SERVER_HOST");
     if (turnHost) {
@@ -8375,17 +8375,13 @@ function buildRtcConfig() {
     });
   }
 
-  if (turnUrls.length) {
-    const turnServer = { urls: turnUrls };
-    if (turnUsername) turnServer.username = turnUsername;
-    if (turnCredential) {
-      turnServer.credential = turnCredential;
-      turnServer.credentialType = "password";
-    }
-    iceServers.push(turnServer);
+  if (turnUrls.length && turnUsername && turnCredential) {
+    iceServers.push({
+      urls: turnUrls, username: turnUsername, credential: turnCredential, credentialType: "password",
+    });
   }
 
-  const config = { iceServers: normalizeIceServerList(relayOnly && turnUrls.length ? iceServers.filter(iceServerHasTurnUrl) : iceServers), iceCandidatePoolSize: 6 };
+  const config = { iceServers: normalizeIceServerList(relayOnly ? iceServers.filter(iceServerHasTurnUrl) : iceServers), iceCandidatePoolSize: 6 };
   if (relayOnly) config.iceTransportPolicy = "relay";
   return config;
 }
@@ -8545,10 +8541,13 @@ function parseIceServersJson(value) {
 
 function normalizeIceServer(entry) {
   if (!entry || typeof entry !== "object") return null;
+  // Browsers reject the entire configuration when a TURN URL lacks authentication.
+  const canUseTurn = Boolean(entry.username && (entry.credential || entry.password));
+  const usable = (url) => url && (canUseTurn || !/^turns?:/i.test(url));
   const urls = Array.isArray(entry.urls)
-    ? entry.urls.map((url) => normalizeIceUrl(url)).filter(Boolean)
+    ? entry.urls.map((url) => normalizeIceUrl(url)).filter(usable)
     : normalizeIceUrl(entry.urls);
-  if (!urls || (Array.isArray(urls) && !urls.length)) return null;
+  if (Array.isArray(urls) ? !urls.length : !usable(urls)) return null;
   const next = { urls };
   if (entry.username) next.username = String(entry.username);
   if (entry.credential || entry.password) {

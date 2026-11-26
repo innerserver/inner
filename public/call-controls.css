@@ -1,0 +1,75 @@
+.incoming-call-banner {
+  position: fixed;
+  z-index: 10000;
+  inset-block-start: max(12px, env(safe-area-inset-top));
+  inset-inline-end: 12px;
+  box-sizing: border-box;
+  inline-size: min(360px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid var(--ui-card-line, #a0a0a0);
+  border-radius: 8px;
+  background: var(--surface, Canvas);
+  color: var(--text, CanvasText);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 20%);
+}
+
+.incoming-call-banner.hidden,
+#appView.hidden ~ .incoming-call-banner,
+#dmsView .dm-call-panel .button-row button.hidden {
+  display: none !important;
+}
+
+.incoming-call-banner p {
+  margin: 0 0 10px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.incoming-call-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.incoming-call-actions > button {
+  min-block-size: 44px;
+}
+
+#dmsView .message-header-controls > .compact-label {
+  min-inline-size: 0 !important;
+}
+
+#dmsView .message-header-controls > .compact-label select {
+  min-inline-size: 0 !important;
+  max-inline-size: 100%;
+}
+
+#dmsView > .dm-call-panel .panel-title-row {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 720px) {
+  #dmsView .message-header-controls {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 40px !important;
+    align-items: end !important;
+  }
+
+  #dmsView .message-header-controls > .compact-label {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+  }
+
+  #dmsView .dm-quick-actions {
+    grid-column: 1 !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr) !important;
+    justify-content: stretch !important;
+  }
+
+  #dmsView .dm-quick-actions > button.compact-button,
+  #dmsView #dmShareScreenButton {
+    min-height: 44px !important;
+    padding-inline: 4px !important;
+    white-space: normal !important;
+  }
+}

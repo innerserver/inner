@@ -359,6 +359,8 @@ function cacheElements() {
     "openDmAppearanceButton",
     "dmStopScreenButton",
     "dmLeaveCallButton",
+    "incomingCallBanner",
+    "incomingCallText",
     "dmAnswerCallButton",
     "dmDeclineCallButton",
     "dmLocalCallPreview",
@@ -4326,26 +4328,22 @@ function handleSocketMessage(message) {
 async function startShare(options = {}) {
   if (!state.settings.serverEnabled && !isOwner()) return notify("Server room is off");
   if (!featureAvailable("screen")) return notify(lockMessage("screen"));
-  if (!(await ensureRealtimeReady("screen sharing"))) return;
-  await refreshRtcConfig();
   if (!window.isSecureContext) return notify("Screen sharing needs HTTPS or localhost.");
   if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
     return notify("Screen sharing is not available in this browser");
   }
 
   try {
-    await refreshRealtimePeers();
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: "always" },
-        audio: true,
-      });
-    } catch (error) {
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: false,
-      });
+    // Display capture must be requested while the share click is still active.
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    if (!(await ensureRealtimeReady("screen sharing"))) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    await refreshRtcConfig();
+    if (!stream.getVideoTracks().some((track) => track.readyState === "live")) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
     }
     if (state.localStream) stopShare({ silent: true });
     const roomId = options.roomId || "screen:global";
@@ -4788,11 +4786,24 @@ async function makeOffer(peerId, roomId = state.screenRoomId || "screen:global")
 }
 
 async function makeFreshScreenOffer(peerId, roomId = state.screenRoomId || "screen:global") {
+  if (!state.localStream || state.screenRoomId !== roomId) return;
   const existing = state.peerConnections.get(peerId);
-  if (existing && (connectionNeedsFreshOffer(existing) || existing.signalingState !== "stable" || existing.roomId !== roomId)) {
-    closePeer(peerId);
+  if (existing && existing.roomId === roomId && !connectionNeedsFreshOffer(existing)) {
+    if (existing.makingScreenOffer || existing.connectionState === "connected" ||
+        ["connected", "completed"].includes(existing.iceConnectionState)) return;
+    // Viewer announcements may repeat while ICE is still negotiating.
+    if (existing.screenOfferStartedAt && Date.now() - existing.screenOfferStartedAt < 15000) return;
   }
-  await makeOffer(peerId, roomId);
+  if (existing?.makingScreenOffer) return;
+  if (existing) closePeer(peerId);
+  const pc = createPeer(peerId, roomId);
+  pc.makingScreenOffer = true;
+  pc.screenOfferStartedAt = Date.now();
+  try {
+    await makeOffer(peerId, roomId);
+  } finally {
+    pc.makingScreenOffer = false;
+  }
 }
 
 function createPeer(peerId, roomId = "screen:global") {
@@ -4851,6 +4862,7 @@ async function handleSignal(from, fromUser, signal, roomId = "screen:global") {
   let pc = createPeer(from, roomId);
 
   if (signal.description) {
+    if (signal.description.type === "answer" && pc.signalingState !== "have-local-offer") return;
     if (signal.description.type === "offer" && pc.signalingState !== "stable") {
       closePeer(from);
       pc = createPeer(from, roomId);
@@ -5080,6 +5092,8 @@ function startHttpRealtimePoll() {
 }
 
 function stopHttpRealtime() {
+  httpRealtimeSendGeneration++;
+  httpRealtimeSendQueue = Promise.resolve();
   clearInterval(state.httpRealtimeTimer);
   state.httpRealtimeTimer = null;
   state.httpRealtimeActive = false;
@@ -5135,19 +5149,31 @@ async function refreshRealtimePeers() {
   }
 }
 
+let httpRealtimeSendQueue = Promise.resolve();
+let httpRealtimeSendGeneration = 0;
+
 function sendHttpRealtime(payload) {
   if (!payload) return false;
-  api("/api/realtime/send", {
-    method: "POST",
-    json: {
-      clientId: getHttpRealtimeClientId(),
-      payload,
-    },
-  }).catch(() => {
-    state.httpRealtimeActive = false;
-    clearInterval(state.httpRealtimeTimer);
-    state.httpRealtimeTimer = null;
-  });
+  const generation = httpRealtimeSendGeneration;
+  const send = () => {
+    if (!state.httpRealtimeActive || generation !== httpRealtimeSendGeneration) return;
+    return api("/api/realtime/send", {
+      method: "POST",
+      json: { clientId: getHttpRealtimeClientId(), payload },
+    }).catch(() => {
+      if (generation !== httpRealtimeSendGeneration) return;
+      state.httpRealtimeActive = false;
+      clearInterval(state.httpRealtimeTimer);
+      state.httpRealtimeTimer = null;
+    });
+  };
+  if (["voice:join", "voice:leave", "voice:state", "call:invite", "voice:signal",
+    "screen:join", "screen:status", "screen:viewer-ready", "screen:signal", "signal"].includes(payload.type)) {
+    // HTTP requests can arrive out of order. Keep room membership and signalling in sequence.
+    httpRealtimeSendQueue = httpRealtimeSendQueue.then(send);
+  } else {
+    void send();
+  }
   return true;
 }
 
@@ -6287,16 +6313,18 @@ function renderDmsInner() {
 }
 
 function renderDmCall() {
+  const incoming = state.loggedIn && state.user ? state.incomingCall : null;
+  els.incomingCallBanner.classList.toggle("hidden", !incoming);
+  els.incomingCallText.textContent = incoming ? `${incoming.fromUser || "Someone"} is calling` : "";
   if (!els.dmCallPanel || !state.user) return;
   const roomId = currentDmCallRoom();
   const hasSelection = Boolean(roomId);
   const inThisCall = Boolean(state.voiceStream && state.voiceRoomId === roomId);
   const sharingHere = Boolean(state.localStream && state.screenRoomId === roomId);
   const remoteShareHere = Boolean(state.remoteScreenStream && state.remoteScreenRoomId === roomId);
-  const incomingHere = Boolean(state.incomingCall && (!roomId || state.incomingCall.roomId === roomId));
   const people = hasSelection ? selectedDmParticipants() : [];
   const online = Array.from(state.peers.values()).filter((peer) => people.includes(peer.username)).length;
-  const callExpanded = Boolean(inThisCall || sharingHere || remoteShareHere || incomingHere);
+  const callExpanded = Boolean(inThisCall || sharingHere || remoteShareHere);
   const screenCaptureAvailable = Boolean(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
   els.dmCallPanel.classList.toggle("call-expanded", callExpanded);
   if ("open" in els.dmCallPanel) els.dmCallPanel.open = callExpanded;
@@ -6310,9 +6338,7 @@ function renderDmCall() {
           ? state.voiceCameraOff ? "video call connected, camera off" : "video call connected"
           : "voice call connected"
         : "ready";
-  els.dmCallState.textContent = incomingHere
-    ? `${state.incomingCall.fromUser} is ringing ${state.incomingCall.roomLabel || callRoomLabel(state.incomingCall.roomId)}`
-    : hasSelection
+  els.dmCallState.textContent = hasSelection
       ? `${currentDmCallLabel()} - ${online} online - ${connectedState}`
       : "Choose a DM or group to start a call";
 
@@ -6321,8 +6347,8 @@ function renderDmCall() {
   els.dmShareScreenButton.disabled = !hasSelection || sharingHere || !featureAvailable("screen") || !screenCaptureAvailable;
   els.dmStopScreenButton.disabled = !sharingHere;
   els.dmLeaveCallButton.disabled = !inThisCall;
-  els.dmAnswerCallButton.classList.toggle("hidden", !incomingHere);
-  els.dmDeclineCallButton.classList.toggle("hidden", !incomingHere);
+  els.dmStopScreenButton.classList.toggle("hidden", !sharingHere);
+  els.dmLeaveCallButton.classList.toggle("hidden", !inThisCall);
 
   if (els.dmLocalCallPreview) {
     els.dmLocalCallPreview.srcObject = inThisCall ? state.voiceStream : null;
@@ -7364,6 +7390,7 @@ function voicePeopleForRoom(roomId) {
 
 function renderVoice() {
   if (!els.voiceRoomSelect) return;
+  const selectedRoom = els.voiceRoomSelect.value;
   if (!state.voiceRooms.length) state.voiceRooms = [{ id: "lobby", name: "Lobby Voice" }];
   const rooms = [...state.voiceRooms];
   if (state.voiceRoomId && !rooms.some((room) => room.id === state.voiceRoomId)) {
@@ -7377,7 +7404,8 @@ function renderVoice() {
       return option;
     })
   );
-  els.voiceRoomSelect.value = state.voiceRoomId || state.voiceRooms[0].id;
+  els.voiceRoomSelect.value = state.voiceStream ? state.voiceRoomId :
+    (rooms.some((room) => room.id === selectedRoom) ? selectedRoom : rooms[0].id);
   const joined = Boolean(state.voiceStream);
   els.joinVoiceButton.disabled = joined || !featureAvailable("voice");
   els.joinVideoButton.disabled = joined || !featureAvailable("voice");

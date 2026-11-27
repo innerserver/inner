@@ -23,6 +23,13 @@
   let conditional = null, conditionalTask = null, conditionalGeneration = 0, renewalTimer = null, passwordSigningIn = false;
   let capability = null;
   let loginReady = false, automaticAttempted = false, automaticRequested = false;
+  const localPasskeyFlag = "connectifiPasskeyUsed";
+  function usedOnThisBrowser() {
+    try { return localStorage.getItem(localPasskeyFlag) === "yes"; } catch { return false; }
+  }
+  function rememberPasskeyUse() {
+    try { localStorage.setItem(localPasskeyFlag, "yes"); } catch { /* Storage can be unavailable. */ }
+  }
   const passkeyHint = (message) => { const hint = byId("passkeyLoginHint"); if (hint) hint.textContent = message; };
   async function offerLogin({ automatic = true } = {}) {
     loginReady = true;
@@ -57,11 +64,12 @@
   const requestOptions = (options) => ({ ...options, challenge: decode(options.challenge), allowCredentials: (options.allowCredentials || []).map((key) => ({ ...key, id: decode(key.id) })) });
   async function completePasskeyLogin(credential) {
     await api("/api/passkeys/login/verify", { method: "POST", json: serialize(credential) });
+    rememberPasskeyUse();
     els.loginPassword.value = ""; showApp();
     try { await loadState(); } catch (error) { showLogin(error.message || "Could not load workspace"); }
   }
   function startAutofill() {
-    if (!supported || !visibleLogin() || busy || passwordSigningIn) return Promise.resolve();
+    if (!loginReady || !supported || !visibleLogin() || busy || passwordSigningIn) return Promise.resolve();
     if (conditionalTask) {
       if (!conditional || conditional.signal.aborted) void conditionalTask.then(() => startAutofill());
       return conditionalTask;
@@ -76,8 +84,11 @@
         let modal = false;
         if (loginReady && automaticRequested) {
           automaticRequested = false;
-          // Device capability is not proof that this site has a saved passkey.
-          try { modal = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable?.() === true; } catch { /* Fall back to autofill. */ }
+          // Attempt a native prompt once on browsers that have used a Connectifi passkey.
+          // Conditional autofill also discovers passkeys added or synced elsewhere.
+          try {
+            modal = usedOnThisBrowser() && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable?.() === true;
+          } catch { /* Fall back to autofill. */ }
         }
         if (!valid() || (!modal && !await supportsAutofill()) || !valid()) return;
         wasModal = modal;
@@ -125,6 +136,7 @@
     const credential = await navigator.credentials.create({ publicKey: { ...options, challenge: decode(options.challenge), user: { ...options.user, id: decode(options.user.id) }, excludeCredentials: (options.excludeCredentials || []).map((key) => ({ ...key, id: decode(key.id) })) } });
     if (!credential) throw new Error("No passkey created.");
     await api("/api/passkeys/register/verify", { method: "POST", json: serialize(credential) });
+    rememberPasskeyUse();
   }
   async function action(button, fn, target = status) {
     if (busy || passwordSigningIn) return;

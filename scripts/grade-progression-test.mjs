@@ -13,16 +13,16 @@ let clock=Date.parse('2026-11-16T10:00:00Z');
 class ClockDate extends Date{constructor(...args){super(...(args.length?args:[clock]));}static now(){return clock;}}
 const source=await readFile(path.join(root,'server.js'),'utf8');
 const context=vm.createContext({require,__dirname:root,Buffer,URL,Date:ClockDate,AbortSignal,AbortController,setTimeout,clearTimeout,setInterval,clearInterval,console,fetch,process:{env:{INNER_LOCALHOST_MODE:'true',INNER_DATA_DIR:directory},pid:process.pid}});
-vm.runInContext(source.slice(0,source.lastIndexOf('main().catch('))+';globalThis.app={route,createInnerServer,sessions,FILES,websocketServer,getGradeProgression,writeJson};',context);
+vm.runInContext(source.slice(0,source.lastIndexOf('main().catch('))+';globalThis.app={route,createInnerServer,sessions,hashSessionValue,FILES,websocketServer,getGradeProgression,writeJson};',context);
 const app=context.app;let server,origin,users;
-const tokens={admin2:'admin2',teacher:'teacher',student0:'student0',graduate:'graduate'};
+const tokens=Object.fromEntries(['admin2','teacher','student0','graduate'].map((name)=>[name,app.hashSessionValue(name)]));
 before(async()=>{await mkdir(path.join(directory,'backups'));await mkdir(path.join(directory,'uploads'));server=app.createInnerServer((req,res)=>app.route(req,res).catch(error=>{if(!res.headersSent){res.writeHead(error.statusCode||500,{'Content-Type':'application/json'});res.end(JSON.stringify({error:error.message}));}}));server.listen(0,'127.0.0.1');await once(server,'listening');origin=`http://127.0.0.1:${server.address().port}`;});
 beforeEach(async()=>{
  clock=Date.parse('2026-11-16T10:00:00Z');app.sessions.clear();
  users=[{username:'admin2',role:'admin',grade:'12A'}, {username:'teacher',role:'moderator',grade:'8A'}, ...Array.from({length:8},(_,i)=>({username:`student${i}`,role:'member',parentEmails:['parent@example.test'],grade:`8${'ABC'[i%3]}`,passwordHash:'test-hash'})),{username:'older',role:'member',parentEmails:['parent@example.test'],grade:'9B',passwordHash:'test-hash'},{username:'nextsenior',role:'member',parentEmails:['parent@example.test'],grade:'11C',passwordHash:'test-hash'},{username:'graduate',role:'member',parentEmails:['parent@example.test'],grade:'12A',passwordHash:'test-hash'}];
  const fixtures={users,gradeProgression:{plans:[],deleted:[]},settings:{serverEnabled:true},rooms:[{id:'main',name:'Main'},{id:'private9',name:'Private group',private:true,allowedUsers:['older']}],profiles:{graduate:{displayName:'Graduate'}},passkeys:[{username:'graduate',id:'old-credential'}],passkeyPreferences:{graduate:{disabled:true}},friends:{requests:[{from:'graduate',to:'student0'}],friendships:[{users:['graduate','student0']}]},userPins:{graduate:{}},accountRequests:[],messages:[{id:'public',roomId:'main',user:'older',text:'Public history'},{id:'secret',roomId:'private9',user:'older',text:'Hidden'}],dms:[{id:'mine',participants:['graduate','student0'],from:'graduate',text:'My DM'},{id:'other',participants:['student0','older'],text:'Other DM'}]};
  for(const[key,value]of Object.entries(fixtures))await writeFile(app.FILES[key],JSON.stringify(value));
- for(const [name,token]of Object.entries(tokens)){const user=users.find(entry=>entry.username===name);app.sessions.set(token,{...user,csrfToken:'test-csrf',expiresAt:clock+1e10});}
+ for(const [name,token]of Object.entries(tokens)){const user=users.find(entry=>entry.username===name);app.sessions.set(app.hashSessionValue(token),{...user,csrfToken:'test-csrf',expiresAt:clock+1e10});}
 });
 after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));app.websocketServer.close();await rm(directory,{recursive:true,force:true,maxRetries:5,retryDelay:100});});
 async function call(name,url,body,extra={}){const res=await fetch(origin+url,{method:body===undefined?'GET':'POST',headers:{Origin:origin,Cookie:`server_app_session=${tokens[name]}`,'X-CSRF-Token':'test-csrf','Content-Type':'application/json',...extra},body:body===undefined?undefined:JSON.stringify(body)});return{status:res.status,data:await res.json()};}
@@ -46,7 +46,7 @@ test('approval moves each original grade once, updates rooms and schedules only 
  assert.equal(saved.find(user=>user.username==='graduate').graduation.deleteAfter,'2026-12-16T10:00:00.000Z');
  assert.equal((await call('graduate','/api/state?fast=1')).data.user.graduation.deleteAfter,'2026-12-16T10:00:00.000Z');
  assert.equal(saved.find(user=>user.username==='admin2').grade,'12A');
- assert.equal(app.sessions.get(tokens.student0).grade.startsWith('9'),true);
+ assert.equal(app.sessions.get(app.hashSessionValue(tokens.student0)).grade.startsWith('9'),true);
  const rooms=JSON.parse(await readFile(app.FILES.rooms));assert.equal(rooms.find(room=>room.name==='Grade 9').allowedUsers.includes('student0'),true);
  assert.equal((await approve(plan.id)).data.alreadyApplied,true);assert.equal((await preview()).status,400);
 });

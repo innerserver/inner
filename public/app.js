@@ -46,7 +46,6 @@ const state = {
   innerDocs: [],
   selectedInnerDocId: "",
   docsListCollapsed: false,
-  googleWorkspaceKind: "docs",
   accountRequests: [],
   uploadQueue: [],
   vpn: {},
@@ -156,7 +155,7 @@ const viewRoutes = {
   profile: "/profile",
   store: "/store",
   files: "/files",
-  googleWorkspace: "/google-workspace",
+  notes: "/notes",
   browser: "/browser",
   chess: "/chess",
   voice: "/voice",
@@ -265,15 +264,6 @@ function cacheElements() {
     "storeView",
     "filesView",
     "docsView",
-    "googleWorkspaceView",
-    "googleWorkspaceFrame",
-    "googleWorkspaceNote",
-    "openGoogleWorkspaceButton",
-    "newGoogleWorkspaceButton",
-    "shareGoogleWorkspaceButton",
-    "googleDocsModeButton",
-    "googleSlidesModeButton",
-    "googleSheetsModeButton",
     "docsToggleListButton",
     "newInnerDocButton",
     "deleteInnerDocButton",
@@ -849,12 +839,7 @@ function bindEvents() {
     const game = selectedGameLink();
     fillShareLink(game.url, game.name || "Game", "app");
   });
-  if (els.openGoogleWorkspaceButton) els.openGoogleWorkspaceButton.addEventListener("click", () => openGoogleWorkspaceFullTab());
-  if (els.newGoogleWorkspaceButton) els.newGoogleWorkspaceButton.addEventListener("click", () => openGoogleWorkspaceFullTab(state.googleWorkspaceKind, true));
-  if (els.shareGoogleWorkspaceButton) els.shareGoogleWorkspaceButton.addEventListener("click", () => shareGoogleWorkspace());
-  document.querySelectorAll("[data-google-kind]").forEach((button) => {
-    button.addEventListener("click", () => openGoogleWorkspaceInApp(button.dataset.googleKind || "docs"));
-  });
+  document.getElementById("saveSchoolLinkForm").addEventListener("submit", saveSchoolLink);
   if (els.docsToggleListButton) els.docsToggleListButton.addEventListener("click", toggleDocsList);
   if (els.newInnerDocButton) els.newInnerDocButton.addEventListener("click", newInnerDoc);
   if (els.deleteInnerDocButton) els.deleteInnerDocButton.addEventListener("click", deleteInnerDoc);
@@ -921,12 +906,14 @@ function bindEvents() {
     captureAppearanceDraft();
     applyProfileTheme(els.profileTheme.value);
     updateProfilePreview();
+    saveAppearance();
   });
   if (els.profileVisualStyle) {
     els.profileVisualStyle.addEventListener("change", () => {
       captureAppearanceDraft();
       applyProfileTheme();
       updateProfilePreview();
+      saveAppearance();
     });
   }
   if (els.profileAvatarFile) els.profileAvatarFile.addEventListener("change", handleProfileAvatarFile);
@@ -938,6 +925,15 @@ function bindEvents() {
     if (input) input.addEventListener("input", () => {
       if ([els.profileThemeBg, els.profileThemeSurface, els.profileThemeInk, els.profileThemeAccent].includes(input)) captureAppearanceDraft();
       updateProfilePreview();
+    });
+  });
+  [els.profileThemeBg, els.profileThemeSurface, els.profileThemeInk, els.profileThemeAccent].forEach((input) => {
+    input?.addEventListener("change", () => {
+      els.profileTheme.value = "custom";
+      captureAppearanceDraft();
+      applyProfileTheme();
+      updateProfilePreview();
+      saveAppearance();
     });
   });
   els.uploadForm.addEventListener("submit", uploadFile);
@@ -1449,6 +1445,7 @@ function fallbackAccountLocation(reason) {
 }
 
 async function handleLogout() {
+  await appearanceSaveQueue;
   state.loggedIn = false;
   stopSessionKeepAlive();
   stopScreenWatchLoop();
@@ -1562,6 +1559,7 @@ async function hydrateAdminState() {
 
 function showLogin(message = "", options = {}) {
   state.loggedIn = false;
+  window.ConnectifiPersonalNotes?.signOut();
   state.appearanceDraft = null;
   ++stickerLibraryRequest;
   state.stickers = [];
@@ -1595,13 +1593,7 @@ function showView(viewName, options = {}) {
     notify("Update grade, class, phone, and email first.");
     viewName = "profile";
   }
-  if (["docs", "googleDocs", "googleSlides", "googleSheets"].includes(viewName)) {
-    if (viewName === "googleSlides") state.googleWorkspaceKind = "slides";
-    else if (viewName === "googleSheets") state.googleWorkspaceKind = "sheets";
-    else state.googleWorkspaceKind = "docs";
-    viewName = "googleWorkspace";
-    syncGoogleWorkspaceControls();
-  }
+  if (["docs", "googleWorkspace", "googleDocs", "googleSlides", "googleSheets"].includes(viewName)) viewName = "files";
   if (!viewRoutes[viewName]) viewName = "dashboard";
   if (viewName === "domain" && !isOwner()) viewName = "dashboard";
   if (viewName === "admin" && !hasAdminPanelAccess()) viewName = "dashboard";
@@ -1616,7 +1608,7 @@ function showView(viewName, options = {}) {
   }
   state.activeView = viewName;
   if (viewName === 'chess') renderGames();
-  if (viewName === "googleWorkspace") syncGoogleWorkspaceFrame();
+  if (viewName === "notes") void window.ConnectifiPersonalNotes?.load();
   if (viewName === "friends") loadFriendCandidates({ silent: true });
   if (viewName === "voice" && state.user) renderVoice();
   saveUiState();
@@ -2185,96 +2177,6 @@ function normalizePublicBrowserUrl(rawUrl) {
   if (/^https?:\/\//i.test(value)) return normalizeExternalUrl(value);
   if (/^[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(value)) return normalizeExternalUrl(`https://${value}`);
   return `https://www.google.com/search?q=${encodeURIComponent(value)}`;
-}
-
-function googleWorkspaceConfig(kind) {
-  const configs = {
-    docs: {
-      home: "https://docs.google.com/document/u/0/",
-      create: "https://docs.google.com/document/create",
-      title: "Google Docs",
-      type: "doc",
-      label: "Docs",
-    },
-    slides: {
-      home: "https://docs.google.com/presentation/u/0/",
-      create: "https://docs.google.com/presentation/create",
-      title: "Google Slides",
-      type: "slides",
-      label: "Slides",
-    },
-    sheets: {
-      home: "https://docs.google.com/spreadsheets/u/0/",
-      create: "https://docs.google.com/spreadsheets/create",
-      title: "Google Sheets",
-      type: "sheet",
-      label: "Sheets",
-    },
-  };
-  return configs[kind] || configs.docs;
-}
-
-function openGoogleWorkspaceInApp(kind, create = false) {
-  const config = googleWorkspaceConfig(kind);
-  state.googleWorkspaceKind = ["docs", "slides", "sheets"].includes(kind) ? kind : "docs";
-  const url = create ? config.create : config.home;
-  if (els.googleWorkspaceFrame) {
-    els.googleWorkspaceFrame.src = url;
-    els.googleWorkspaceFrame.title = config.title;
-  }
-  syncGoogleWorkspaceControls();
-  showView("googleWorkspace");
-  notify(`${config.title} opened in the Workspace tab`);
-}
-
-function openGoogleWorkspaceFullTab(kind = state.googleWorkspaceKind, create = false) {
-  const config = googleWorkspaceConfig(kind);
-  const current = create ? config.create : (els.googleWorkspaceFrame && els.googleWorkspaceFrame.src ? els.googleWorkspaceFrame.src : config.home);
-  window.open(current || config.home, "_blank", "noopener");
-  if (els.googleWorkspaceNote) {
-    els.googleWorkspaceNote.textContent = `${config.label} opened in a real tab. This avoids Google's iframe sign-in/editing block.`;
-  }
-}
-
-function shareGoogleWorkspace(kind = state.googleWorkspaceKind) {
-  const config = googleWorkspaceConfig(kind);
-  const url = normalizeExternalUrl((els.googleWorkspaceFrame && els.googleWorkspaceFrame.src) || config.home);
-  fillShareLink(url || config.home, config.title, config.type);
-}
-
-function syncGoogleWorkspaceControls() {
-  const kind = state.googleWorkspaceKind || "docs";
-  const config = googleWorkspaceConfig(kind);
-  [
-    ["docs", els.googleDocsModeButton],
-    ["slides", els.googleSlidesModeButton],
-    ["sheets", els.googleSheetsModeButton],
-  ].forEach(([entry, button]) => {
-    if (!button) return;
-    const active = entry === kind;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-selected", active ? "true" : "false");
-  });
-  if (els.googleWorkspaceNote) {
-    els.googleWorkspaceNote.textContent = `${config.label} is selected. Google often blocks editing/sign-in inside frames; use Open full tab or the helper extension for the reliable path.`;
-  }
-}
-
-function syncGoogleWorkspaceFrame() {
-  if (!els.googleWorkspaceFrame) return;
-  const kind = state.googleWorkspaceKind || "docs";
-  const config = googleWorkspaceConfig(kind);
-  const current = String(els.googleWorkspaceFrame.src || "");
-  const expectedPieces = {
-    docs: "/document/",
-    slides: "/presentation/",
-    sheets: "/spreadsheets/",
-  };
-  if (!current || !current.includes(expectedPieces[kind])) {
-    els.googleWorkspaceFrame.src = config.home;
-    els.googleWorkspaceFrame.title = config.title;
-  }
-  syncGoogleWorkspaceControls();
 }
 
 async function saveBrowserPolicy(event) {
@@ -5707,7 +5609,7 @@ function onboardingGuideForRole(role) {
         { title: "Use rooms and messages", detail: "Switch rooms, read announcements, and keep public chats on topic.", view: "messages", action: "Open messages" },
         { title: "Use DMs carefully", detail: "Create DMs or group chats with accepted friends, send files, links, and call when available.", view: "dms", action: "Open DMs" },
         { title: "Review reports if enabled", detail: "If the owner admin gives moderation tools, use the available reports/logs area to mark issues reviewed." },
-        { title: "Share docs", detail: "Use the Google Workspace tab for Docs, Slides, and Sheets inside Inner.", view: "googleWorkspace", action: "Google Workspace" },
+        { title: "Share a document", detail: "Save a Google or Canva link in Files, or paste it into a message.", view: "files", action: "Files" },
       ],
     };
   }
@@ -5719,7 +5621,7 @@ function onboardingGuideForRole(role) {
       { title: "Add friends", detail: "Same-grade users show by default. Search exact username to find someone outside your grade.", view: "friends", action: "Find friends" },
       { title: "Use messages and DMs", detail: "Use Messages for rooms and DMs for private or group conversations with accepted friends.", view: "messages", action: "Open messages" },
       { title: "Upload and share files", detail: "Use Files for photos, videos, audio, and documents. Turn on Private if only you and admins should see it.", view: "files", action: "Open files" },
-      { title: "Use Docs, Slides, and Sheets", detail: "Use the Google Workspace tab for school work directly inside Inner.", view: "googleWorkspace", action: "Open Workspace" },
+      { title: "Write study notes", detail: "Open Notes to write a note or generate a draft from a file.", view: "notes", action: "Notes" },
     ],
   };
 }
@@ -6637,6 +6539,33 @@ function currentAppearanceDraft() {
   return state.loggedIn && state.appearanceDraft?.identity === `${state.user?.username}:${state.csrfToken}` ? state.appearanceDraft : null;
 }
 
+let appearanceSaveQueue = Promise.resolve();
+
+function saveAppearance() {
+  const draft = currentAppearanceDraft();
+  const username = state.user?.username;
+  if (!draft || !username) return;
+  appearanceSaveQueue = appearanceSaveQueue.then(async () => {
+    if (!state.loggedIn || draft.identity !== currentAppearanceDraft()?.identity) return;
+    try {
+      const { profile } = await api("/api/profile/appearance", {
+        method: "POST",
+        json: { theme: draft.theme, visualStyle: draft.visualStyle, themeImageUrl: draft.themeImageUrl, customTheme: draft.customTheme },
+      });
+      if (!state.loggedIn || draft.identity !== currentAppearanceDraft()?.identity) return;
+      state.profiles = { ...state.profiles, [username]: profile };
+      if (currentAppearanceDraft() === draft) {
+        state.appearanceDraft = null;
+        applyProfileTheme();
+        updateProfilePreview();
+        notify("Appearance saved");
+      }
+    } catch (error) {
+      if (currentAppearanceDraft() === draft) notify(error.message || "Could not save appearance. Try saving your profile.");
+    }
+  });
+}
+
 function captureAppearanceDraft() {
   if (!state.loggedIn || !state.user) return;
   state.appearanceDraft = {
@@ -6666,7 +6595,7 @@ function applyProfileTheme(themeOverride = "") {
   applyProfileVisualStyle(adminVisualStyle || appearance.visualStyle || "forest");
   applyProfileThemeImage(state.loggedIn ? appearance.themeImageUrl || "" : "");
   syncThemeContrast();
-  if (state.loggedIn) globalThis.ConnectifiLoginTheme?.remember();
+  if (state.loggedIn && !currentAppearanceDraft()) globalThis.ConnectifiLoginTheme?.remember(appearance.themeImageUrl || "");
 }
 
 function applyProfileVisualStyle(styleOverride = "") {
@@ -6790,13 +6719,12 @@ async function handleProfileThemeImageFile() {
   try {
     if (els.profileThemePhotoStatus) els.profileThemePhotoStatus.textContent = "Preparing your photo…";
     const dataUrl = await prepareThemePhoto(file);
-    const palette = await window.ConnectifiPhotoPalette.fromImage(dataUrl);
     if (!state.loggedIn || identity !== `${state.user?.username}:${state.csrfToken}` || els.profileThemeImageFile.files?.[0] !== file) return;
     if (els.profileThemeImageUrl) els.profileThemeImageUrl.value = dataUrl;
-    setPhotoPaletteEditor(palette);
     captureAppearanceDraft();
     applyProfileTheme();
     updateProfilePreview();
+    saveAppearance();
   } catch (error) {
     if (identity === `${state.user?.username}:${state.csrfToken}`) {
       notify(error.message || "Could not read that photo");
@@ -6817,7 +6745,11 @@ async function useProfilePhotoColours() {
   try {
     const palette = await window.ConnectifiPhotoPalette.fromImage(source);
     if (!state.loggedIn || identity !== `${state.user?.username}:${state.csrfToken}` || els.profileThemeImageUrl.value !== source) return;
-    setPhotoPaletteEditor(palette); captureAppearanceDraft(); applyProfileTheme(); updateProfilePreview();
+    setPhotoPaletteEditor(palette);
+    captureAppearanceDraft();
+    applyProfileTheme();
+    updateProfilePreview();
+    saveAppearance();
   } catch (error) { if (identity === `${state.user?.username}:${state.csrfToken}`) notify(error.message); }
   finally { els.profilePhotoColoursButton.disabled = !els.profileThemeImageUrl.value; }
 }
@@ -6851,6 +6783,7 @@ function clearProfileThemeImage() {
   captureAppearanceDraft();
   applyProfileTheme();
   updateProfilePreview();
+  saveAppearance();
 }
 
 function fileToDataUrl(file) {
@@ -7191,6 +7124,29 @@ async function deleteInnerDoc() {
   }
 }
 
+async function saveSchoolLink(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const status = form.querySelector("[role=status]");
+  const submit = form.querySelector("button[type=submit]");
+  submit.disabled = true;
+  status.textContent = "Saving link…";
+  try {
+    const { file } = await api("/api/files/links", {
+      method: "POST",
+      json: { title: form.elements.title.value, url: form.elements.url.value, private: !form.elements.shareWithSchool.checked },
+    });
+    if (!state.files.some((entry) => entry.id === file.id)) state.files.unshift(file);
+    renderFiles();
+    form.reset();
+    status.textContent = "Link saved.";
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    submit.disabled = false;
+  }
+}
+
 function renderFiles() {
   els.fileList.replaceChildren();
 
@@ -7213,7 +7169,7 @@ function renderFiles() {
 
     const meta = document.createElement("div");
     meta.className = "file-meta";
-    meta.append(textNode(`${file.kind} - ${formatBytes(file.size)}`), textNode(`Uploaded by ${file.user}`), textNode(formatDate(file.createdAt)));
+    meta.append(textNode(file.kind === "link" ? "External link" : `${file.kind} · ${formatBytes(file.size)}`), textNode(`Added by ${file.user}`), textNode(formatDate(file.createdAt)));
     if (file.private) meta.append(textNode("Visible only to uploader and admins"));
     if (file.releaseAt) meta.append(textNode(`Release at ${formatDate(file.releaseAt)}`));
     if (file.releaseRoom) meta.append(textNode(`Release room ${roomDisplayName(file.releaseRoom)}`));
@@ -7222,12 +7178,13 @@ function renderFiles() {
       if (file.sourceAgent) meta.append(textNode(file.sourceAgent));
     }
 
-    const preview = createFilePreview(file);
+    const isLink = file.kind === "link";
+    const preview = isLink ? null : createFilePreview(file);
     const link = document.createElement("a");
     link.href = file.url;
     link.target = "_blank";
-    link.rel = "noopener";
-    link.textContent = "Open file";
+    link.rel = "noopener noreferrer";
+    link.textContent = isLink ? "Open link (new tab)" : "Open file";
 
     const actions = document.createElement("div");
     actions.className = "file-actions";
@@ -7237,11 +7194,12 @@ function renderFiles() {
     downloadButton.type = "button";
     downloadButton.textContent = "Download";
     downloadButton.addEventListener("click", () => downloadUrl(downloadableUrl(file.url), file.originalName));
-    actions.append(downloadButton);
-    if (window.ConnectifiStudyNotes?.supports(file.originalName)) {
+    if (isLink) actions.append(accountButton("Share in a message", () => fillShareLink(file.url, file.originalName)));
+    else actions.append(downloadButton);
+    if (!isLink && window.ConnectifiStudyNotes?.supports(file.originalName)) {
       actions.append(accountButton('Make notes', () => window.ConnectifiStudyNotes.open(file)));
     }
-    if (isOwner()) {
+    if (isOwner() || (isLink && file.user === state.user?.username)) {
       const deleteButton = document.createElement("button");
       deleteButton.className = "ghost-light-button compact-button";
       deleteButton.type = "button";
@@ -9890,7 +9848,9 @@ async function reportMessage(id) {
 }
 
 async function deleteFile(id) {
-  if (!isOwner()) return notify("Admin access required");
+  const file = state.files.find((entry) => entry.id === id);
+  if (!isOwner() && !(file?.kind === "link" && file.user === state.user?.username)) return notify("Admin access required");
+  if (file?.kind === "link" && !window.confirm("Remove this saved link?")) return;
   try {
     await api(`/api/files/${encodeURIComponent(id)}`, { method: "DELETE" });
     state.files = state.files.filter((file) => file.id !== id);
@@ -10694,7 +10654,7 @@ function featureLabel(feature) {
     plugins: "Plugins",
     store: "Store",
     chess: "Games",
-    docs: "Google Workspace",
+    docs: "Legacy documents",
     domain: "Domain",
   };
   return labels[feature] || feature;
@@ -10711,10 +10671,6 @@ function viewFeature(viewName) {
     files: "files",
     browser: "browser",
     docs: "docs",
-    googleWorkspace: "docs",
-    googleDocs: "docs",
-    googleSlides: "docs",
-    googleSheets: "docs",
     chess: "chess",
     voice: "voice",
     screen: "screen",
@@ -11021,18 +10977,7 @@ function previewText(value) {
 
 function viewFromPath() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
-  if (path === "/docs" || path === "/google-docs") {
-    state.googleWorkspaceKind = "docs";
-    return "googleWorkspace";
-  }
-  if (path === "/slides") {
-    state.googleWorkspaceKind = "slides";
-    return "googleWorkspace";
-  }
-  if (path === "/sheets") {
-    state.googleWorkspaceKind = "sheets";
-    return "googleWorkspace";
-  }
+  if (["/docs", "/google-docs", "/slides", "/sheets", "/google-workspace"].includes(path)) return "files";
   return Object.entries(viewRoutes).find(([, route]) => route === path)?.[0] || "";
 }
 
@@ -11089,6 +11034,7 @@ async function removeFriend(username) {
 
 async function saveProfile(event) {
   event.preventDefault();
+  await appearanceSaveQueue;
   try {
     const data = await api("/api/profile", {
       method: "POST",

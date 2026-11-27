@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import assert from "node:assert/strict";
 import { before, after, test } from "node:test";
 import { readFile, writeFile, mkdir, mkdtemp, rm, readdir } from "node:fs/promises";
@@ -17,7 +18,7 @@ const createUploadAlerts = require("./lib/upload-alerts");
 const directory = await mkdtemp(path.join(tmpdir(), "connectifi-school-"));
 const source = await readFile(path.join(root, "server.js"), "utf8");
 const context = vm.createContext({ require, __dirname: root, Buffer, URL, AbortSignal, AbortController, setTimeout, clearTimeout, setInterval, clearInterval, console, fetch, process: { env: { INNER_LOCALHOST_MODE: "true", INNER_DATA_DIR: directory }, pid: process.pid } });
-vm.runInContext(source.slice(0, source.lastIndexOf("main().catch(")) + ";globalThis.app={route,createInnerServer,sessions,FILES,websocketServer};", context);
+vm.runInContext(source.slice(0, source.lastIndexOf("main().catch(")) + ";globalThis.app={route,createInnerServer,sessions,hashSessionValue,FILES,websocketServer};", context);
 const { app } = context;
 let server, origin;
 const users = [{ username: "admin", role: "admin", email: "admin@example.test" }, { username: "teacher", role: "moderator" }, { username: "alice", role: "member", parentEmails: ["parent@example.test"], grade: "9A" }, { username: "bob", role: "member", parentEmails: ["parent@example.test"], grade: "9B" }];
@@ -28,8 +29,8 @@ before(async () => {
   const fixtures = { users, rooms: [{ id: "room-a", name: "Room A", private: true, allowedUsers: ["alice", "teacher"] }, { id: "room-b", name: "Room B", private: true, allowedUsers: ["bob"] }], settings: { serverEnabled: true }, questionnaires: [], uploads: [], announcements: [{ id: "notice-a", title: "Room A notice", message: "Please confirm", scope: "room", roomId: "room-a", active: true, requireAcknowledgement: true }] };
   for (const [key, value] of Object.entries(fixtures)) await writeFile(app.FILES[key], JSON.stringify(value));
   for (const user of users) {
-    tokens[user.username] = `${user.username}-token`;
-    app.sessions.set(tokens[user.username], { ...user, csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
+    tokens[user.username] = randomBytes(32).toString("hex");
+    app.sessions.set(app.hashSessionValue(tokens[user.username]), { ...user, csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
   }
   server = app.createInnerServer((req, res) => app.route(req, res).catch((error) => {
     if (res.destroyed || res.headersSent) return;
@@ -324,7 +325,7 @@ test("startup provisions Grades 6–12 for all sections, without exposing old se
   }
   for (const name of ["alice", "bob", "charlie", "outside"]) {
     const user = storedUsers.find((entry) => entry.username === name);
-    tokens[name] = `${name}-grade-token`; app.sessions.set(tokens[name], { ...user, csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
+    tokens[name] = randomBytes(32).toString("hex"); app.sessions.set(app.hashSessionValue(tokens[name]), { ...user, csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
   }
   const grade8 = rooms.find((room) => room.name === "Grade 8");
   assert.equal((await call("bob", "/api/state?fast=1")).data.rooms.some((room) => room.id === grade8.id), true);

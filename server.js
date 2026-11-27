@@ -158,6 +158,9 @@ const SESSION_COOKIE = "server_app_session";
 const SESSION_IDLE_MS = Math.max(60 * 60 * 1000, Number(process.env.INNER_SESSION_IDLE_MS || 12 * 60 * 60 * 1000));
 const SESSION_PERSISTENT_MS = Math.max(24 * 60 * 60 * 1000, Number(process.env.INNER_SESSION_PERSISTENT_MS || 30 * 24 * 60 * 60 * 1000));
 const sessions = new Map();
+const SESSION_FILE = path.join(DATA_DIR, "persistent-sessions.json");
+let sessionWrites = Promise.resolve();
+let profileWrites = Promise.resolve();
 const wsClients = new Map();
 const httpRealtimeClients = new Map();
 const httpRealtimeEvents = [];
@@ -333,6 +336,7 @@ const vpnLocations = [
 async function main() {
   await initPersistence();
   await ensureStorage();
+  await restoreSessions();
   await getGradeProgression().sweep();
   const graduationTimer = setInterval(() => getGradeProgression().sweep().catch((error) => console.error("Graduation cleanup:", safeErrorMessage(error))), 60000);
   graduationTimer.unref();
@@ -970,7 +974,7 @@ async function route(req, res) {
     pathname = decodeURIComponent(requestUrl.pathname);
   } catch { return text(res, 400, "Invalid request URL"); }
 
-  const appPaths = new Set(['/', '/messages', '/dms', '/secret', '/friends', '/profile', '/store', '/files', '/google-workspace', '/browser', '/chess', '/voice', '/screen', '/moderation', '/domain', '/admin', '/hmd', '/ptm']);
+  const appPaths = new Set(['/', '/messages', '/dms', '/secret', '/friends', '/profile', '/store', '/files', '/notes', '/google-workspace', '/google-docs', '/docs', '/slides', '/sheets', '/browser', '/chess', '/voice', '/screen', '/moderation', '/domain', '/admin', '/hmd', '/ptm']);
   if ((req.method === "GET" || req.method === "HEAD") && appPaths.has(pathname)) {
     return serveStatic(req, res, path.join(PUBLIC_DIR, "index.html"));
   }
@@ -1046,14 +1050,15 @@ async function completeLogin(users, user, req, res, authenticationMethod = "pass
     }
 
     const persistent = effectivePersistentLogin(user, settings, rooms);
-    const previousToken = getCookie(req, SESSION_COOKIE);
+    const previousToken = requestSessionKey(req);
     if (previousToken) revokeSession(previousToken);
     const accountSessions = [...sessions.entries()].filter(([, entry]) => entry.username === user.username);
     while (accountSessions.length >= 10) revokeSession(accountSessions.shift()[0]);
     if (sessions.size >= WS_MAX_CLIENTS * 20) return loginFailure( 503, { error: "Session capacity reached. Please try again later." });
     const passkeyPrompt = authenticationMethod === "password" ? await getPasskeyHandler().recordPasswordLogin(user) : false;
     const token = crypto.randomBytes(32).toString("hex");
-    sessions.set(token, {
+    const sessionKey = hashSessionValue(token);
+    sessions.set(sessionKey, {
       username: user.username,
       role: effectiveRole(user),
       csrfToken: crypto.randomBytes(32).toString("base64url"),
@@ -1068,6 +1073,7 @@ async function completeLogin(users, user, req, res, authenticationMethod = "pass
       graduationDeleteAfter: user.graduation?.deleteAfter || "",
       graduationStartedAt: user.graduation?.startedAt || "",
       persistent,
+      credentialVersion: hashSessionValue(user.passwordHash || ""),
       expiresAt: Date.now() + (persistent ? SESSION_PERSISTENT_MS : SESSION_IDLE_MS),
     });
 
@@ -1136,11 +1142,15 @@ async function completeLogin(users, user, req, res, authenticationMethod = "pass
       });
     }
 
+    if (persistent) {
+      try { await persistSessions(); }
+      catch (error) { revokeSession(sessionKey); throw error; }
+    } else await sessionWrites;
     const existingCookies = res.getHeader?.("Set-Cookie");
     const loginCookie = sessionCookie(token, req, persistent ? Math.floor(SESSION_PERSISTENT_MS / 1000) : null);
     res.setHeader("Set-Cookie", existingCookies ? [loginCookie, ...[existingCookies].flat()] : loginCookie);
     if (redirectAfterLogin) { res.writeHead(303, { Location: '/', 'Cache-Control': 'no-store' }); res.end(); }
-    else json(res, 200, { user: safeUser(user), csrfToken: sessionCsrfToken(token), passkeyPrompt });
+    else json(res, 200, { user: safeUser(user), csrfToken: sessionCsrfToken(sessionKey), passkeyPrompt });
     void addSystemLog("login.success", user.username, { role: normalizeRole(user.role), persistent, persistentReason: persistentLoginReason(user, settings, rooms) }, req).catch((error) => {
       console.error("Login audit log failed:", error.message || error);
     });
@@ -1158,8 +1168,8 @@ function getPasskeyHandler() {
   passkeyHandler ||= require("./lib/passkeys")({
     origin: () => firstEnvValue("INNER_PASSKEY_ORIGIN", "INNER_PUBLIC_URL", "PUBLIC_URL") || (isProductionRuntime() ? PUBLIC_HOST_FALLBACK : ""),
     secure: isHttpsRequest, sameOrigin: isSameOriginRequest, cookie: getCookie,
-    sessionToken: (req) => getCookie(req, SESSION_COOKIE), user: getSessionUser,
-    recentPassword: (req) => (sessions.get(getCookie(req, SESSION_COOKIE))?.passwordAuthenticatedAt || 0) > Date.now() - 5 * 60 * 1000,
+    sessionToken: (req) => requestSessionKey(req), user: getSessionUser,
+    recentPassword: (req) => (sessions.get(requestSessionKey(req))?.passwordAuthenticatedAt || 0) > Date.now() - 5 * 60 * 1000,
     users: () => readJson(FILES.users, []), read: () => readJson(FILES.passkeys, []),
     write: (keys) => writeJson(FILES.passkeys, keys),
     readPreferences: () => readJson(FILES.passkeyPreferences, {}),
@@ -1183,6 +1193,7 @@ function getGradeProgression() {
     sync: syncPromotedStudents,
     expire: expireUserSessions,
     cleanup: async (username) => {
+      await personalNotes.removeAccount(username);
       for (const key of ["profiles", "passkeyPreferences", "userPins"]) {
         const entries = await readJson(FILES[key], {}); delete entries[username]; await writeJson(FILES[key], entries);
       }
@@ -1290,7 +1301,7 @@ async function routeApi(req, res, requestUrl) {
   }
 
   if (req.method === "POST" && pathname === "/api/logout") {
-    clearSessionForRequest(req, res);
+    await clearSessionForRequest(req, res);
     return json(res, 200, { ok: true });
   }
 
@@ -1360,7 +1371,7 @@ async function routeApi(req, res, requestUrl) {
     pruneHttpRealtime();
     const clientId = sanitizeRealtimeClientId(requestUrl.searchParams.get("clientId"));
     const client = clientId ? httpRealtimeClients.get(clientId) : null;
-    if (!client || client.username !== user.username || client.sessionToken !== getCookie(req, SESSION_COOKIE)) return json(res, 404, { error: "Realtime fallback is not connected" });
+    if (!client || client.username !== user.username || client.sessionToken !== requestSessionKey(req)) return json(res, 404, { error: "Realtime fallback is not connected" });
     client.lastSeenAt = Date.now();
     const since = Math.max(0, Number(requestUrl.searchParams.get("since") || 0));
     const events = httpRealtimeEvents
@@ -1479,7 +1490,7 @@ async function routeApi(req, res, requestUrl) {
     resets[resetIndex] = { ...reset, usedAt: new Date().toISOString() };
     await writeJson(FILES.passwordResets, resets);
     await writeJson(FILES.users, users);
-    expireUserSessions(users[userIndex].username);
+    await expireUserSessions(users[userIndex].username);
     await addSystemLog("password.reset.completed", users[userIndex].username, {}, req);
     if (String(users[userIndex].email || "").includes("@")) {
       await sendDirectEmail([users[userIndex].email], "Connectifi password changed", [
@@ -1506,7 +1517,7 @@ async function routeApi(req, res, requestUrl) {
     publicStudent(body);
     const parentEmails = validateParentEmails(body.parentEmails);
     const settings = await readJson(FILES.settings, {});
-    clearSessionForRequest(req, res);
+    await clearSessionForRequest(req, res);
     const username = normalizeUsername(body.username);
     if (!username) return json(res, 400, { error: "Use 3-32 letters, numbers, dots, dashes, or underscores" });
     if (builtInManagerUsernames.has(username.toLowerCase())) return json(res, 409, { error: "That username is reserved" });
@@ -1596,7 +1607,7 @@ async function routeApi(req, res, requestUrl) {
 
   if (req.method === "POST" && pathname === "/api/signup") {
     const settings = await readJson(FILES.settings, {});
-    clearSessionForRequest(req, res);
+    await clearSessionForRequest(req, res);
     if (String(settings.signupMode || DEFAULT_SIGNUP_MODE) !== "open") {
       return json(res, 403, { error: "Open signup is off. Request an account instead." });
     }
@@ -1696,11 +1707,11 @@ async function routeApi(req, res, requestUrl) {
 
   const shutdownSettings = await readJson(FILES.settings, {});
   if (shutdownSettings.serverEnabled === false && !canAccessWhileServerLocked(user, shutdownSettings)) {
-    clearSessionForRequest(req, res);
+    await clearSessionForRequest(req, res);
     return json(res, 423, { error: serverLockedMessage(shutdownSettings) });
   }
   if (ownerCheckinModeratorOnly(shutdownSettings) && !canModerate(user)) {
-    clearSessionForRequest(req, res);
+    await clearSessionForRequest(req, res);
     return json(res, 423, { error: "Moderator continuity mode is active. Only moderators and owner admins can access the app right now." });
   }
 
@@ -2366,6 +2377,41 @@ async function routeApi(req, res, requestUrl) {
     return json(res, 200, { announcements: safeAnnouncements(next, user, rooms) });
   }
 
+  if (pathname === "/api/notes") return personalNotes.handle(req, res, user.username);
+
+  if (req.method === "POST" && pathname === "/api/files/links") {
+    const gate = await featureGateError(shutdownSettings, "files", user);
+    if (gate) return json(res, 423, { error: gate });
+    const body = await readJsonBody(req);
+    const externalLink = normalizeSchoolLink(body.url);
+    const title = String(body.title || "").trim().slice(0, 120);
+    if (!externalLink || !title) return json(res, 400, { error: "Enter a title and a Google or Canva share link." });
+    const record = {
+      id: crypto.randomUUID(), originalName: title, externalLink, kind: "link", category: "Documents",
+      size: 0, user: user.username, private: body.private !== false, createdAt: new Date().toISOString(),
+    };
+    const write = uploadRecordQueue.then(async () => {
+      const files = await readJson(FILES.uploads, []);
+      if (files.filter((file) => file.kind === "link" && file.user === user.username).length >= 100) return false;
+      files.unshift(record);
+      await writeJson(FILES.uploads, files);
+      return true;
+    });
+    uploadRecordQueue = write.catch(() => {});
+    if (!await write) return json(res, 400, { error: "Remove a saved link before adding another. The limit is 100 links." });
+    broadcastFileNew(record);
+    return json(res, 201, { file: safeFileRecord(record, user) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/profile/appearance") {
+    const body = await readJsonBody(req);
+    const profiles = await updateProfile(user.username, (profile) => sanitizeProfile({
+      ...profile, theme: body.theme, visualStyle: body.visualStyle,
+      themeImageUrl: body.themeImageUrl, customTheme: body.customTheme,
+    }));
+    return json(res, 200, { profile: profiles[user.username] });
+  }
+
   if (req.method === "GET" && pathname === "/api/files") {
     const [files, rooms] = await Promise.all([readJson(FILES.uploads, []), readJson(FILES.rooms, [])]);
     return json(res, 200, { files: safeFileRecords(files, user, rooms) });
@@ -2378,6 +2424,7 @@ async function routeApi(req, res, requestUrl) {
     const record = files.find((entry) => entry.id === id);
     if (!record) return text(res, 404, "File not found");
     if (!canAccessFileRecord(record, user, rooms) && !(await canReadStickerFile(record, user, rooms))) return text(res, 403, "Private or unreleased file");
+    if (record.kind === "link") return text(res, 404, "This item is an external link");
     return serveFileRecord(req, res, record);
   }
 
@@ -2386,7 +2433,7 @@ async function routeApi(req, res, requestUrl) {
     const profileUsers = await readJson(FILES.users, []);
     const contactUser = profileUsers.find(entry => entry.username === user.username) || user;
     const parentEmails = contactUser.role === "member" ? validateParentEmails(body.parentEmails === undefined ? contactUser.parentEmails : body.parentEmails) : [];
-    const profiles = await readJson(FILES.profiles, {});
+    let profiles = await readJson(FILES.profiles, {});
     const previous = profiles[user.username] || defaultProfile(user.username);
     const now = new Date().toISOString();
     const submittedGrade = normalizeGrade(body.grade || "");
@@ -2435,7 +2482,7 @@ async function routeApi(req, res, requestUrl) {
       await writeJson(FILES.users, users);
       broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     }
-    await writeJson(FILES.profiles, profiles);
+    profiles = await updateProfile(user.username, () => next);
     const classRoom = normalizeGrade(user.grade) !== next.grade
       ? await syncClassRoom(users[userIndex] || user)
       : { rooms: await readJson(FILES.rooms, []), roomId: "" };
@@ -3469,6 +3516,7 @@ async function routeApi(req, res, requestUrl) {
     const restored = await restoreBackup(fileName, user.username);
     const backups = await listBackups();
     sessions.clear();
+    await persistSessions();
     broadcast({ type: "force:logout", reason: "Backup restored. Sign in again." });
     broadcastManagers({ type: "backups:update", backups });
     return json(res, 200, { ok: true, restored, backups });
@@ -3782,7 +3830,7 @@ async function routeApi(req, res, requestUrl) {
     await Promise.all([writeJson(FILES.users, users), writeJson(FILES.profiles, profiles), permanentPromotion ? writeJson(FILES.settings, nextSettings) : Promise.resolve()]);
     if (gradeChanged) await syncClassRoom(users[index]);
     if (previous.role !== users[index].role || previous.allowPersistentLogin !== users[index].allowPersistentLogin || tempAdminMinutes || clearTempAdmin) {
-      expireUserSessions(username);
+      await expireUserSessions(username);
     }
     await broadcastProfileUpdate(profiles, users);
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
@@ -3811,7 +3859,8 @@ async function routeApi(req, res, requestUrl) {
     if (next.length === users.length) return json(res, 404, { error: "User not found" });
     await writeJson(FILES.users, next);
     if (username.toLowerCase() === "admin2") await markDeletedDefault("admin2", user.username);
-    expireUserSessions(username);
+    await expireUserSessions(username);
+    await personalNotes.removeAccount(username);
     broadcastManagers({ type: "users:update", users: next.map(safeUser) });
     return json(res, 200, { users: next.map((entry) => safeUser(entry, user)) });
   }
@@ -3840,7 +3889,7 @@ async function routeApi(req, res, requestUrl) {
     await writeJson(FILES.users, users);
     await addModerationLog(user.username, minutes > 0 ? "user:ban" : "user:unban", username, reason || `${minutes} minutes`);
     if (minutes > 0) {
-      expireUserSessions(username);
+      await expireUserSessions(username);
       scheduleBanExpiry(username, users[index].bannedUntil);
     } else {
       clearBanExpiry(username);
@@ -3985,7 +4034,7 @@ async function routeApi(req, res, requestUrl) {
     if (!canUseModerationCapability(user, settings, "member-actions")) return json(res, 403, { error: "Owner admin has not granted member-action access" });
     const body = await readJsonBody(req);
     const username = String(body.username || "").trim();
-    expireUserSessions(username);
+    await expireUserSessions(username);
     await addModerationLog(user.username, "user:kick", username, String(body.reason || "").slice(0, 160));
     return json(res, 200, { ok: true });
   }
@@ -4110,8 +4159,8 @@ async function routeApi(req, res, requestUrl) {
     if (!canManage(user) && record.user !== user.username) return json(res, 403, { error: "Admin or uploader access required" });
     const next = files.filter((entry) => entry.id !== id);
     await writeJson(FILES.uploads, next);
-    await fsp.rm(path.join(UPLOAD_DIR, record.storedName), { force: true }).catch(() => {});
-    await deleteCloudUpload(record).catch(() => {});
+    if (record.storedName) await fsp.rm(path.join(UPLOAD_DIR, record.storedName), { force: true }).catch(() => {});
+    if (record.kind !== "link") await deleteCloudUpload(record).catch(() => {});
     await addSystemLog("file.deleted", user.username, { id, name: record.originalName }, req);
     broadcast({ type: "file:delete", id });
     return json(res, 200, { ok: true });
@@ -4197,6 +4246,7 @@ async function routeApi(req, res, requestUrl) {
     let kicked = { sessions: 0, clients: 0 };
     if (!next.serverEnabled) {
       kicked = kickNonShutdownUsers();
+      await sessionWrites;
       await addSystemLog("server.shutdown", user.username, { kicked, roomName: next.roomName }, req);
     } else if (settings.serverEnabled === false) {
       await addSystemLog("server.restart", user.username, { roomName: next.roomName }, req);
@@ -4339,7 +4389,7 @@ async function routeApi(req, res, requestUrl) {
       updatedAt: new Date().toISOString(),
     };
     await writeJson(FILES.users, users);
-    expireUserSessions(user.username);
+    await expireUserSessions(user.username);
     return json(res, 200, { ok: true });
   }
 
@@ -4363,7 +4413,7 @@ async function routeApi(req, res, requestUrl) {
       updatedBy: user.username,
     };
     await writeJson(FILES.users, users);
-    expireUserSessions(username);
+    await expireUserSessions(username);
     broadcastManagers({ type: "users:update", users: users.map(safeUser) });
     return json(res, 200, { users: users.map((entry) => safeUser(entry, user)) });
   }
@@ -5193,7 +5243,7 @@ async function handleUpgrade(req, socket, head = Buffer.alloc(0)) {
     const id = crypto.randomUUID();
     const client = {
       id, username: user.username, role: user.role, grade: user.grade, socket, webSocket,
-      sessionToken: getCookie(req, SESSION_COOKIE), ip: getClientIp(req),
+      sessionToken: requestSessionKey(req), ip: getClientIp(req),
       device: deviceSignature(req), network: {}, connectedAt: new Date().toISOString(),
       sharing: false, screenRoomId: "", status: "online", invisible: false,
       typingRoomId: "", voiceRoomId: "", muted: false, deafened: false,
@@ -5839,7 +5889,7 @@ function upsertHttpRealtimeClient(user, body = {}, req) {
   const requestedId = sanitizeRealtimeClientId(body.clientId);
   const id = requestedId || `http_${crypto.randomUUID()}`;
   const existing = httpRealtimeClients.get(id);
-  const sessionToken = getCookie(req, SESSION_COOKIE);
+  const sessionToken = requestSessionKey(req);
   if (existing && (existing.username !== user.username || existing.sessionToken !== sessionToken)) {
     throw Object.assign(new Error("Realtime client belongs to another session"), { statusCode: 403 });
   }
@@ -5882,7 +5932,7 @@ function sanitizeRealtimeClientId(value) {
   return /^[a-zA-Z0-9:_-]{8,100}$/.test(id) ? id : "";
 }
 
-function expireUserSessions(username) {
+async function expireUserSessions(username) {
   const lower = String(username || "").toLowerCase();
   for (const [token, session] of sessions) {
     if (String(session.username || "").toLowerCase() === lower) revokeSession(token);
@@ -5890,6 +5940,7 @@ function expireUserSessions(username) {
   for (const client of Array.from(wsClients.values())) {
     if (String(client.username || "").toLowerCase() === lower) closeWs(client);
   }
+  await sessionWrites;
 }
 
 async function markDeletedDefault(username, updatedBy) {
@@ -6219,8 +6270,53 @@ function realtimeSessionActive(client) {
   return Boolean(session && session.username === client.username && session.expiresAt > Date.now() && (!session.graduationDeleteAfter || Date.parse(session.graduationDeleteAfter) > Date.now()));
 }
 
+function hashSessionValue(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function requestSessionKey(req) {
+  const token = getCookie(req, SESSION_COOKIE);
+  return /^[a-f0-9]{64}$/.test(token || "") ? hashSessionValue(token) : "";
+}
+
+function persistSessions() {
+  const write = sessionWrites.then(() => writeJson(SESSION_FILE, [...sessions]
+    .filter(([, entry]) => entry.persistent && entry.expiresAt > Date.now())
+    .map(([key, { username, role, csrfToken, credentialVersion, expiresAt, createdAt }]) =>
+      [key, { username, role, csrfToken, credentialVersion, expiresAt, createdAt }])));
+  sessionWrites = write.catch((error) => console.error("Session storage:", safeErrorMessage(error)));
+  return write;
+}
+
+async function restoreSessions() {
+  const [saved, users, settings, rooms] = await Promise.all([
+    readJson(SESSION_FILE, []), readJson(FILES.users, []),
+    readJson(FILES.settings, {}), readJson(FILES.rooms, []),
+  ]);
+  const accounts = new Map(users.map((user) => [user.username, user]));
+  for (const [key, entry] of saved) {
+    const user = accounts.get(entry.username);
+    if (!user || !/^[a-f0-9]{64}$/.test(key) || entry.expiresAt <= Date.now() ||
+        entry.credentialVersion !== hashSessionValue(user.passwordHash || "") ||
+        entry.role !== effectiveRole(user) ||
+        (user.graduation?.deleteAfter && Date.parse(user.graduation.deleteAfter) <= Date.now()) ||
+        !effectivePersistentLogin(user, settings, rooms) ||
+        isUserBanned(user) ||
+        (settings.serverEnabled === false && !canAccessWhileServerLocked(user, settings)) ||
+        (ownerCheckinModeratorOnly(settings) && !canModerate(user))) continue;
+    sessions.set(key, {
+      ...entry, persistent: true, role: effectiveRole(user), tempAdminUntil: user.tempAdminUntil,
+      tempAdminPreviousRole: user.tempAdminPreviousRole, email: user.email, phone: user.phone,
+      grade: normalizeGrade(user.grade), contact: user.contact,
+      graduationDeleteAfter: user.graduation?.deleteAfter, graduationStartedAt: user.graduation?.startedAt,
+    });
+  }
+}
+
 function revokeSession(token) {
+  const persistent = sessions.get(token)?.persistent;
   sessions.delete(token);
+  if (persistent) void persistSessions().catch(() => {});
   for (const client of [...wsClients.values()]) {
     if (client.sessionToken === token) closeWs(client);
   }
@@ -6238,9 +6334,11 @@ function closeWs(client) {
   void removeClient(client.id);
 }
 
-function clearSessionForRequest(req, res) {
-  const token = getCookie(req, SESSION_COOKIE);
+async function clearSessionForRequest(req, res) {
+  const token = requestSessionKey(req);
+  const persistent = sessions.get(token)?.persistent;
   if (token) revokeSession(token);
+  if (persistent) await persistSessions();
   res.setHeader("Set-Cookie", sessionCookie("", req, 0));
 }
 
@@ -6266,6 +6364,7 @@ function kickNonShutdownUsers() {
     }
   }
 
+  if (sessionsKicked) void persistSessions().catch(() => {});
   return { sessions: sessionsKicked, clients: clientsKicked };
 }
 
@@ -6291,6 +6390,7 @@ function kickNonOwnerFailsafeUsers() {
     }
   }
 
+  if (sessionsKicked) void persistSessions().catch(() => {});
   return { sessions: sessionsKicked, clients: clientsKicked };
 }
 
@@ -6304,7 +6404,7 @@ function requireUser(req, res) {
 }
 
 function getSessionUser(req) {
-  const token = getCookie(req, SESSION_COOKIE);
+  const token = requestSessionKey(req);
   if (!token) return null;
   const session = sessions.get(token);
   if (!session) return null;
@@ -6381,7 +6481,7 @@ function sessionCsrfToken(sessionToken) {
 }
 
 function csrfTokenForRequest(req) {
-  return sessionCsrfToken(getCookie(req, SESSION_COOKIE));
+  return sessionCsrfToken(requestSessionKey(req));
 }
 
 function isValidCsrfRequest(req) {
@@ -6573,6 +6673,17 @@ function statePeopleForUser(users, profiles, viewer, friends = { friendships: []
       return visible.has(username) || friendCandidateAllowed(viewer, entry, "", profiles[entry.username], profiles[viewerName]);
     })
     .map((entry) => publicUser(entry, profiles[entry.username]));
+}
+
+function updateProfile(username, update) {
+  const write = profileWrites.then(async () => {
+    const profiles = await readJson(FILES.profiles, {});
+    profiles[username] = update(profiles[username] || defaultProfile(username));
+    await writeJson(FILES.profiles, profiles);
+    return profiles;
+  });
+  profileWrites = write.catch(() => {});
+  return write;
 }
 
 function defaultProfile(username) {
@@ -7499,6 +7610,12 @@ function canAccessInnerDoc(doc, user) {
   return doc.owner === user.username || (Array.isArray(doc.sharedWith) && doc.sharedWith.includes(user.username));
 }
 
+const { normalizeSchoolLink, createPersonalNotes } = require("./lib/personal-notes");
+const personalNotes = createPersonalNotes({
+  fileFor: (username) => path.join(DATA_DIR, "personal-notes", hashSessionValue(username.toLowerCase()) + ".json"),
+  readJson, writeJson, readJsonBody, json,
+});
+
 function safeFileRecord(file, viewer) {
   const showAdminMeta = viewer && canOwn(viewer);
   const safe = {
@@ -7515,7 +7632,7 @@ function safeFileRecord(file, viewer) {
     createdAt: file.createdAt,
     validatedUpload: file.validatedUpload === true,
     scanStatus: file.scanStatus || "legacy",
-    url: `/api/files/${encodeURIComponent(file.id)}/download`,
+    url: file.kind === "link" ? normalizeSchoolLink(file.externalLink) : `/api/files/${encodeURIComponent(file.id)}/download`,
   };
   if (showAdminMeta) {
     Object.assign(safe, {
@@ -9358,10 +9475,11 @@ async function ownerFailsafeTriggeredResponse(req, res, actor, trigger) {
 
   await Promise.all([writeJson(FILES.users, users), writeJson(FILES.settings, next)]);
   if (actorIndex !== -1 && !ownerUsernames.has(actorName)) {
-    expireUserSessions(actorName);
+    await expireUserSessions(actorName);
     scheduleBanExpiry(actorName, until);
   }
   const kicked = kickNonOwnerFailsafeUsers();
+  await sessionWrites;
   await addSystemLog("owner.failsafe.triggered", actorName, { trigger, bannedUntil: until, kicked }, req);
   await addModerationLog("owner-failsafe", "user:ban", actorName, `24 hours: ${trigger}`);
   broadcastSettings(next);
@@ -9418,6 +9536,7 @@ async function activateOwnerCheckinLockdown(trigger, actorName = "owner-checkin"
   };
   await writeJson(FILES.settings, next);
   const kicked = kickNonOwnerFailsafeUsers();
+  await sessionWrites;
   await addSystemLog("owner.checkin.lockdown", "owner-checkin", { trigger, kicked });
   broadcastSettings(next);
   sendDirectEmail(ownerCheckinRecipients(next), "Connectifi owner recovery lock activated", [

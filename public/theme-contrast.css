@@ -26,14 +26,14 @@ body[data-theme="glass"] {
   --accent-soft: #294638;
 }
 body[data-theme="glass"][data-theme-image="true"] #appView.app:not(.hidden) {
-  background: linear-gradient(rgb(11 20 16 / .75), rgb(11 20 16 / .82)), var(--account-theme-image) center / cover fixed !important;
+  background: linear-gradient(color-mix(in srgb, var(--bg) 62%, transparent), color-mix(in srgb, var(--bg) 76%, transparent)), var(--account-theme-image) center / cover fixed !important;
 }
 body[data-theme="glass"][data-theme-image="true"] #appView .workspace { background: transparent; backdrop-filter: none; }
 body[data-theme="glass"][data-theme-image="true"] #appView .workspace :is(.panel-form,.status-panel,.account-card,.file-card,.message-list,.message,.school-card,.profile-preview) {
-  background: rgb(20 32 26 / .9) !important;
+  background: color-mix(in srgb, var(--surface) 92%, transparent) !important;
   backdrop-filter: blur(12px);
 }
-body[data-theme="glass"][data-theme-image="true"] #appView .workspace .message.mine { background: rgb(35 62 47 / .95) !important; }
+body[data-theme="glass"][data-theme-image="true"] #appView .workspace .message.mine { background: var(--accent-soft) !important; }
 /* A photo-generated Custom palette replaces the preset colours. The picture
    remains visible between opaque, readable content panels. */
 body[data-theme="custom"][data-theme-image="true"] #appView.app:not(.hidden) {
@@ -61,9 +61,36 @@ body[data-color-mode="dark"] :is(.message-more-menu-content,.sticker-tools-panel
   color: var(--ink) !important;
 }
 body[data-color-mode="dark"] :is(.workspace,.school-dialog,.strike-modal,.questionnaire-dialog) :is(a:not([class]),.message-text a,.file-card a) { color: var(--accent); }
-body[data-color-mode="dark"] :is(select option,select optgroup) { color: var(--ink); background: var(--surface); }
-body[data-color-mode="dark"] :is(input,textarea) { caret-color: var(--ink); }
-body[data-color-mode="dark"] :is(.workspace,.school-dialog,.questionnaire-dialog) :is(input,textarea)::placeholder { color: var(--muted) !important; opacity: 1 !important; }
+body[data-color-mode="dark"] :is(select option, select optgroup) {
+  color: var(--ink);
+  background: var(--surface);
+}
+
+/* Keep both sides of the contrast pair on the same palette, including
+   Chromium and Safari autofill, which can paint their own field background. */
+body[data-color-mode="dark"] :is(#appView .workspace, #loginView, dialog) :is(
+  input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="hidden"], .connections-search-field input)),
+  select,
+  textarea
+) {
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  caret-color: var(--ink);
+}
+body[data-color-mode="dark"] :is(#appView .workspace, #loginView, dialog) :is(input, textarea)::placeholder {
+  color: var(--muted) !important;
+  opacity: 1 !important;
+}
+body[data-color-mode="dark"] :is(#appView .workspace, #loginView, dialog) input:is(:autofill, :-webkit-autofill) {
+  -webkit-text-fill-color: var(--ink) !important;
+  caret-color: var(--ink);
+  box-shadow: 0 0 0 100vmax var(--surface) inset !important;
+}
+body[data-color-mode="dark"] #loginView .login-panel,
+body[data-color-mode="dark"] :is(.personal-notes-editor, .personal-notes-list, .school-links, .study-notes-dialog, .passkey-setup-dialog) {
+  background: var(--surface) !important;
+  color: var(--ink);
+}
 body[data-color-mode="dark"] ::selection { background: var(--accent); color: var(--on-accent); }
 
 /* A white document page is a separate colour context inside the dark workspace.
@@ -87,4 +114,12 @@ body .inner-doc-page:empty::before { color: var(--muted); }
 .connectifi-logo { display: block; width: 100%; height: 100%; object-fit: contain; }
 @media (forced-colors: active) {
   body :is(.primary-button,.connections-button.primary) { border: 1px solid ButtonText !important; }
+}
+
+body[data-login-wallpaper="true"] #loginView.login-shell:not(.hidden) {
+  background: linear-gradient(color-mix(in srgb, var(--bg) 64%, transparent), color-mix(in srgb, var(--bg) 78%, transparent)), var(--account-theme-image) center / cover no-repeat !important;
+}
+body[data-login-wallpaper="true"] #loginView .login-panel {
+  background: var(--surface) !important;
+  color: var(--ink);
 }

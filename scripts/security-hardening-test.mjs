@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import assert from "node:assert/strict";
 import { before, after, test } from "node:test";
 import { readFile, writeFile, mkdir, mkdtemp, rm, readdir } from "node:fs/promises";
@@ -16,7 +17,7 @@ const require = createRequire(path.join(root, "server.js"));
 const source = await readFile(path.join(root, "server.js"), "utf8");
 const directory = await mkdtemp(path.join(tmpdir(), "connectifi-security-"));
 const exportsCode = `; globalThis.app = {
-  route, createInnerServer, handleUpgrade, sessions, wsClients, httpRealtimeClients, FILES, ensureUsers, normalizeUsername, loginRateKey,
+  route, createInnerServer, handleUpgrade, sessions, hashSessionValue, wsClients, httpRealtimeClients, FILES, ensureUsers, normalizeUsername, loginRateKey,
   readJsonBody, readBody, getCookie, isSameOriginRequest, getClientIp, isHttpsRequest,
   isPrivateBrowserAddress, assertSafeBrowserTarget, guardedBrowserFetch, serveBrowserFrame,
   consumeSecurityRate, securityRateLimits, verifyPasswordAsync, hashPasswordAsync,
@@ -37,8 +38,8 @@ const { app } = harness();
 let server, origin;
 const req = (headers = {}) => ({ headers: { host: "example.test", ...headers }, socket: { remoteAddress: "127.0.0.1" } });
 const session = (name = "alice") => {
-  const token = `${name}-${Math.random()}`;
-  app.sessions.set(token, { username: name, role: "member", parentEmails: ["parent@example.test"], grade: "9A", csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
+  const token = randomBytes(32).toString("hex");
+  app.sessions.set(app.hashSessionValue(token), { username: name, role: "member", parentEmails: ["parent@example.test"], grade: "9A", csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
   return token;
 };
 const message = (ws, type) => new Promise((resolve, reject) => {
@@ -152,7 +153,7 @@ test("HTTP realtime client identifiers cannot be claimed by another user or sess
   assert.throws(() => app.upsertHttpRealtimeClient({ username: "bob" }, body, request(bob)), { statusCode: 403 });
   assert.throws(() => app.upsertHttpRealtimeClient({ username: "alice" }, body, request(otherAlice)), { statusCode: 403 });
   assert.equal(app.httpRealtimeClients.get(body.clientId), original);
-  app.revokeSession(alice);
+  app.revokeSession(app.hashSessionValue(alice));
   assert.equal(app.httpRealtimeClients.has(body.clientId), false);
 });
 test("WebSocket cross-origin upgrades are rejected", async () => {
@@ -185,7 +186,7 @@ test("normal signaling bursts queue without disconnecting and slow consumers hav
   for (let i = 0; i < 100; i++) ws.send('{"type":"ping"}');
   await received;
   assert.equal(ws.readyState, WebSocket.OPEN);
-  const slowClient = { username: "alice", sessionToken: token, webSocket: { readyState: 1, bufferedAmount: 4 * 1024 * 1024, send: () => assert.fail("Should not add to a full queue") } };
+  const slowClient = { username: "alice", sessionToken: app.hashSessionValue(token), webSocket: { readyState: 1, bufferedAmount: 4 * 1024 * 1024, send: () => assert.fail("Should not add to a full queue") } };
   assert.equal(app.sendFrame({}, Buffer.from("x"), 1, slowClient), false);
   ws.terminate();
 });
@@ -203,12 +204,12 @@ test("logout immediately closes that session's WebSocket", async () => {
   const response = await fetch(`${origin}/api/logout`, { method: "POST", headers: { Origin: origin, Cookie: `server_app_session=${token}`, "X-CSRF-Token": "test-csrf" } });
   assert.equal(response.status, 200);
   await closed;
-  assert.equal(app.sessions.has(token), false);
+  assert.equal(app.sessions.has(app.hashSessionValue(token)), false);
 });
 test("expired sessions cannot keep sending over an established WebSocket", async () => {
   const { ws, token } = await connect();
   const closed = once(ws, "close");
-  app.sessions.get(token).expiresAt = Date.now() - 1;
+  app.sessions.get(app.hashSessionValue(token)).expiresAt = Date.now() - 1;
   ws.send('{"type":"ping"}');
   await closed;
 });

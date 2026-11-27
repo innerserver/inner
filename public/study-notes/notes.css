@@ -20,3 +20,33 @@
 .study-notes-source { white-space: pre-wrap; max-height: 280px; overflow: auto; line-height: 1.6; font-size: .85rem; }
 .study-notes-actions [hidden] { display: none !important; }
 @media(max-width:600px) { .study-notes-controls { grid-template-columns: 1fr; } .study-notes-card { padding: 12px; } .study-notes-results-heading .button-row { justify-content: flex-start; } }
+
+.personal-notes-layout {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(0, 3fr);
+  gap: 16px;
+  align-items: start;
+}
+.personal-notes-list, .personal-notes-editor, .school-links form {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.personal-notes-list button { justify-content: flex-start; white-space: normal; overflow-wrap: anywhere; text-align: start; }
+.personal-notes-list button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.personal-notes-editor :is(input, textarea), .school-links input:not([type="checkbox"]) { width: 100%; }
+#appView .workspace .personal-notes-editor textarea {
+  min-height: 240px;
+  resize: vertical;
+  line-height: 1.65 !important;
+}
+#notesView .section-header .button-row { flex-wrap: wrap; gap: 8px; }
+.personal-notes-editor [role="status"], .school-links [role="status"] { margin: 0; }
+.school-links { margin-block-end: 14px; }
+.school-links summary { cursor: pointer; font-weight: 600; }
+.school-links form { margin-top: 14px; }
+.school-links form [type="submit"] { justify-self: start; }
+@media (max-width: 700px) {
+  .personal-notes-layout { grid-template-columns: minmax(0, 1fr); }
+  .personal-notes-list { max-height: 200px; overflow-y: auto; }
+}

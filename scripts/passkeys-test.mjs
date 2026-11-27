@@ -14,11 +14,12 @@ const { isoCBOR } = require("@simplewebauthn/server/helpers");
 const directory = await mkdtemp(path.join(tmpdir(), "connectifi-passkeys-"));
 const source = await readFile(path.join(root, "server.js"), "utf8");
 const context = vm.createContext({ require, __dirname: root, Buffer, URL, AbortSignal, AbortController, setTimeout, clearTimeout, setInterval, clearInterval, console, fetch, process: { env: { INNER_LOCALHOST_MODE: "true", INNER_DATA_DIR: directory }, pid: process.pid } });
-vm.runInContext(source.slice(0, source.lastIndexOf("main().catch(")) + ";globalThis.app={route,createInnerServer,sessions,FILES,websocketServer,hashPasswordAsync,securityRateLimits};", context);
+vm.runInContext(source.slice(0, source.lastIndexOf("main().catch(")) + ";globalThis.app={route,createInnerServer,sessions,FILES,websocketServer,hashPasswordAsync,hashSessionValue,restoreSessions,SESSION_FILE,securityRateLimits};", context);
 const app = context.app;
 let server, origin, passwordHash;
 const password = "Test-passkey-password-123";
-const token = "passkey-test-session";
+const token = "a".repeat(64);
+const secondToken = "b".repeat(64);
 async function call(route, body, cookie = `server_app_session=${token}`, extra = {}) {
   const response = await fetch(origin + route, { method: body === undefined ? "GET" : "POST", headers: { Origin: origin, Cookie: cookie, "Content-Type": "application/json", "X-CSRF-Token": "test-csrf", ...extra }, body: body === undefined ? undefined : JSON.stringify(body) });
   return { status: response.status, body: await response.json(), cookie: response.headers.get("set-cookie")?.split(";")[0] || "" };
@@ -56,7 +57,7 @@ before(async () => {
 });
 beforeEach(async () => {
   app.securityRateLimits.clear(); app.sessions.clear();
-  app.sessions.set(token, { username: "alice", role: "member", parentEmails: ["parent@example.test"], grade: "8A", csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
+  app.sessions.set(app.hashSessionValue(token), { username: "alice", role: "member", parentEmails: ["parent@example.test"], grade: "8A", csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
   for (const [name, value] of Object.entries({ users: [{ username: "alice", role: "member", parentEmails: ["parent@example.test"], grade: "8A", passwordHash }], passkeys: [], passkeyPreferences: {}, settings: { serverEnabled: true }, rooms: [{ id: "main", name: "Main" }], accountRequests: [], profiles: {}, logs: [] })) await writeFile(app.FILES[name], JSON.stringify(value));
 });
 after(async () => { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); app.websocketServer.close(); await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
@@ -91,8 +92,8 @@ test("forged signatures, missing user verification and wrong user handles fail",
 });
 test("registration binds the challenge to the original session", async () => {
   const options = await call("/api/passkeys/register/options", { password }); const key = credential(options.body);
-  app.sessions.set("other", { username: "alice", role: "member", parentEmails: ["parent@example.test"], csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
-  assert.equal((await call("/api/passkeys/register/verify", key.registration, `server_app_session=other; ${options.cookie}`)).status, 400);
+  app.sessions.set(app.hashSessionValue(secondToken), { username: "alice", role: "member", parentEmails: ["parent@example.test"], csrfToken: "test-csrf", expiresAt: Date.now() + 3600000 });
+  assert.equal((await call("/api/passkeys/register/verify", key.registration, `server_app_session=${secondToken}; ${options.cookie}`)).status, 400);
 });
 test("passkey login obeys bans and server shutdown", async () => {
   const { key } = await enroll();
@@ -153,4 +154,42 @@ test("fresh password login supports setup immediately without asking for the pas
   const nextLogin = await call("/api/login", { username: "alice", password }, "");
   assert.equal(nextLogin.status, 200);
   assert.equal(nextLogin.body.passkeyPrompt, false);
+});
+
+test("passkey options in another tab leave the first tab's challenge usable", async () => {
+  const { key } = await enroll();
+  const first = await call("/api/passkeys/login/options", {}, "");
+  const second = await call("/api/passkeys/login/options", {}, first.cookie);
+  assert.notEqual(first.cookie.split("=")[0], second.cookie.split("=")[0]);
+  const result = await call("/api/passkeys/login/verify", assertion(key, first.body), first.cookie + "; " + second.cookie);
+  assert.equal(result.status, 200);
+});
+
+test("persistent sessions restore after an empty process and logout removes them", async () => {
+  await writeFile(app.FILES.settings, JSON.stringify({ serverEnabled: true, persistentLogin: { defaultEnabled: true } }));
+  const signedIn = await call("/api/login", { username: "alice", password }, "");
+  assert.equal(signedIn.status, 200);
+  const rawToken = signedIn.cookie.split("=")[1];
+  const saved = JSON.parse(await readFile(app.SESSION_FILE, "utf8"));
+  assert.ok(saved.some(([key]) => key === app.hashSessionValue(rawToken)));
+  assert.equal(JSON.stringify(saved).includes(rawToken), false);
+  app.sessions.clear();
+  await app.restoreSessions();
+  assert.equal((await call("/api/session/ping", undefined, signedIn.cookie)).status, 200);
+  assert.equal((await call("/api/logout", {}, signedIn.cookie, { "X-CSRF-Token": signedIn.body.csrfToken })).status, 200);
+  app.sessions.clear();
+  await app.restoreSessions();
+  assert.equal((await call("/api/session/ping", undefined, signedIn.cookie)).status, 401);
+});
+
+test("saved notes and document links preserve text and the browser destination", async () => {
+  const note = await call("/api/notes", { title: "Class notes", content: "Line one\nLine two" });
+  assert.equal(note.status, 200, JSON.stringify(note.body));
+  assert.equal((await call("/api/notes")).body.notes[0].content, "Line one\nLine two");
+  const url = "https://docs.google.com/presentation/d/example_slide_id/edit#slide=id.example";
+  const link = await call("/api/files/links", { title: "Slides", url });
+  assert.equal(link.status, 201, JSON.stringify(link.body));
+  const item = (await call("/api/files")).body.files.find((file) => file.id === link.body.file.id);
+  assert.equal(item.url, url);
+  assert.equal(item.private, true);
 });

@@ -91,6 +91,19 @@ body[data-color-mode="dark"] :is(.personal-notes-editor, .personal-notes-list, .
   background: var(--surface) !important;
   color: var(--ink);
 }
+body[data-color-mode="dark"] .status-pill.off {
+  background: color-mix(in srgb, var(--surface) 86%, var(--danger));
+  border-color: color-mix(in srgb, var(--line) 60%, var(--danger));
+  color: var(--danger);
+}
+body[data-color-mode="dark"] .report-dashboard-alert {
+  background: color-mix(in srgb, var(--surface) 86%, var(--danger));
+  border-color: var(--danger);
+  color: var(--ink);
+}
+body[data-color-mode="dark"] .report-dashboard-alert :is(strong, span, button) {
+  color: var(--ink) !important;
+}
 body[data-color-mode="dark"] ::selection { background: var(--accent); color: var(--on-accent); }
 
 /* A white document page is a separate colour context inside the dark workspace.

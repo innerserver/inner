@@ -26,6 +26,11 @@ body :is(#appView .workspace,#loginView,.school-dialog,.strike-modal,.questionna
   outline: 2px solid var(--accent) !important;
   outline-offset: 3px !important;
 }
+body #appView #notesView .personal-notes-list button[aria-pressed="true"] {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent) !important;
+  color: var(--ink) !important;
+}
 .passkey-login-hint { margin: -2px 0 4px; font: 400 12px/1.5 "Segoe UI", system-ui, sans-serif; color: var(--muted); }
 
 /* Style the actual picker in the browser's top layer, preserving labels,

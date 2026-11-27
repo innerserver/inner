@@ -33,7 +33,6 @@
   min-width: 0;
 }
 .personal-notes-list button { justify-content: flex-start; white-space: normal; overflow-wrap: anywhere; text-align: start; }
-.personal-notes-list button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
 .personal-notes-editor :is(input, textarea), .school-links input:not([type="checkbox"]) { width: 100%; }
 #appView .workspace .personal-notes-editor textarea {
   min-height: 240px;

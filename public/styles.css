@@ -1864,7 +1864,7 @@ body.dark .report-dashboard-alert {
   max-width: min(420px, calc(100vw - 36px));
   padding: 11px 13px;
   border-radius: var(--radius);
-  color: #fff;
+  color: var(--surface);
   background: var(--ink);
   font-weight: 750;
   z-index: 30;
